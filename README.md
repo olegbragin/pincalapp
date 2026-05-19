@@ -1,2 +1,2 @@
 # pincal
-Simple calendar focusing gestures to see the events. 
+Simple calendar focusing on gestures to see the events. 
