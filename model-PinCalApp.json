@@ -1,0 +1,82 @@
+{
+  "_note1": "KEEP THIS FILE! Check it into a version control system (VCS) like git.",
+  "_note2": "ObjectBox manages crucial IDs for your object model. See docs for details.",
+  "_note3": "If you have VCS merge conflicts, you must resolve them according to ObjectBox docs.",
+  "entities": [
+    {
+      "id": "1:733612980013388544",
+      "lastPropertyId": "4:2411535501137855488",
+      "name": "PPCalendar",
+      "properties": [
+        {
+          "id": "1:5079360852619614208",
+          "name": "id",
+          "type": 6,
+          "flags": 1
+        },
+        {
+          "id": "2:2197111896515014400",
+          "name": "name",
+          "type": 9
+        },
+        {
+          "id": "3:1936306707119382272",
+          "name": "year",
+          "type": 6
+        },
+        {
+          "id": "4:2411535501137855488",
+          "name": "numberOfColumns",
+          "type": 6
+        }
+      ],
+      "relations": []
+    },
+    {
+      "id": "2:4904468296089419008",
+      "lastPropertyId": "4:3097048831935147264",
+      "name": "PPEvent",
+      "properties": [
+        {
+          "id": "1:4020757217319346176",
+          "name": "id",
+          "type": 6,
+          "flags": 1
+        },
+        {
+          "id": "2:584207948386106112",
+          "name": "name",
+          "type": 9
+        },
+        {
+          "id": "3:8201044470155641856",
+          "name": "color",
+          "type": 9
+        },
+        {
+          "id": "4:3097048831935147264",
+          "name": "date",
+          "type": 10
+        }
+      ],
+      "relations": [
+        {
+          "id": "1:6203705735387614720",
+          "name": "calendars",
+          "targetId": "1:733612980013388544"
+        }
+      ]
+    }
+  ],
+  "lastEntityId": "2:4904468296089419008",
+  "lastIndexId": "0:0",
+  "lastRelationId": "1:6203705735387614720",
+  "lastSequenceId": "0:0",
+  "modelVersion": 5,
+  "modelVersionParserMinimum": 4,
+  "retiredEntityUids": [],
+  "retiredIndexUids": [],
+  "retiredPropertyUids": [],
+  "retiredRelationUids": [],
+  "version": 1
+}
