@@ -66,6 +66,24 @@
         }
       }
     },
+    "eventAt" : {
+      "comment" : "Событие1 в 10:00",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ at %@"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "%@ в %@ "
+          }
+        }
+      }
+    },
     "Greetings, %@!" : {
       "extractionState" : "manual",
       "localizations" : {

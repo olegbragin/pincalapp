@@ -24,7 +24,7 @@ struct EventListView: View {
                             },
                             label: {
                                 HStack {
-                                    Text(event.name)
+                                    Text(.eventAt(event.name, event.date.formatted(date: .omitted, time: .shortened)))
                                     Spacer()
                                     Image(systemName: "chevron.right")
                                 }

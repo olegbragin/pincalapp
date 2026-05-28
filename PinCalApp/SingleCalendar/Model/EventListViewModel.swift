@@ -38,7 +38,7 @@ final class EventListViewModel {
     
     func prepare(with events: [EventDataSource], and selectedDay: Date?) {
         self.selectedDay = selectedDay
-        self.events = events
+        self.events = events.sorted(by: { $0.date < $1.date })
     }
     
     func prepareAddEditViewModel(with event: EventDataSource) {
