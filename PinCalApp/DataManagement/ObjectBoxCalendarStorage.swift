@@ -38,6 +38,7 @@ class ObjectBoxCalendarStorage: CalendarStorage {
             let ppevents = calendar.events.map { event in
                 PPEvent.init(id: UInt64(event.id), name: event.name, color: event.color, date: event.date)
             }
+            try eventEntityBox.remove(ppcalendar.events.map(\.id))
             try eventEntityBox.put(ppevents)
             ppcalendar.events.append(contentsOf: ppevents)
             try ppcalendar.events.applyToDb()
