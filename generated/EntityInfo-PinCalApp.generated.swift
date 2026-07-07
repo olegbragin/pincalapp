@@ -334,6 +334,136 @@ internal final class PPEventBinding: ObjectBox.EntityBinding, Sendable {
 }
 
 
+
+extension PPEventBatch: ObjectBox.__EntityRelatable {
+    internal typealias EntityType = PPEventBatch
+
+    internal var _id: EntityId<PPEventBatch> {
+        return EntityId<PPEventBatch>(self.id.value)
+    }
+}
+
+extension PPEventBatch: ObjectBox.EntityInspectable {
+    internal typealias EntityBindingType = PPEventBatchBinding
+
+    /// Generated metadata used by ObjectBox to persist the entity.
+    internal static let entityInfo = ObjectBox.EntityInfo(name: "PPEventBatch", id: 3)
+
+    internal static let entityBinding = EntityBindingType()
+
+    fileprivate static func buildEntity(modelBuilder: ObjectBox.ModelBuilder) throws {
+        let entityBuilder = try modelBuilder.entityBuilder(for: PPEventBatch.self, id: 3, uid: 5085436393158582016)
+        try entityBuilder.addProperty(name: "id", type: PropertyType.long, flags: [.id], id: 1, uid: 3255815407756402176)
+        try entityBuilder.addProperty(name: "title", type: PropertyType.string, id: 2, uid: 3715153771968026112)
+        try entityBuilder.addToManyRelation(id: 2, uid: 8052444218758843648,
+                                            targetId: 2, targetUid: 4904468296089419008)
+
+        try entityBuilder.lastProperty(id: 2, uid: 3715153771968026112)
+    }
+}
+
+extension PPEventBatch {
+    /// Generated entity property information.
+    ///
+    /// You may want to use this in queries to specify fetch conditions, for example:
+    ///
+    ///     box.query { PPEventBatch.id == myId }
+    internal static var id: Property<PPEventBatch, Id, Id> { return Property<PPEventBatch, Id, Id>(propertyId: 1, isPrimaryKey: true) }
+    /// Generated entity property information.
+    ///
+    /// You may want to use this in queries to specify fetch conditions, for example:
+    ///
+    ///     box.query { PPEventBatch.title.startsWith("X") }
+    internal static var title: Property<PPEventBatch, String, Void> { return Property<PPEventBatch, String, Void>(propertyId: 2, isPrimaryKey: false) }
+    /// Use `PPEventBatch.events` to refer to this ToMany relation property in queries,
+    /// like when using `QueryBuilder.and(property:, conditions:)`.
+
+    internal static var events: ToManyProperty<PPEvent> { return ToManyProperty(.relationId(2)) }
+
+
+    fileprivate func __setId(identifier: ObjectBox.Id) {
+        self.id = Id(identifier)
+    }
+}
+
+extension ObjectBox.Property where E == PPEventBatch {
+    /// Generated entity property information.
+    ///
+    /// You may want to use this in queries to specify fetch conditions, for example:
+    ///
+    ///     box.query { .id == myId }
+
+    internal static var id: Property<PPEventBatch, Id, Id> { return Property<PPEventBatch, Id, Id>(propertyId: 1, isPrimaryKey: true) }
+
+    /// Generated entity property information.
+    ///
+    /// You may want to use this in queries to specify fetch conditions, for example:
+    ///
+    ///     box.query { .title.startsWith("X") }
+
+    internal static var title: Property<PPEventBatch, String, Void> { return Property<PPEventBatch, String, Void>(propertyId: 2, isPrimaryKey: false) }
+
+    /// Use `.events` to refer to this ToMany relation property in queries, like when using
+    /// `QueryBuilder.and(property:, conditions:)`.
+
+    internal static var events: ToManyProperty<PPEvent> { return ToManyProperty(.relationId(2)) }
+
+}
+
+
+/// Generated service type to handle persisting and reading entity data. Exposed through `PPEventBatch.EntityBindingType`.
+internal final class PPEventBatchBinding: ObjectBox.EntityBinding, Sendable {
+    internal typealias EntityType = PPEventBatch
+    internal typealias IdType = Id
+
+    internal required init() {}
+
+    internal func generatorBindingVersion() -> Int { 1 }
+
+    internal func setEntityIdUnlessStruct(of entity: EntityType, to entityId: ObjectBox.Id) {
+        entity.__setId(identifier: entityId)
+    }
+
+    internal func entityId(of entity: EntityType) -> ObjectBox.Id {
+        return entity.id.value
+    }
+
+    internal func collect(fromEntity entity: EntityType, id: ObjectBox.Id,
+                                  propertyCollector: ObjectBox.FlatBufferBuilder, store: ObjectBox.Store) throws {
+        let propertyOffset_title = propertyCollector.prepare(string: entity.title)
+
+        propertyCollector.collect(id, at: 2 + 2 * 1)
+        propertyCollector.collect(dataOffset: propertyOffset_title, at: 2 + 2 * 2)
+    }
+
+    internal func postPut(fromEntity entity: EntityType, id: ObjectBox.Id, store: ObjectBox.Store) throws {
+        if entityId(of: entity) == 0 {  // New object was put? Attach relations now that we have an ID.
+            let events = ToMany<PPEvent>.relation(
+                sourceId: EntityId<PPEventBatch>(id.value),
+                targetBox: store.box(for: ToMany<PPEvent>.ReferencedType.self),
+                relationId: 2)
+            if !entity.events.isEmpty {
+                events.replace(entity.events)
+            }
+            entity.events = events
+            try entity.events.applyToDb()
+        }
+    }
+    internal func createEntity(entityReader: ObjectBox.FlatBufferReader, store: ObjectBox.Store) -> EntityType {
+        let entity = PPEventBatch()
+
+        entity.id = entityReader.read(at: 2 + 2 * 1)
+        entity.title = entityReader.read(at: 2 + 2 * 2)
+
+        entity.events = ToMany<PPEvent>.relation(
+            sourceId: EntityId<PPEventBatch>(entity.id.value),
+            targetBox: store.box(for: ToMany<PPEvent>.ReferencedType.self),
+            relationId: 2)
+        return entity
+    }
+}
+
+
 /// Helper function that allows calling Enum(rawValue: value) with a nil value, which will return nil.
 fileprivate func optConstruct<T: RawRepresentable>(_ type: T.Type, rawValue: T.RawValue?) -> T? {
     guard let rawValue = rawValue else { return nil }
@@ -346,8 +476,9 @@ fileprivate func cModel() throws -> OpaquePointer {
     let modelBuilder = try ObjectBox.ModelBuilder()
     try PPCalendar.buildEntity(modelBuilder: modelBuilder)
     try PPEvent.buildEntity(modelBuilder: modelBuilder)
-    modelBuilder.lastEntity(id: 2, uid: 4904468296089419008)
-    modelBuilder.lastRelation(id: 1, uid: 6203705735387614720)
+    try PPEventBatch.buildEntity(modelBuilder: modelBuilder)
+    modelBuilder.lastEntity(id: 3, uid: 5085436393158582016)
+    modelBuilder.lastRelation(id: 2, uid: 8052444218758843648)
     return modelBuilder.finish()
 }
 

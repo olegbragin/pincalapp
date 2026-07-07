@@ -66,36 +66,11 @@
           "targetId": "1:733612980013388544"
         }
       ]
-    },
-    {
-      "id": "3:5085436393158582016",
-      "lastPropertyId": "2:3715153771968026112",
-      "name": "PPEventBatch",
-      "properties": [
-        {
-          "id": "1:3255815407756402176",
-          "name": "id",
-          "type": 6,
-          "flags": 1
-        },
-        {
-          "id": "2:3715153771968026112",
-          "name": "title",
-          "type": 9
-        }
-      ],
-      "relations": [
-        {
-          "id": "2:8052444218758843648",
-          "name": "events",
-          "targetId": "2:4904468296089419008"
-        }
-      ]
     }
   ],
-  "lastEntityId": "3:5085436393158582016",
+  "lastEntityId": "2:4904468296089419008",
   "lastIndexId": "0:0",
-  "lastRelationId": "2:8052444218758843648",
+  "lastRelationId": "1:6203705735387614720",
   "lastSequenceId": "0:0",
   "modelVersion": 5,
   "modelVersionParserMinimum": 4,
