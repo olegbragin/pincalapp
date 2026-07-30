@@ -14,33 +14,16 @@ struct AddEditEventBatchView: View {
     
     var body: some View {
         VStack(alignment: .leading, spacing: 24) {
-            DatePicker(
-                selection: $viewModel.selectedDate,
-                displayedComponents: .hourAndMinute
-            ) {
-                Text("Выберите время события")
-            }
-            .environment(\.timeZone, TimeZone.current)
-            
             // Поле ввода имени
             VStack(alignment: .leading, spacing: 8) {
                 Text("Имя")
                     .font(.headline)
                     .fontWeight(.medium)
                 
-                TextField("Введите имя", text: $viewModel.eventName)
+                TextField("Введите имя", text: $viewModel.eventBatchName)
                     .textFieldStyle(RoundedBorderTextFieldStyle())
                     .padding(.horizontal, 4)
                     .ignoresSafeArea(.keyboard)
-            }
-            
-            // Выбор цвета
-            VStack(alignment: .leading, spacing: 8) {
-                Text("Выберите цвет")
-                    .font(.headline)
-                    .fontWeight(.medium)
-                
-                ColorPickerView(selectedColor: $viewModel.selectedColor)
             }
             
             // Selected days / events
@@ -49,7 +32,7 @@ struct AddEditEventBatchView: View {
                     .font(.headline)
                     .fontWeight(.medium)
                 
-                EventListView(viewModel: EventListViewModel())
+                EventListView(viewModel: viewModel.eventListViewModel)
             }
             
             
@@ -58,9 +41,6 @@ struct AddEditEventBatchView: View {
         .padding()
         .toolbarTitleDisplayMode(.inline)
         .toolbar {
-            ToolbarItem(placement: .title) {
-                Text(viewModel.selectedDayToShowEvents ?? Date(), style: .date)
-            }
             ToolbarItem(placement: .topBarTrailing) {
                 Button("Save") {
                     Task {
@@ -70,10 +50,15 @@ struct AddEditEventBatchView: View {
                     }
                 }
             }
+            ToolbarItem(placement: .topBarLeading) {
+                Button("Cancel") {
+                    dismiss()
+                }
+            }
         }
     }
 }
 
 #Preview {
-    AddEditEventBatchView(viewModel: .init())
+    AddEditEventBatchView(viewModel: .init(events: [.init(name: "1", date: Date(), color: "eventColorOption1")]))
 }

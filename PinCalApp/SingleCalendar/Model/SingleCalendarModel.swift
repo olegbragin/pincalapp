@@ -37,7 +37,7 @@ final class SingleCalendarModel {
     var selectedColor: ColorOption?
     
     private(set) var yearModel = USCalendarYearModel()
-    private(set) var editListViewModel = EventListViewModel()
+    private(set) var addEditBatchListViewModel = AddEditEventBatchListViewModel()
     
     var state: State = .empty
     var isEditSheetPresented = false
@@ -123,8 +123,8 @@ final class SingleCalendarModel {
         addedEvents = []
     }
     
-    func prepareEditListViewModel(with selectedDays: Set<Date>) {
-        editListViewModel.prepare(with: selectedEvents, and: selectedDays.first)
+    func prepareAddEditBatchListViewModel(with selectedDays: Set<Date>) {
+        addEditBatchListViewModel.prepare(with: [], and: selectedDays.first)
         isEditSheetPresented = selectedDays.first != nil
     }
     
@@ -141,7 +141,7 @@ final class SingleCalendarModel {
             updateYearModel(with: originalEvents)
         }
         save(for: calendarId)
-        prepareEditListViewModel(with: daySelectionManager.selectedDays)
+        prepareAddEditBatchListViewModel(with: daySelectionManager.selectedDays)
     }
     
     func reset() {
@@ -149,12 +149,12 @@ final class SingleCalendarModel {
         state = .empty
         isEditSheetPresented = false
         isLegendSheetPresented = false
-        editListViewModel.reset()
+        addEditBatchListViewModel.reset()
     }
     
     func resetSelectedDays() {
         daySelectionManager.selectedDays = []
-        editListViewModel.cancel()
+        // addEditBatchViewModel.cancel()
     }
     
     private func mergeSetsByID<T: Hashable & Identifiable>(

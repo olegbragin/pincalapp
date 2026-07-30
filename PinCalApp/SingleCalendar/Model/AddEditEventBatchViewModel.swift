@@ -12,40 +12,44 @@ import Observation
 @Observable
 final class AddEditEventBatchViewModel {
     var isPresented: Bool = false
-    var selectedDayToShowEvents: Date?
+    // var selectedDayToShowEvents: Date?
     
-    var eventId: Int64 = 0
-    var eventName: String = "1"
-    var selectedColor: ColorOption?
-    var selectedDate: Date = .now
+    var eventBatchId: Int64 = 0
+    var eventBatchName: String = "1"
+    var eventListViewModel: EventListViewModel
+    var eventBatchEvents: [EventDataSource] = []
+    // var selectedDate: Date = .now
     var timestamp: UUID?
     
-    var event: EventDataSource?
+    var eventBatch: EventBatchDataSource?
+    
+    init(events: [EventDataSource] = []) {
+        eventListViewModel = .init(events: events)
+    }
     
     func save() -> Bool {
         guard
-            !eventName.isEmpty,
-            let selectedColor
+            !eventBatchName.isEmpty
         else { return false }
-        event = EventDataSource(
-            id: eventId,
-            name: eventName,
-            date: selectedDate,
-            color: selectedColor.colorName,
-            timestamp: timestamp
+        eventBatch = EventBatchDataSource(
+            name: eventBatchName,
+            events: eventBatchEvents
         )
         return true
     }
     
+    func prepare(with events: [EventDataSource]) {
+        eventListViewModel.prepare(with: events)
+    }
+    
     func reset() {
-        selectedDayToShowEvents = nil
+        // selectedDayToShowEvents = nil
         isPresented = false
         
-        eventId = 0
-        eventName = ""
-        selectedColor = nil
-        selectedDate = .now
-        event = nil
+        eventBatchId = 0
+        eventBatchName = ""
+        // selectedDate = .now
+        eventBatchEvents = []
         timestamp = nil
     }
 }
