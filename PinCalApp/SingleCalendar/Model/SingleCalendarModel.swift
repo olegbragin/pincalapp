@@ -161,15 +161,11 @@ final class SingleCalendarModel {
         _ originalSet: Set<T>,
         with updates: Set<T>
     ) -> Set<T> {
-        // Шаг 1: преобразуем исходный набор в словарь по ID
-        var dictionary = Dictionary(uniqueKeysWithValues: originalSet.map { ($0.id, $0) })
-
-        // Шаг 2: обновляем словарь объектами из updates — дубли по ID перезапишутся
+        let originalByID = Dictionary(originalSet.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        var dictionary = originalByID
         updates.forEach { update in
             dictionary[update.id] = update
         }
-
-        // Шаг 3: возвращаем новый Set
         return Set(dictionary.values)
     }
     
