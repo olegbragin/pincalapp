@@ -98,11 +98,16 @@ final class SingleCalendarModel {
     }
     
     func save(for calendarId: Int64) {
-        Task {
+        Task { [weak self] in
+            guard let self else { return }
             guard var persistedCalendar = try? await self.manager.getCalendar(id: calendarId) else { return }
             persistedCalendar.numberOfColumns = yearModel.internalNumberOfColumns
             persistedCalendar.events = Array(originalEvents)
             try? await manager.updateCalendar(persistedCalendar)
+            if let refreshedCalendar = try? await self.manager.getCalendar(id: calendarId) {
+                originalEvents = Set(refreshedCalendar.events)
+                updateYearModel(with: originalEvents)
+            }
             state = .content
         }
     }

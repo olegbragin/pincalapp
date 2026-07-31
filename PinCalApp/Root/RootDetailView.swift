@@ -14,12 +14,25 @@ struct RootDetailView: View {
         NavigationStack {
             switch selector.selectedItem {
             case .calendar(let id):
-                SingleCalendarView(
-                    viewModel: .init(calendarid: id)
-                )
+                CalendarDetailView(calendarId: id)
             default:
                 Text("Select a calendar from the sidebar")
             }
         }
+    }
+}
+
+private struct CalendarDetailView: View {
+    let calendarId: Int64
+    @State private var model: SingleCalendarModel
+
+    init(calendarId: Int64) {
+        self.calendarId = calendarId
+        self._model = State(initialValue: SingleCalendarModel(calendarid: calendarId))
+    }
+
+    var body: some View {
+        SingleCalendarView(viewModel: model)
+            .id(calendarId)
     }
 }
