@@ -162,14 +162,33 @@ final class SingleCalendarModel {
         editListViewModel.cancel()
     }
     
-    private func mergeSetsByID<T: Hashable & Identifiable>(
-        _ originalSet: Set<T>,
-        with updates: Set<T>
-    ) -> Set<T> {
-        let originalByID = Dictionary(originalSet.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
-        var dictionary = originalByID
+    private enum EventMergeKey: Hashable {
+        case persisted(Int64)
+        case pending(UUID)
+        case unsaved(Int)
+    }
+    
+    private func mergeSetsByID(
+        _ originalSet: Set<EventDataSource>,
+        with updates: Set<EventDataSource>
+    ) -> Set<EventDataSource> {
+        func key(for event: EventDataSource) -> EventMergeKey {
+            if event.id != 0 {
+                return .persisted(event.id)
+            }
+            if let timestamp = event.timestamp {
+                return .pending(timestamp)
+            }
+            return .unsaved(event.hashValue)
+        }
+        
+        let originalByKey = Dictionary(
+            originalSet.map { (key(for: $0), $0) },
+            uniquingKeysWith: { first, _ in first }
+        )
+        var dictionary = originalByKey
         updates.forEach { update in
-            dictionary[update.id] = update
+            dictionary[key(for: update)] = update
         }
         return Set(dictionary.values)
     }
