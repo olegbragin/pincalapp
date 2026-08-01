@@ -14,7 +14,8 @@ struct CalendarListView: View {
     @Environment(\.editMode) private var editMode
     
     var body: some View {
-        List(selection: $selector.selectedItem) {
+        VStack(spacing: 0) {
+            List(selection: $selector.selectedItem) {
             ForEach(viewModel.calendars.indices, id: \.self) { index in
                 VStack {
                     HStack {
@@ -84,6 +85,20 @@ struct CalendarListView: View {
         .sheet(isPresented: $viewModel.isAddEditSheetPresented) {
             AddEditCalendarView(viewModel: viewModel.addEditCalendarViewModel)
         }
+            
+            Text(appVersion)
+                .font(.footnote)
+                .foregroundColor(.secondary)
+                .frame(maxWidth: .infinity)
+                .padding(.bottom, 8)
+        }
+        .background(Color(.systemGroupedBackground))
+    }
+
+    private var appVersion: String {
+        let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "?"
+        let build = Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "?"
+        return "\(version) (\(build))"
     }
 
     private func deleteItems(offsets: IndexSet) {
