@@ -8,7 +8,7 @@
 struct CalendarManager {
     private let service: CalendarStorage
     
-    init(service: CalendarStorage = ObjectBoxCalendarStorage()) {
+    init(service: CalendarStorage = ObjectBoxCalendarStorage.shared) {
         self.service = service
     }
     

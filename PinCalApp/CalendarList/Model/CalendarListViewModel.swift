@@ -28,7 +28,8 @@ final class CalendarListViewModel {
     
     func save() {
         self.calendars.forEach { calendar in
-            Task {
+            Task { [weak self] in
+                guard let self else { return }
                 try? await self.manager.updateCalendar(calendar)
             }
         }
@@ -37,17 +38,19 @@ final class CalendarListViewModel {
     
     func addCalendar(with name: String) {
         isLoading = true
-        Task {
+        Task { [weak self] in
+            guard let self else { return }
             let newCalendar = try await manager.createCalendar(name: name, year: 2026, numberOfColumns: 3)
             await MainActor.run {
                 self.calendars.append(newCalendar)
-                isLoading = false
+                self.isLoading = false
             }
         }
     }
     
     func removeCalendar(_ calendar: CalendarDataSource) {
-        Task {
+        Task { [weak self] in
+            guard let self else { return }
             try await manager.deleteCalendar(calendar.id)
             await MainActor.run {
                 self.calendars.removeAll {

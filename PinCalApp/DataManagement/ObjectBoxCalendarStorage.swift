@@ -9,6 +9,8 @@ import Foundation
 import ObjectBox
 
 class ObjectBoxCalendarStorage: CalendarStorage {
+    static let shared = ObjectBoxCalendarStorage()
+    
     private let store: Store
     private let calendarEntityBox: Box<PPCalendar>
     private let eventEntityBox: Box<PPEvent>

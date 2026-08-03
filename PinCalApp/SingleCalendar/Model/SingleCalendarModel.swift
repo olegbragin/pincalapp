@@ -98,11 +98,16 @@ final class SingleCalendarModel {
     }
     
     func save(for calendarId: Int64) {
-        Task {
+        Task { [weak self] in
+            guard let self else { return }
             guard var persistedCalendar = try? await self.manager.getCalendar(id: calendarId) else { return }
             persistedCalendar.numberOfColumns = yearModel.internalNumberOfColumns
             persistedCalendar.events = Array(originalEvents)
             try? await manager.updateCalendar(persistedCalendar)
+            if let refreshedCalendar = try? await self.manager.getCalendar(id: calendarId) {
+                originalEvents = Set(refreshedCalendar.events)
+                updateYearModel(with: originalEvents)
+            }
             state = .content
         }
     }
@@ -157,19 +162,34 @@ final class SingleCalendarModel {
         // addEditBatchViewModel.cancel()
     }
     
-    private func mergeSetsByID<T: Hashable & Identifiable>(
-        _ originalSet: Set<T>,
-        with updates: Set<T>
-    ) -> Set<T> {
-        // Шаг 1: преобразуем исходный набор в словарь по ID
-        var dictionary = Dictionary(uniqueKeysWithValues: originalSet.map { ($0.id, $0) })
-
-        // Шаг 2: обновляем словарь объектами из updates — дубли по ID перезапишутся
-        updates.forEach { update in
-            dictionary[update.id] = update
+    private enum EventMergeKey: Hashable {
+        case persisted(Int64)
+        case pending(UUID)
+        case unsaved(Int)
+    }
+    
+    private func mergeSetsByID(
+        _ originalSet: Set<EventDataSource>,
+        with updates: Set<EventDataSource>
+    ) -> Set<EventDataSource> {
+        func key(for event: EventDataSource) -> EventMergeKey {
+            if event.id != 0 {
+                return .persisted(event.id)
+            }
+            if let timestamp = event.timestamp {
+                return .pending(timestamp)
+            }
+            return .unsaved(event.hashValue)
         }
-
-        // Шаг 3: возвращаем новый Set
+        
+        let originalByKey = Dictionary(
+            originalSet.map { (key(for: $0), $0) },
+            uniquingKeysWith: { first, _ in first }
+        )
+        var dictionary = originalByKey
+        updates.forEach { update in
+            dictionary[key(for: update)] = update
+        }
         return Set(dictionary.values)
     }
     

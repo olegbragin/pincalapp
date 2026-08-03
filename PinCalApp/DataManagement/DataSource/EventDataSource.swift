@@ -28,7 +28,7 @@ struct EventDataSource: Identifiable, Hashable {
         self.name = dto.name
         self.date = dto.date
         self.color = dto.color
-        self.timestamp = UUID()
+        self.timestamp = nil
     }
 }
 
