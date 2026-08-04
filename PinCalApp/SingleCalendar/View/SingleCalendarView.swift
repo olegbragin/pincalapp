@@ -87,30 +87,46 @@ struct SingleCalendarView: View {
         .ignoresSafeArea()
         .padding(6)
         .navigationTitle(viewModel.label)
-        .toolbar {
-            ToolbarItem {
-                Button(
-                    viewModel.daySelectionManager.selectionMode == .multiple ? "Save" : "Multiselect",
-                    systemImage: viewModel.daySelectionManager.selectionMode == .multiple ? "checkmark" : "plus.rectangle.on.rectangle"
-                ) {
-                    if viewModel.daySelectionManager.selectionMode == .multiple {
-                        viewModel.prepareAddEditEventBatchViewModel()
-                    } else {
-                        viewModel.daySelectionManager.toggleSelectionMode()
-                    }
-                }
-            }
-            ToolbarItem {
-                if viewModel.daySelectionManager.selectionMode == .multiple {
-                    Button("Cancel") {
-                        viewModel.cancelMultipleChanges()
-                    }
-                }
-            }
-        }
+        .toolbar { toolbarContent }
         .task(id: viewModel.calendarid) {
             await viewModel.fetch()
         }
         .id(viewModel.calendarid)
+    }
+    
+    @ToolbarContentBuilder
+    private var toolbarContent: some ToolbarContent {
+        ToolbarItem {
+            Button {
+                switch viewModel.yearModel.scrollDirection {
+                case .vertical:
+                    viewModel.yearModel.scrollDirection = .horizontal
+                case .horizontal:
+                    viewModel.yearModel.scrollDirection = .vertical
+                }
+            } label: {
+                Image(systemName: viewModel.yearModel.scrollDirection == .horizontal ? "arrow.right" : "arrow.down")
+            }
+            .accessibilityLabel("Switch scroll direction")
+        }
+        ToolbarItem {
+            Button(
+                viewModel.daySelectionManager.selectionMode == .multiple ? "Save" : "Multiselect",
+                systemImage: viewModel.daySelectionManager.selectionMode == .multiple ? "checkmark" : "plus.rectangle.on.rectangle"
+            ) {
+                if viewModel.daySelectionManager.selectionMode == .multiple {
+                    viewModel.prepareAddEditEventBatchViewModel()
+                } else {
+                    viewModel.daySelectionManager.toggleSelectionMode()
+                }
+            }
+        }
+        ToolbarItem {
+            if viewModel.daySelectionManager.selectionMode == .multiple {
+                Button("Cancel") {
+                    viewModel.cancelMultipleChanges()
+                }
+            }
+        }
     }
 }
