@@ -30,7 +30,7 @@ struct SingleCalendarView: View {
                 }
                 .sheet(isPresented: $viewModel.isEditSheetPresented) {
                     if viewModel.daySelectionManager.selectionMode == .single {
-                        EventListView(viewModel: viewModel.editListViewModel)
+                        AddEditEventBatchListView(viewModel: viewModel.addEditBatchListViewModel)
                     }
                 }
                 .onChange(of: viewModel.yearModel.numberOfColumns) {
@@ -44,7 +44,7 @@ struct SingleCalendarView: View {
                             viewModel.changeEvent(.init(name: "Event1", date: selectedDay, color: selectedColor.colorName))
                         }
                     } else if !newValue.isEmpty {
-                        viewModel.prepareEditListViewModel(with: newValue)
+                        viewModel.prepareAddEditBatchListViewModel(with: newValue)
                     }
                 }
                 .onChange(of: viewModel.isEditSheetPresented) { oldValue, newValue in
@@ -52,14 +52,14 @@ struct SingleCalendarView: View {
                         viewModel.resetSelectedDays()
                     }
                 }
-                .onChange(of: viewModel.editListViewModel.eventsToChange) {
+                .onChange(of: viewModel.addEditBatchListViewModel.eventBatchesToChange) {
                     if $0 != $1 {
-                        viewModel.apply(events: $1, action: .change, for: viewModel.calendarid)
+                        viewModel.apply(batches: $1, action: .change, for: viewModel.calendarid)
                     }
                 }
-                .onChange(of: viewModel.editListViewModel.eventsToDelete) {
+                .onChange(of: viewModel.addEditBatchListViewModel.eventBatchesToDelete) {
                     if $0 != $1 {
-                        viewModel.apply(events: $1, action: .delete, for: viewModel.calendarid)
+                        viewModel.apply(batches: $1, action: .delete, for: viewModel.calendarid)
                     }
                 }
 //                Button(

@@ -5,27 +5,28 @@
 //  Created by Oleg Bragin on 15.02.2026.
 //
 
-import ObjectBox
-
 struct CalendarDataSource: Identifiable, Hashable {
     var id: Int64
     var name: String
     var year: Int
     var numberOfColumns: Int
     var events: [EventDataSource]
+    var eventBatches: [EventBatchDataSource]
     
     init(
         id: Int64 = 0,
         name: String,
         year: Int,
         numberOfColumns: Int,
-        events: [EventDataSource] = []
+        events: [EventDataSource] = [],
+        eventBatches: [EventBatchDataSource] = []
     ) {
         self.id = id
         self.name = name
         self.year = year
         self.numberOfColumns = numberOfColumns
         self.events = events
+        self.eventBatches = eventBatches
     }
     
     init?(_ dto: PPCalendar?) {
@@ -34,9 +35,12 @@ struct CalendarDataSource: Identifiable, Hashable {
         self.name = dto.name
         self.year = dto.year
         self.numberOfColumns = dto.numberOfColumns
-        self.events = dto.events.compactMap {
-            EventDataSource($0)
+        self.eventBatches = dto.eventBatches.compactMap {
+            EventBatchDataSource($0)
         }
+        self.events = eventBatches.flatMap(\.events).isEmpty
+            ? dto.events.compactMap { EventDataSource($0) }
+            : eventBatches.flatMap(\.events)
     }
 }
 

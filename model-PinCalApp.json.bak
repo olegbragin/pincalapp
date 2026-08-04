@@ -75,7 +75,7 @@
     },
     {
       "id": "3:5085436393158582016",
-      "lastPropertyId": "4:3613068249818097152",
+      "lastPropertyId": "3:5536178539309073664",
       "name": "PPEventBatch",
       "properties": [
         {
@@ -93,11 +93,6 @@
           "id": "3:5536178539309073664",
           "name": "color",
           "type": 9
-        },
-        {
-          "id": "4:3613068249818097152",
-          "name": "date",
-          "type": 10
         }
       ],
       "relations": [

@@ -26,7 +26,7 @@ final class SingleCalendarModel {
     private let dataProvider = USCalendarDataProvider()
     private let manager = CalendarManager()
     
-    private var originalEvents: Set<EventDataSource> = []
+    private var originalBatches: [EventBatchDataSource] = []
     private var addedEvents: Set<EventDataSource> = []
     
     private(set) var calendarid: Int64
@@ -37,23 +37,21 @@ final class SingleCalendarModel {
     var selectedColor: ColorOption?
     
     private(set) var yearModel = USCalendarYearModel()
-    private(set) var editListViewModel = EventListViewModel()
+    private(set) var addEditBatchListViewModel = AddEditEventBatchListViewModel()
     
     var state: State = .empty
     var isEditSheetPresented = false
     var isLegendSheetPresented = false
     
+    private var originalEvents: Set<EventDataSource> {
+        Set(originalBatches.flatMap(\.events))
+    }
+    
     var selectedEvents: [EventDataSource] {
         guard !daySelectionManager.selectedDays.isEmpty else { return [] }
         return originalEvents.filter { event in
             daySelectionManager.selectedDays.contains { date in
-                let dayDate = event.date
-                let eventDateComponents = dataProvider.dateComponents(forDate: dayDate)
-                let dayComponents = dataProvider.dateComponents(forDate: date)
-                return
-                    dayComponents.day == eventDateComponents.day &&
-                    dayComponents.month == eventDateComponents.month &&
-                    dayComponents.year == eventDateComponents.year
+                isSameDay(event.date, date)
             }
         }
     }
@@ -92,7 +90,7 @@ final class SingleCalendarModel {
         yearModel.numberOfCurrentMonth = dataProvider.numberOfCurrentMonth
         yearModel.set(initialNumberOfColumns: calendar.numberOfColumns)
         
-        originalEvents = Set(calendar.events)
+        originalBatches = calendar.eventBatches
         updateYearModel(with: originalEvents)
         state = .content
     }
@@ -102,10 +100,10 @@ final class SingleCalendarModel {
             guard let self else { return }
             guard var persistedCalendar = try? await self.manager.getCalendar(id: calendarId) else { return }
             persistedCalendar.numberOfColumns = yearModel.internalNumberOfColumns
-            persistedCalendar.events = Array(originalEvents)
+            persistedCalendar.eventBatches = originalBatches
             try? await manager.updateCalendar(persistedCalendar)
             if let refreshedCalendar = try? await self.manager.getCalendar(id: calendarId) {
-                originalEvents = Set(refreshedCalendar.events)
+                originalBatches = refreshedCalendar.eventBatches
                 updateYearModel(with: originalEvents)
             }
             state = .content
@@ -114,7 +112,19 @@ final class SingleCalendarModel {
     
     func commitMultipleChanges(for calendarId: Int64) {
         let allEvents = originalEvents.union(addedEvents)
-        originalEvents = allEvents
+        
+        let addedByColor = Dictionary(grouping: addedEvents, by: \.color)
+        for (color, events) in addedByColor where !color.isEmpty {
+            let sortedEvents = events.sorted(by: { $0.date < $1.date })
+            guard let firstEvent = sortedEvents.first else { continue }
+            originalBatches.append(
+                EventBatchDataSource(
+                    name: firstEvent.name,
+                    colorName: color,
+                    events: sortedEvents
+                )
+            )
+        }
         
         updateYearModel(with: allEvents)
         daySelectionManager.toggleSelectionMode()
@@ -128,25 +138,42 @@ final class SingleCalendarModel {
         addedEvents = []
     }
     
-    func prepareEditListViewModel(with selectedDays: Set<Date>) {
-        editListViewModel.prepare(with: selectedEvents, and: selectedDays.first)
-        isEditSheetPresented = selectedDays.first != nil
+    func prepareAddEditBatchListViewModel(with selectedDays: Set<Date>) {
+        guard let selectedDay = selectedDays.first else {
+            isEditSheetPresented = false
+            addEditBatchListViewModel.reset()
+            return
+        }
+        let dayBatches = originalBatches.filter { batch in
+            batch.events.contains { event in
+                isSameDay(event.date, selectedDay)
+            } || (batch.date.map { isSameDay($0, selectedDay) } ?? false)
+        }
+        addEditBatchListViewModel.prepare(with: dayBatches, and: selectedDay)
+        isEditSheetPresented = true
     }
     
-    func apply(events: [EventDataSource], action: Action, for calendarId: Int64) {
+    func apply(batches: [EventBatchDataSource], action: Action, for calendarId: Int64) {
         switch action {
         case .change:
-            let newEvents = mergeSetsByID(Set(originalEvents), with: Set(events))
-            originalEvents = newEvents
+            var mergedBatches = originalBatches
+            for batch in batches {
+                if let index = mergedBatches.firstIndex(where: { key(for: $0) == key(for: batch) }) {
+                    mergedBatches[index] = batch
+                } else {
+                    mergedBatches.append(batch)
+                }
+            }
+            originalBatches = mergedBatches
             updateYearModel(with: originalEvents)
         case .delete:
-            events.forEach {
-                originalEvents.remove($0)
+            for batch in batches {
+                originalBatches.removeAll(where: { key(for: $0) == key(for: batch) })
             }
             updateYearModel(with: originalEvents)
         }
         save(for: calendarId)
-        prepareEditListViewModel(with: daySelectionManager.selectedDays)
+        prepareAddEditBatchListViewModel(with: daySelectionManager.selectedDays)
     }
     
     func reset() {
@@ -154,43 +181,37 @@ final class SingleCalendarModel {
         state = .empty
         isEditSheetPresented = false
         isLegendSheetPresented = false
-        editListViewModel.reset()
+        addEditBatchListViewModel.reset()
     }
     
     func resetSelectedDays() {
         daySelectionManager.selectedDays = []
-        editListViewModel.cancel()
+        // addEditBatchViewModel.cancel()
     }
     
-    private enum EventMergeKey: Hashable {
+    private enum BatchMergeKey: Hashable {
         case persisted(Int64)
         case pending(UUID)
         case unsaved(Int)
     }
     
-    private func mergeSetsByID(
-        _ originalSet: Set<EventDataSource>,
-        with updates: Set<EventDataSource>
-    ) -> Set<EventDataSource> {
-        func key(for event: EventDataSource) -> EventMergeKey {
-            if event.id != 0 {
-                return .persisted(event.id)
-            }
-            if let timestamp = event.timestamp {
-                return .pending(timestamp)
-            }
-            return .unsaved(event.hashValue)
+    private func key(for batch: EventBatchDataSource) -> BatchMergeKey {
+        if batch.id != 0 {
+            return .persisted(batch.id)
         }
-        
-        let originalByKey = Dictionary(
-            originalSet.map { (key(for: $0), $0) },
-            uniquingKeysWith: { first, _ in first }
-        )
-        var dictionary = originalByKey
-        updates.forEach { update in
-            dictionary[key(for: update)] = update
+        if let timestamp = batch.timestamp {
+            return .pending(timestamp)
         }
-        return Set(dictionary.values)
+        return .unsaved(batch.hashValue)
+    }
+    
+    private func isSameDay(_ lhs: Date, _ rhs: Date) -> Bool {
+        let lhsComponents = dataProvider.dateComponents(forDate: lhs)
+        let rhsComponents = dataProvider.dateComponents(forDate: rhs)
+        return
+            lhsComponents.day == rhsComponents.day &&
+            lhsComponents.month == rhsComponents.month &&
+            lhsComponents.year == rhsComponents.year
     }
     
     private func updateYearModel(with events: Set<EventDataSource>) {
@@ -203,12 +224,7 @@ final class SingleCalendarModel {
                     .forEach { day in
                         let dayEvents = events.filter {
                             guard let dayDate = day.date else { return false }
-                            let eventDateComponents = dataProvider.dateComponents(forDate: $0.date)
-                            let dayComponents = dataProvider.dateComponents(forDate: dayDate)
-                            return
-                                dayComponents.day == eventDateComponents.day &&
-                                dayComponents.month == eventDateComponents.month &&
-                                dayComponents.year == eventDateComponents.year
+                            return isSameDay($0.date, dayDate)
                         }
                         day.events = dayEvents.map {
                             $0.color
