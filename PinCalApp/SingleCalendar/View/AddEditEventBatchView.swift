@@ -26,9 +26,18 @@ struct AddEditEventBatchView: View {
                     .ignoresSafeArea(.keyboard)
             }
             
-            // Selected days / events
+            // Выбор цвета
             VStack(alignment: .leading, spacing: 8) {
-                Text("Выбранные дни")
+                Text("Выберите цвет")
+                    .font(.headline)
+                    .fontWeight(.medium)
+                
+                ColorPickerView(selectedColor: $viewModel.selectedColor)
+            }
+            
+            // Events
+            VStack(alignment: .leading, spacing: 8) {
+                Text("События")
                     .font(.headline)
                     .fontWeight(.medium)
                 

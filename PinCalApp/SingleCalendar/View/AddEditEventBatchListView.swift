@@ -20,7 +20,7 @@ struct AddEditEventBatchListView: View {
                     ForEach(viewModel.eventBatches, id: \.self) { eventBatch in
                         Button(
                             action: {
-                                // viewModel.prepareAddEditViewModel(with: event)
+                                viewModel.prepareAddEditBatchViewModel(with: eventBatch)
                             },
                             label: {
                                 HStack {
@@ -33,16 +33,16 @@ struct AddEditEventBatchListView: View {
                         )
                         .listRowBackground(eventBatch.color)
                     }
-                    // .onDelete(perform: deleteItems)
+                    .onDelete(perform: deleteItems)
                 }
-                // .environment(\.editMode, editMode)
+                .environment(\.editMode, editMode)
                 .animation(.easeInOut(duration: 0.3), value: viewModel.isEditing)
             }
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
                     USEditButton(isEditing: $viewModel.isEditing) { isEditing in
                         if isEditing {
-                            // viewModel.commitDelete()
+                            viewModel.commitDelete()
                         } else {
                             viewModel.isEditing.toggle()
                         }
@@ -58,7 +58,7 @@ struct AddEditEventBatchListView: View {
                             if isEditing {
                                 viewModel.cancel()
                             } else {
-                                // viewModel.prepareAddEditViewModel(with: .init(name: "", date: viewModel.selectedDay ?? .now, color: "", timestamp: UUID()))
+                                viewModel.prepareAddEditBatchViewModel(with: nil)
                             }
                         },
                         activeContent: {
@@ -70,29 +70,29 @@ struct AddEditEventBatchListView: View {
                     )
                 }
             }
-//            .navigationDestination(isPresented: $viewModel.addEditEventModel.isPresented) {
-//                AddEditEventView(viewModel: viewModel.addEditEventModel)
-//            }
+            .navigationDestination(isPresented: $viewModel.addEditEventBatchModel.isPresented) {
+                AddEditEventBatchView(viewModel: viewModel.addEditEventBatchModel)
+            }
         }
-//        .onChange(of: viewModel.addEditEventModel.isPresented) {
-//            if $0 != $1, !$1 {
-//                viewModel.addEditEventModel.reset()
-//                viewModel.cancel()
-//            }
-//        }
-//        .onChange(of: viewModel.addEditEventModel.event) {
-//            if $0 != $1, let eventToCommit = $1 {
-//                viewModel.apply(with: eventToCommit)
-//            }
-//        }
-//        .onChange(of: viewModel.isEditing) {
-//            if $0 != $1 {
-//                editMode?.wrappedValue = $1 ? .active : .inactive
-//            }
-//        }
+        .onChange(of: viewModel.addEditEventBatchModel.isPresented) {
+            if $0 != $1, !$1 {
+                viewModel.addEditEventBatchModel.reset()
+                viewModel.cancel()
+            }
+        }
+        .onChange(of: viewModel.addEditEventBatchModel.eventBatch) {
+            if $0 != $1, let eventBatchToCommit = $1 {
+                viewModel.apply(with: eventBatchToCommit)
+            }
+        }
+        .onChange(of: viewModel.isEditing) {
+            if $0 != $1 {
+                editMode?.wrappedValue = $1 ? .active : .inactive
+            }
+        }
     }
 
-//    private func deleteItems(offsets: IndexSet) {
-//        viewModel.removeEvents(at: offsets)
-//    }
+    private func deleteItems(offsets: IndexSet) {
+        viewModel.removeBatches(at: offsets)
+    }
 }

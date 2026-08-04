@@ -15,6 +15,7 @@ struct ObjectBoxFactory {
     private init() {
         // Инициализация Store, как показано выше
         store = try! Store(directoryPath: getDatabasePath().path)
+        EventBatchMigration.runIfNeeded(store: store)
     }
 
     private func getDatabasePath() -> URL {

@@ -30,7 +30,13 @@
           "type": 6
         }
       ],
-      "relations": []
+      "relations": [
+        {
+          "id": "3:1313922441448171264",
+          "name": "eventBatches",
+          "targetId": "3:5085436393158582016"
+        }
+      ]
     },
     {
       "id": "2:4904468296089419008",
@@ -69,7 +75,7 @@
     },
     {
       "id": "3:5085436393158582016",
-      "lastPropertyId": "2:3715153771968026112",
+      "lastPropertyId": "4:3613068249818097152",
       "name": "PPEventBatch",
       "properties": [
         {
@@ -82,6 +88,16 @@
           "id": "2:3715153771968026112",
           "name": "title",
           "type": 9
+        },
+        {
+          "id": "3:5536178539309073664",
+          "name": "color",
+          "type": 9
+        },
+        {
+          "id": "4:3613068249818097152",
+          "name": "date",
+          "type": 10
         }
       ],
       "relations": [
@@ -95,7 +111,7 @@
   ],
   "lastEntityId": "3:5085436393158582016",
   "lastIndexId": "0:0",
-  "lastRelationId": "2:8052444218758843648",
+  "lastRelationId": "3:1313922441448171264",
   "lastSequenceId": "0:0",
   "modelVersion": 5,
   "modelVersionParserMinimum": 4,

@@ -37,12 +37,43 @@ class ObjectBoxCalendarStorage: CalendarStorage {
                 )
             )
             guard let ppcalendar = try calendarEntityBox.get(calendarid) else { return -1 }
-            let ppevents = calendar.events.map { event in
-                PPEvent.init(id: UInt64(event.id), name: event.name, color: event.color, date: event.date)
+            
+            let batchEntityBox = store.box(for: PPEventBatch.self)
+            
+            let desiredBatchIDs = Set(calendar.eventBatches.map(\.id))
+            let orphanedBatches = ppcalendar.eventBatches.filter { !desiredBatchIDs.contains(Int64($0.id)) }
+            for oldBatch in orphanedBatches {
+                let eventIDsToRemove = oldBatch.events.map(\.id)
+                try batchEntityBox.remove(oldBatch)
+                try eventEntityBox.remove(eventIDsToRemove)
             }
-            try eventEntityBox.remove(calendar.events.map(\.id))
-            try eventEntityBox.put(ppevents)
-            ppcalendar.events.append(contentsOf: ppevents)
+            
+            for batch in calendar.eventBatches {
+                let ppBatch: PPEventBatch
+                if batch.id != 0, let existing = try? batchEntityBox.get(UInt64(batch.id)) {
+                    ppBatch = existing
+                } else {
+                    ppBatch = PPEventBatch()
+                }
+                ppBatch.title = batch.name
+                ppBatch.color = batch.colorName
+                ppBatch.date = batch.date
+                try batchEntityBox.put(ppBatch)
+                
+                let ppevents = batch.events.map { event in
+                    PPEvent(id: UInt64(event.id), name: event.name, color: event.color, date: event.date)
+                }
+                try eventEntityBox.put(ppevents)
+                ppBatch.events.replace(ppevents)
+                try ppBatch.events.applyToDb()
+                
+                if !ppcalendar.eventBatches.contains(where: { $0.id == ppBatch.id }) {
+                    ppcalendar.eventBatches.append(ppBatch)
+                }
+            }
+            
+            ppcalendar.events.removeAll()
+            try ppcalendar.eventBatches.applyToDb()
             try ppcalendar.events.applyToDb()
             return Int64(ppcalendar.id)
         } catch {
@@ -52,11 +83,17 @@ class ObjectBoxCalendarStorage: CalendarStorage {
     }
     
     func removeEvents(_ eventIds: [Int64], calendarId: Int64) async throws {
-        let calendar = try calendarEntityBox.get(calendarId)
-        calendar?.events.removeAll(where: {
+        guard let calendar = try calendarEntityBox.get(calendarId) else { return }
+        for batch in calendar.eventBatches {
+            batch.events.removeAll(where: {
+                eventIds.contains(Int64($0.id))
+            })
+            try batch.events.applyToDb()
+        }
+        calendar.events.removeAll(where: {
             eventIds.contains(Int64($0.id))
         })
-        try calendar?.events.applyToDb()
+        try calendar.events.applyToDb()
         try eventIds.forEach {
             try eventEntityBox.remove($0)
         }

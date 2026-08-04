@@ -12,13 +12,12 @@ import Observation
 @Observable
 final class AddEditEventBatchViewModel {
     var isPresented: Bool = false
-    // var selectedDayToShowEvents: Date?
     
     var eventBatchId: Int64 = 0
     var eventBatchName: String = "1"
+    var selectedColor: ColorOption?
     var eventListViewModel: EventListViewModel
-    var eventBatchEvents: [EventDataSource] = []
-    // var selectedDate: Date = .now
+    var date: Date?
     var timestamp: UUID?
     
     var eventBatch: EventBatchDataSource?
@@ -29,11 +28,16 @@ final class AddEditEventBatchViewModel {
     
     func save() -> Bool {
         guard
-            !eventBatchName.isEmpty
+            !eventBatchName.isEmpty,
+            let selectedColor
         else { return false }
         eventBatch = EventBatchDataSource(
+            id: eventBatchId,
             name: eventBatchName,
-            events: eventBatchEvents
+            colorName: selectedColor.colorName,
+            events: eventListViewModel.events,
+            date: date,
+            timestamp: timestamp
         )
         return true
     }
@@ -43,13 +47,12 @@ final class AddEditEventBatchViewModel {
     }
     
     func reset() {
-        // selectedDayToShowEvents = nil
         isPresented = false
         
         eventBatchId = 0
         eventBatchName = ""
-        // selectedDate = .now
-        eventBatchEvents = []
+        selectedColor = nil
+        date = nil
         timestamp = nil
     }
 }

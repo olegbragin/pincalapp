@@ -28,8 +28,9 @@ final class AddEditEventListViewModel {
     }
     
     func apply(with event: EventDataSource) {
-        if let eventToReplace = events.first(where: { $0.id == event.id || $0.timestamp == event.timestamp }) {
-            events.replace([eventToReplace], with: [event])
+        if let eventToReplace = events.first(where: { $0.id == event.id || $0.timestamp == event.timestamp }),
+           let indexToReplace = events.firstIndex(of: eventToReplace) {
+            events[indexToReplace] = event
         } else {
             events.append(event)
         }

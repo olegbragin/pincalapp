@@ -16,6 +16,8 @@ class PPCalendar: Entity {
     // objectbox: backlink = "calendars"
     var events: ToMany<PPEvent> = nil
     
+    var eventBatches: ToMany<PPEventBatch> = nil
+    
     init() { }
     
     init(

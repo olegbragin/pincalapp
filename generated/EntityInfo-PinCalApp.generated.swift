@@ -30,6 +30,8 @@ extension PPCalendar: ObjectBox.EntityInspectable {
         try entityBuilder.addProperty(name: "name", type: PropertyType.string, id: 2, uid: 2197111896515014400)
         try entityBuilder.addProperty(name: "year", type: PropertyType.long, id: 3, uid: 1936306707119382272)
         try entityBuilder.addProperty(name: "numberOfColumns", type: PropertyType.long, id: 4, uid: 2411535501137855488)
+        try entityBuilder.addToManyRelation(id: 3, uid: 1313922441448171264,
+                                            targetId: 3, targetUid: 5085436393158582016)
 
         try entityBuilder.lastProperty(id: 4, uid: 2411535501137855488)
     }
@@ -64,6 +66,11 @@ extension PPCalendar {
     /// like when using `QueryBuilder.and(property:, conditions:)`.
 
     internal static var events: ToManyProperty<PPEvent> { return ToManyProperty(.backlinkRelationId(1)) }
+
+    /// Use `PPCalendar.eventBatches` to refer to this ToMany relation property in queries,
+    /// like when using `QueryBuilder.and(property:, conditions:)`.
+
+    internal static var eventBatches: ToManyProperty<PPEventBatch> { return ToManyProperty(.relationId(3)) }
 
 
     fileprivate func __setId(identifier: ObjectBox.Id) {
@@ -109,6 +116,11 @@ extension ObjectBox.Property where E == PPCalendar {
 
     internal static var events: ToManyProperty<PPEvent> { return ToManyProperty(.backlinkRelationId(1)) }
 
+    /// Use `.eventBatches` to refer to this ToMany relation property in queries, like when using
+    /// `QueryBuilder.and(property:, conditions:)`.
+
+    internal static var eventBatches: ToManyProperty<PPEventBatch> { return ToManyProperty(.relationId(3)) }
+
 }
 
 
@@ -149,7 +161,16 @@ internal final class PPCalendarBinding: ObjectBox.EntityBinding, Sendable {
                 events.replace(entity.events)
             }
             entity.events = events
+            let eventBatches = ToMany<PPEventBatch>.relation(
+                sourceId: EntityId<PPCalendar>(id.value),
+                targetBox: store.box(for: ToMany<PPEventBatch>.ReferencedType.self),
+                relationId: 3)
+            if !entity.eventBatches.isEmpty {
+                eventBatches.replace(entity.eventBatches)
+            }
+            entity.eventBatches = eventBatches
             try entity.events.applyToDb()
+            try entity.eventBatches.applyToDb()
         }
     }
     internal func createEntity(entityReader: ObjectBox.FlatBufferReader, store: ObjectBox.Store) -> EntityType {
@@ -164,6 +185,10 @@ internal final class PPCalendarBinding: ObjectBox.EntityBinding, Sendable {
             sourceBox: store.box(for: ToMany<PPEvent>.ReferencedType.self),
             targetId: EntityId<PPCalendar>(entity.id.value),
             relationId: 1)
+        entity.eventBatches = ToMany<PPEventBatch>.relation(
+            sourceId: EntityId<PPCalendar>(entity.id.value),
+            targetBox: store.box(for: ToMany<PPEventBatch>.ReferencedType.self),
+            relationId: 3)
         return entity
     }
 }
@@ -355,10 +380,12 @@ extension PPEventBatch: ObjectBox.EntityInspectable {
         let entityBuilder = try modelBuilder.entityBuilder(for: PPEventBatch.self, id: 3, uid: 5085436393158582016)
         try entityBuilder.addProperty(name: "id", type: PropertyType.long, flags: [.id], id: 1, uid: 3255815407756402176)
         try entityBuilder.addProperty(name: "title", type: PropertyType.string, id: 2, uid: 3715153771968026112)
+        try entityBuilder.addProperty(name: "color", type: PropertyType.string, id: 3, uid: 5536178539309073664)
+        try entityBuilder.addProperty(name: "date", type: PropertyType.date, id: 4, uid: 3613068249818097152)
         try entityBuilder.addToManyRelation(id: 2, uid: 8052444218758843648,
                                             targetId: 2, targetUid: 4904468296089419008)
 
-        try entityBuilder.lastProperty(id: 2, uid: 3715153771968026112)
+        try entityBuilder.lastProperty(id: 4, uid: 3613068249818097152)
     }
 }
 
@@ -375,10 +402,27 @@ extension PPEventBatch {
     ///
     ///     box.query { PPEventBatch.title.startsWith("X") }
     internal static var title: Property<PPEventBatch, String, Void> { return Property<PPEventBatch, String, Void>(propertyId: 2, isPrimaryKey: false) }
+    /// Generated entity property information.
+    ///
+    /// You may want to use this in queries to specify fetch conditions, for example:
+    ///
+    ///     box.query { PPEventBatch.color.startsWith("X") }
+    internal static var color: Property<PPEventBatch, String, Void> { return Property<PPEventBatch, String, Void>(propertyId: 3, isPrimaryKey: false) }
+    /// Generated entity property information.
+    ///
+    /// You may want to use this in queries to specify fetch conditions, for example:
+    ///
+    ///     box.query { PPEventBatch.date > 1234 }
+    internal static var date: Property<PPEventBatch, Date?, Void> { return Property<PPEventBatch, Date?, Void>(propertyId: 4, isPrimaryKey: false) }
     /// Use `PPEventBatch.events` to refer to this ToMany relation property in queries,
     /// like when using `QueryBuilder.and(property:, conditions:)`.
 
     internal static var events: ToManyProperty<PPEvent> { return ToManyProperty(.relationId(2)) }
+
+    /// Use `PPEventBatch.calendars` to refer to this ToMany relation property in queries,
+    /// like when using `QueryBuilder.and(property:, conditions:)`.
+
+    internal static var calendars: ToManyProperty<PPCalendar> { return ToManyProperty(.backlinkRelationId(3)) }
 
 
     fileprivate func __setId(identifier: ObjectBox.Id) {
@@ -403,10 +447,31 @@ extension ObjectBox.Property where E == PPEventBatch {
 
     internal static var title: Property<PPEventBatch, String, Void> { return Property<PPEventBatch, String, Void>(propertyId: 2, isPrimaryKey: false) }
 
+    /// Generated entity property information.
+    ///
+    /// You may want to use this in queries to specify fetch conditions, for example:
+    ///
+    ///     box.query { .color.startsWith("X") }
+
+    internal static var color: Property<PPEventBatch, String, Void> { return Property<PPEventBatch, String, Void>(propertyId: 3, isPrimaryKey: false) }
+
+    /// Generated entity property information.
+    ///
+    /// You may want to use this in queries to specify fetch conditions, for example:
+    ///
+    ///     box.query { .date > 1234 }
+
+    internal static var date: Property<PPEventBatch, Date?, Void> { return Property<PPEventBatch, Date?, Void>(propertyId: 4, isPrimaryKey: false) }
+
     /// Use `.events` to refer to this ToMany relation property in queries, like when using
     /// `QueryBuilder.and(property:, conditions:)`.
 
     internal static var events: ToManyProperty<PPEvent> { return ToManyProperty(.relationId(2)) }
+
+    /// Use `.calendars` to refer to this ToMany relation property in queries, like when using
+    /// `QueryBuilder.and(property:, conditions:)`.
+
+    internal static var calendars: ToManyProperty<PPCalendar> { return ToManyProperty(.backlinkRelationId(3)) }
 
 }
 
@@ -431,9 +496,12 @@ internal final class PPEventBatchBinding: ObjectBox.EntityBinding, Sendable {
     internal func collect(fromEntity entity: EntityType, id: ObjectBox.Id,
                                   propertyCollector: ObjectBox.FlatBufferBuilder, store: ObjectBox.Store) throws {
         let propertyOffset_title = propertyCollector.prepare(string: entity.title)
+        let propertyOffset_color = propertyCollector.prepare(string: entity.color)
 
         propertyCollector.collect(id, at: 2 + 2 * 1)
+        propertyCollector.collect(entity.date, at: 2 + 2 * 4)
         propertyCollector.collect(dataOffset: propertyOffset_title, at: 2 + 2 * 2)
+        propertyCollector.collect(dataOffset: propertyOffset_color, at: 2 + 2 * 3)
     }
 
     internal func postPut(fromEntity entity: EntityType, id: ObjectBox.Id, store: ObjectBox.Store) throws {
@@ -446,7 +514,16 @@ internal final class PPEventBatchBinding: ObjectBox.EntityBinding, Sendable {
                 events.replace(entity.events)
             }
             entity.events = events
+            let calendars = ToMany<PPCalendar>.backlink(
+                sourceBox: store.box(for: ToMany<PPCalendar>.ReferencedType.self),
+                targetId: EntityId<PPEventBatch>(id.value),
+                relationId: 3)
+            if !entity.calendars.isEmpty {
+                calendars.replace(entity.calendars)
+            }
+            entity.calendars = calendars
             try entity.events.applyToDb()
+            try entity.calendars.applyToDb()
         }
     }
     internal func createEntity(entityReader: ObjectBox.FlatBufferReader, store: ObjectBox.Store) -> EntityType {
@@ -454,11 +531,17 @@ internal final class PPEventBatchBinding: ObjectBox.EntityBinding, Sendable {
 
         entity.id = entityReader.read(at: 2 + 2 * 1)
         entity.title = entityReader.read(at: 2 + 2 * 2)
+        entity.color = entityReader.read(at: 2 + 2 * 3)
+        entity.date = entityReader.read(at: 2 + 2 * 4)
 
         entity.events = ToMany<PPEvent>.relation(
             sourceId: EntityId<PPEventBatch>(entity.id.value),
             targetBox: store.box(for: ToMany<PPEvent>.ReferencedType.self),
             relationId: 2)
+        entity.calendars = ToMany<PPCalendar>.backlink(
+            sourceBox: store.box(for: ToMany<PPCalendar>.ReferencedType.self),
+            targetId: EntityId<PPEventBatch>(entity.id.value),
+            relationId: 3)
         return entity
     }
 }
@@ -478,7 +561,7 @@ fileprivate func cModel() throws -> OpaquePointer {
     try PPEvent.buildEntity(modelBuilder: modelBuilder)
     try PPEventBatch.buildEntity(modelBuilder: modelBuilder)
     modelBuilder.lastEntity(id: 3, uid: 5085436393158582016)
-    modelBuilder.lastRelation(id: 2, uid: 8052444218758843648)
+    modelBuilder.lastRelation(id: 3, uid: 1313922441448171264)
     return modelBuilder.finish()
 }
 
