@@ -16,24 +16,34 @@ struct EventListView: View {
                 ForEach(viewModel.events, id: \.self) { event in
                     Button(
                         action: {
-                            // viewModel.prepareAddEditViewModel(with: event)
+                            viewModel.prepareAddEditViewModel(with: event)
                         },
                         label: {
                             HStack {
                                 Text(.eventAt(event.name, event.date.formatted(date: .omitted, time: .shortened)))
                                 Spacer()
-                                // Image(systemName: "chevron.right")
+                                Image(systemName: "chevron.right")
                             }
                             .frame(minWidth: 0, maxWidth: .infinity)
                         }
                     )
                     .listRowBackground(Color(event.color))
                 }
-                //.onDelete(perform: deleteItems)
             }
             .scrollContentBackground(.hidden)
-            //.environment(\.editMode, editMode)
-            //.animation(.easeInOut(duration: 0.3), value: viewModel.isEditing)
+        }
+        .navigationDestination(isPresented: $viewModel.addEditEventModel.isPresented) {
+            AddEditEventView(viewModel: viewModel.addEditEventModel)
+        }
+        .onChange(of: viewModel.addEditEventModel.event) {
+            if $0 != $1, let eventToCommit = $1 {
+                viewModel.apply(with: eventToCommit)
+            }
+        }
+        .onChange(of: viewModel.addEditEventModel.isPresented) {
+            if $0 != $1, !$1 {
+                viewModel.addEditEventModel.reset()
+            }
         }
     }
 }

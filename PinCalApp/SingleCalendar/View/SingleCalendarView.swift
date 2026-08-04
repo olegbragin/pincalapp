@@ -23,6 +23,7 @@ struct SingleCalendarView: View {
                 VStack {
                     if viewModel.daySelectionManager.selectionMode == .multiple {
                         ColorPickerView(selectedColor: $viewModel.selectedColor)
+                            .disabled(viewModel.isColorPickerDisabled)
                     }
                     USCalendarYearView(
                         viewModel: viewModel.yearModel
@@ -31,6 +32,10 @@ struct SingleCalendarView: View {
                 .sheet(isPresented: $viewModel.isEditSheetPresented) {
                     if viewModel.daySelectionManager.selectionMode == .single {
                         AddEditEventBatchListView(viewModel: viewModel.addEditBatchListViewModel)
+                    } else {
+                        NavigationStack {
+                            AddEditEventBatchView(viewModel: viewModel.addEditBatchListViewModel.addEditEventBatchModel)
+                        }
                     }
                 }
                 .onChange(of: viewModel.yearModel.numberOfColumns) {
@@ -89,7 +94,7 @@ struct SingleCalendarView: View {
                     systemImage: viewModel.daySelectionManager.selectionMode == .multiple ? "checkmark" : "plus.rectangle.on.rectangle"
                 ) {
                     if viewModel.daySelectionManager.selectionMode == .multiple {
-                        viewModel.commitMultipleChanges(for: viewModel.calendarid)
+                        viewModel.prepareAddEditEventBatchViewModel()
                     } else {
                         viewModel.daySelectionManager.toggleSelectionMode()
                     }

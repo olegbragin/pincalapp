@@ -11,6 +11,8 @@ struct ColorPickerView: View {
     @Binding var selectedColor: ColorOption?
     let colors: [ColorOption] = ColorOption.allCases
     
+    @Environment(\.isEnabled) private var isEnabled
+    
     var body: some View {
         HStack(spacing: 24) {
             ForEach(colors, id: \.self) { colorOption in
@@ -38,6 +40,8 @@ struct ColorPickerView: View {
             }
         }
         .padding(.horizontal)
+        .opacity(isEnabled ? 1 : 0.4)
+        .allowsHitTesting(isEnabled)
     }
 }
 

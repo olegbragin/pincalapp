@@ -24,7 +24,7 @@ final class SingleCalendarModel {
     }
     
     private let dataProvider = USCalendarDataProvider()
-    private let manager = CalendarManager()
+    private let manager: CalendarManager
     
     private var originalBatches: [EventBatchDataSource] = []
     private var addedEvents: Set<EventDataSource> = []
@@ -56,8 +56,13 @@ final class SingleCalendarModel {
         }
     }
     
-    init(calendarid: Int64) {
+    init(calendarid: Int64, manager: CalendarManager = CalendarManager()) {
         self.calendarid = calendarid
+        self.manager = manager
+    }
+    
+    var isColorPickerDisabled: Bool {
+        daySelectionManager.selectionMode == .multiple && selectedColor != nil && !addedEvents.isEmpty
     }
     
     func changeEvent(_ event: EventDataSource) {
@@ -110,32 +115,31 @@ final class SingleCalendarModel {
         }
     }
     
-    func commitMultipleChanges(for calendarId: Int64) {
-        let allEvents = originalEvents.union(addedEvents)
-        
-        let addedByColor = Dictionary(grouping: addedEvents, by: \.color)
-        for (color, events) in addedByColor where !color.isEmpty {
-            let sortedEvents = events.sorted(by: { $0.date < $1.date })
-            guard let firstEvent = sortedEvents.first else { continue }
-            originalBatches.append(
-                EventBatchDataSource(
-                    name: firstEvent.name,
-                    colorName: color,
-                    events: sortedEvents
-                )
-            )
-        }
-        
-        updateYearModel(with: allEvents)
-        daySelectionManager.toggleSelectionMode()
-        addedEvents = []
-        save(for: calendarId)
+    func prepareAddEditEventBatchViewModel() {
+        guard !addedEvents.isEmpty else { return }
+        let sortedEvents = addedEvents.sorted { $0.date < $1.date }
+        let addEditModel = addEditBatchListViewModel.addEditEventBatchModel
+        addEditModel.eventBatchId = 0
+        addEditModel.eventBatchName = sortedEvents.first?.name ?? ""
+        addEditModel.selectedColor = ColorOption(sortedEvents.first?.color ?? "") ?? selectedColor
+        addEditModel.date = nil
+        addEditModel.timestamp = UUID()
+        addEditModel.prepare(with: sortedEvents)
+        isEditSheetPresented = true
+    }
+    
+    func commitNewBatch() {
+        guard let eventBatch = addEditBatchListViewModel.addEditEventBatchModel.eventBatch else { return }
+        originalBatches.append(eventBatch)
+        updateYearModel(with: originalEvents)
+        save(for: calendarid)
     }
     
     func cancelMultipleChanges() {
         updateYearModel(with: originalEvents)
         daySelectionManager.toggleSelectionMode()
         addedEvents = []
+        selectedColor = nil
     }
     
     func prepareAddEditBatchListViewModel(with selectedDays: Set<Date>) {
@@ -186,7 +190,13 @@ final class SingleCalendarModel {
     
     func resetSelectedDays() {
         daySelectionManager.selectedDays = []
-        // addEditBatchViewModel.cancel()
+        if daySelectionManager.selectionMode == .multiple {
+            commitNewBatch()
+            daySelectionManager.toggleSelectionMode()
+            addedEvents = []
+            selectedColor = nil
+        }
+        addEditBatchListViewModel.addEditEventBatchModel.reset()
     }
     
     private enum BatchMergeKey: Hashable {
