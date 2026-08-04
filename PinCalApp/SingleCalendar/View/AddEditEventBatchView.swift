@@ -49,6 +49,11 @@ struct AddEditEventBatchView: View {
         }
         .padding()
         .toolbarTitleDisplayMode(.inline)
+        .onChange(of: viewModel.selectedColor) {
+            if $0 != $1 {
+                viewModel.recolorAllEvents()
+            }
+        }
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 Button("Save") {

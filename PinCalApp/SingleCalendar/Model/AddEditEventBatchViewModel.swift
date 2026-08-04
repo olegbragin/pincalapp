@@ -46,6 +46,11 @@ final class AddEditEventBatchViewModel {
         eventListViewModel.prepare(with: events)
     }
     
+    func recolorAllEvents() {
+        guard let selectedColor else { return }
+        eventListViewModel.recolorAll(to: selectedColor.colorName)
+    }
+    
     func reset() {
         isPresented = false
         
@@ -54,5 +59,6 @@ final class AddEditEventBatchViewModel {
         selectedColor = nil
         date = nil
         timestamp = nil
+        eventBatch = nil
     }
 }
