@@ -37,10 +37,10 @@ struct EventBatchCreationTests {
         return try batchBox.all().count >= expected
     }
     
-    // MARK: - EventListViewModel
+    // MARK: - AddEditListViewModel
     
     @Test func prepareAssignsUniqueTimestampsAndSortsByDate() {
-        let viewModel = EventListViewModel()
+        let viewModel = AddEditListViewModel()
         let later = event("B", day: 15, timestamp: nil)
         let earlier = event("A", day: 3, timestamp: nil)
         
@@ -53,7 +53,7 @@ struct EventBatchCreationTests {
     }
     
     @Test func prepareKeepsExistingTimestamps() {
-        let viewModel = EventListViewModel()
+        let viewModel = AddEditListViewModel()
         let timestamp = UUID()
         viewModel.prepare(with: [event(day: 3, timestamp: timestamp)])
         
@@ -61,7 +61,7 @@ struct EventBatchCreationTests {
     }
     
     @Test func applyReplacesSingleEventByTimestamp() {
-        let viewModel = EventListViewModel()
+        let viewModel = AddEditListViewModel()
         viewModel.prepare(with: [event(day: 3), event(day: 4)])
         let edited = viewModel.events[0]
         
@@ -77,7 +77,7 @@ struct EventBatchCreationTests {
     }
     
     @Test func applyAppendsWhenNoTimestampMatches() {
-        let viewModel = EventListViewModel()
+        let viewModel = AddEditListViewModel()
         viewModel.prepare(with: [event(day: 3)])
         let stranger = event("X", day: 5, timestamp: UUID())
         
@@ -88,7 +88,7 @@ struct EventBatchCreationTests {
     }
     
     @Test func recolorAllRecolorsEveryEventPreservingOtherFields() {
-        let viewModel = EventListViewModel()
+        let viewModel = AddEditListViewModel()
         viewModel.prepare(with: [event(day: 3), event(day: 4, color: "eventColorOption2")])
         
         viewModel.recolorAll(to: "eventColorOption4")
@@ -99,7 +99,7 @@ struct EventBatchCreationTests {
     }
     
     @Test func prepareAddEditViewModelPopulatesEditor() {
-        let viewModel = EventListViewModel()
+        let viewModel = AddEditListViewModel()
         viewModel.prepare(with: [event(day: 3, color: "eventColorOption2")])
         
         viewModel.prepareAddEditViewModel(with: viewModel.events[0])
@@ -151,7 +151,7 @@ struct EventBatchCreationTests {
         
         viewModel.recolorAllEvents()
         
-        #expect(viewModel.eventListViewModel.events.allSatisfy { $0.color == "eventColorOption1" })
+        #expect(viewModel.addEditListViewModel.events.allSatisfy { $0.color == "eventColorOption1" })
     }
     
     @Test func batchSavePreservesPerEventColorOverride() {
@@ -160,11 +160,11 @@ struct EventBatchCreationTests {
         viewModel.selectedColor = .option1
         viewModel.recolorAllEvents()
         
-        let first = viewModel.eventListViewModel.events[0]
-        viewModel.eventListViewModel.prepareAddEditViewModel(with: first)
-        viewModel.eventListViewModel.addEditEventModel.selectedColor = .option3
-        #expect(viewModel.eventListViewModel.addEditEventModel.save())
-        viewModel.eventListViewModel.apply(with: viewModel.eventListViewModel.addEditEventModel.event!)
+        let first = viewModel.addEditListViewModel.events[0]
+        viewModel.addEditListViewModel.prepareAddEditViewModel(with: first)
+        viewModel.addEditListViewModel.addEditEventModel.selectedColor = .option3
+        #expect(viewModel.addEditListViewModel.addEditEventModel.save())
+        viewModel.addEditListViewModel.apply(with: viewModel.addEditListViewModel.addEditEventModel.event!)
         
         #expect(viewModel.save())
         
@@ -233,12 +233,12 @@ struct EventBatchCreationTests {
         
         model.prepareAddEditEventBatchViewModel()
         
-        #expect(model.isEditSheetPresented)
+        #expect(model.isEditScreenPresented)
         let addEdit = model.addEditBatchListViewModel.addEditEventBatchModel
         #expect(addEdit.eventBatchName == "Event1")
         #expect(addEdit.selectedColor == .option1)
-        #expect(addEdit.eventListViewModel.events.count == 2)
-        #expect(addEdit.eventListViewModel.events.map(\.date) == addEdit.eventListViewModel.events.sorted(by: { $0.date < $1.date }).map(\.date))
+        #expect(addEdit.addEditListViewModel.events.count == 2)
+        #expect(addEdit.addEditListViewModel.events.map(\.date) == addEdit.addEditListViewModel.events.sorted(by: { $0.date < $1.date }).map(\.date))
         #expect(addEdit.timestamp != nil)
     }
     
@@ -248,7 +248,7 @@ struct EventBatchCreationTests {
         
         model.prepareAddEditEventBatchViewModel()
         
-        #expect(!model.isEditSheetPresented)
+        #expect(!model.isEditScreenPresented)
     }
     
     @Test func cancelMultipleChangesExitsModeAndClearsState() {
@@ -301,11 +301,11 @@ struct EventBatchCreationTests {
         addEdit.selectedColor = .option1
         addEdit.recolorAllEvents()
         
-        let first = addEdit.eventListViewModel.events[0]
-        addEdit.eventListViewModel.prepareAddEditViewModel(with: first)
-        addEdit.eventListViewModel.addEditEventModel.selectedColor = .option3
-        #expect(addEdit.eventListViewModel.addEditEventModel.save())
-        addEdit.eventListViewModel.apply(with: addEdit.eventListViewModel.addEditEventModel.event!)
+        let first = addEdit.addEditListViewModel.events[0]
+        addEdit.addEditListViewModel.prepareAddEditViewModel(with: first)
+        addEdit.addEditListViewModel.addEditEventModel.selectedColor = .option3
+        #expect(addEdit.addEditListViewModel.addEditEventModel.save())
+        addEdit.addEditListViewModel.apply(with: addEdit.addEditListViewModel.addEditEventModel.event!)
         
         #expect(addEdit.save())
         model.resetSelectedDays()

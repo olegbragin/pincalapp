@@ -10,16 +10,9 @@ import SwiftUI
 @Observable
 final class USCalendarYearModel {
     
-    enum ScrollDirection {
-        case vertical
-        case horizontal
-    }
-    
     // Для тактильной отдачи (опционально)
     private let hapticFeedback = UINotificationFeedbackGenerator()
     private(set) var internalNumberOfColumns: Int = 3
-    
-    var scrollDirection: ScrollDirection = .vertical
     
     var numberOfColumns: Int {
         didSet { internalNumberOfColumns = numberOfColumns }
@@ -35,23 +28,12 @@ final class USCalendarYearModel {
 
     var months: [USCalendarMonthModel] = []
     
-    var monthRows: [[USCalendarMonthModel]] {
-        let count = max(1, internalNumberOfColumns)
-        guard !months.isEmpty else { return [] }
-        return stride(from: 0, to: months.count, by: count).map { start in
-            let end = min(start + count, months.count)
-            return Array(months[start..<end])
-        }
-    }
-    
     init(
         numberOfCurrentMonth: Int = 0,
-        numberOfColumns: Int = 3,
-        scrollDirection: ScrollDirection = .vertical
+        numberOfColumns: Int = 3
     ) {
         self.numberOfColumns = numberOfColumns
         self.numberOfCurrentMonth = numberOfCurrentMonth
-        self.scrollDirection = scrollDirection
     }
     
     func set(initialNumberOfColumns: Int) {

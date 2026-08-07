@@ -40,8 +40,10 @@ final class SingleCalendarModel {
     private(set) var addEditBatchListViewModel = AddEditEventBatchListViewModel()
     
     var state: State = .empty
-    var isEditSheetPresented = false
+    var isEditPresented = false
+    var isEditScreenPresented = false
     var isLegendSheetPresented = false
+    private(set) var isRoutingToBatchEditor = false
     
     private var originalEvents: Set<EventDataSource> {
         Set(originalBatches.flatMap(\.events))
@@ -53,6 +55,14 @@ final class SingleCalendarModel {
             daySelectionManager.selectedDays.contains { date in
                 isSameDay(event.date, date)
             }
+        }
+    }
+    
+    func hasEvents(on date: Date) -> Bool {
+        originalBatches.contains { batch in
+            batch.events.contains { event in
+                isSameDay(event.date, date)
+            } || (batch.date.map { isSameDay($0, date) } ?? false)
         }
     }
     
@@ -123,13 +133,45 @@ final class SingleCalendarModel {
         addEditModel.eventBatchName = sortedEvents.first?.name ?? ""
         addEditModel.selectedColor = ColorOption(sortedEvents.first?.color ?? "") ?? selectedColor
         addEditModel.date = nil
+        addEditModel.selectedDays = sortedEvents.map(\.date)
         addEditModel.timestamp = UUID()
         addEditModel.prepare(with: sortedEvents)
-        isEditSheetPresented = true
+        isEditScreenPresented = true
+    }
+    
+    func prepareAddEditEventBatchViewModel(for date: Date) {
+        let addEditModel = addEditBatchListViewModel.addEditEventBatchModel
+        addEditModel.eventBatchId = 0
+        addEditModel.eventBatchName = ""
+        addEditModel.selectedColor = nil
+        addEditModel.date = date
+        addEditModel.selectedDays = [date]
+        addEditModel.timestamp = UUID()
+        addEditModel.prepare(with: [])
+        isEditScreenPresented = true
+    }
+    
+    func routeToBatchEditor() {
+        isEditPresented = false
+        isRoutingToBatchEditor = true
+        Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(400))
+            isRoutingToBatchEditor = false
+            isEditScreenPresented = true
+        }
+    }
+    
+    func handleSelectionConfirmation() {
+        guard !addedEvents.isEmpty else {
+            cancelMultipleChanges()
+            return
+        }
+        prepareAddEditEventBatchViewModel()
     }
     
     func commitNewBatch() {
-        guard let eventBatch = addEditBatchListViewModel.addEditEventBatchModel.eventBatch else { return }
+        guard let eventBatch = addEditBatchListViewModel.addEditEventBatchModel.eventBatch,
+              eventBatch.id == 0 else { return }
         originalBatches.append(eventBatch)
         updateYearModel(with: originalEvents)
         save(for: calendarid)
@@ -144,7 +186,7 @@ final class SingleCalendarModel {
     
     func prepareAddEditBatchListViewModel(with selectedDays: Set<Date>) {
         guard let selectedDay = selectedDays.first else {
-            isEditSheetPresented = false
+            isEditPresented = false
             addEditBatchListViewModel.reset()
             return
         }
@@ -154,7 +196,14 @@ final class SingleCalendarModel {
             } || (batch.date.map { isSameDay($0, selectedDay) } ?? false)
         }
         addEditBatchListViewModel.prepare(with: dayBatches, and: selectedDay)
-        isEditSheetPresented = true
+        isEditPresented = true
+    }
+    
+    func onBatchListDismissed() {
+        daySelectionManager.selectedDays = []
+        if !isRoutingToBatchEditor {
+            addEditBatchListViewModel.reset()
+        }
     }
     
     func apply(batches: [EventBatchDataSource], action: Action, for calendarId: Int64) {
@@ -183,18 +232,24 @@ final class SingleCalendarModel {
     func reset() {
         label = ""
         state = .empty
-        isEditSheetPresented = false
+        isEditPresented = false
+        isEditScreenPresented = false
+        isRoutingToBatchEditor = false
         isLegendSheetPresented = false
         addEditBatchListViewModel.reset()
     }
     
     func resetSelectedDays() {
         daySelectionManager.selectedDays = []
+        isRoutingToBatchEditor = false
         if daySelectionManager.selectionMode == .multiple {
             commitNewBatch()
             daySelectionManager.toggleSelectionMode()
             addedEvents = []
             selectedColor = nil
+            updateYearModel(with: originalEvents)
+        } else {
+            commitNewBatch()
         }
         addEditBatchListViewModel.addEditEventBatchModel.reset()
     }
@@ -232,13 +287,15 @@ final class SingleCalendarModel {
                         day.isInCurrentMonth
                     }
                     .forEach { day in
+                        guard let dayDate = day.date else { return }
                         let dayEvents = events.filter {
-                            guard let dayDate = day.date else { return false }
-                            return isSameDay($0.date, dayDate)
+                            isSameDay($0.date, dayDate)
                         }
-                        day.events = dayEvents.map {
-                            $0.color
+                        let dayBatchColors = originalBatches.compactMap { batch -> String? in
+                            guard let batchDate = batch.date, isSameDay(batchDate, dayDate) else { return nil }
+                            return batch.colorName
                         }
+                        day.events = dayEvents.map(\.color) + dayBatchColors.filter { !$0.isEmpty }
                     }
             }
         }

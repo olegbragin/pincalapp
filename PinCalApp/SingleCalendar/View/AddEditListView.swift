@@ -1,5 +1,5 @@
 //
-//  EventListView.swift
+//  AddEditListView.swift
 //  PinCalApp
 //
 //  Created by Oleg Bragin on 07.07.2026.
@@ -7,8 +7,8 @@
 
 import SwiftUI
 
-struct EventListView: View {
-    @Bindable var viewModel: EventListViewModel
+struct AddEditListView: View {
+    @Bindable var viewModel: AddEditListViewModel
     
     var body: some View {
         VStack {
@@ -49,5 +49,5 @@ struct EventListView: View {
 }
 
 #Preview {
-    EventListView(viewModel: .init(events: [.init(name: "1", date: Date(), color: "eventColorOption1")]))
+    AddEditListView(viewModel: .init(events: [.init(name: "1", date: Date(), color: "eventColorOption1")]))
 }

@@ -10,8 +10,8 @@ import SwiftUI
 struct AddEditEventBatchListView: View {
     @Bindable var viewModel: AddEditEventBatchListViewModel
     
-    @Environment(\.dismiss) private var dismiss
-    @Environment(\.editMode) private var editMode
+    var onClose: () -> Void = {}
+    var onBatchTap: () -> Void = {}
     
     var body: some View {
         NavigationStack {
@@ -21,6 +21,7 @@ struct AddEditEventBatchListView: View {
                         Button(
                             action: {
                                 viewModel.prepareAddEditBatchViewModel(with: eventBatch)
+                                onBatchTap()
                             },
                             label: {
                                 HStack {
@@ -35,61 +36,27 @@ struct AddEditEventBatchListView: View {
                     }
                     .onDelete(perform: deleteItems)
                 }
-                .environment(\.editMode, editMode)
-                .animation(.easeInOut(duration: 0.3), value: viewModel.isEditing)
+                .listStyle(.plain)
+                .scrollContentBackground(.hidden)
+                .background(.colorBackgroundMain)
+                .environment(\.editMode, .constant(.active))
             }
+            .toolbarBackground(Color("colorBackgroundMain"), for: .navigationBar)
             .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
-                    USEditButton(isEditing: $viewModel.isEditing) { isEditing in
-                        if isEditing {
-                            viewModel.commitDelete()
-                        } else {
-                            viewModel.isEditing.toggle()
-                        }
-                    }
-                }
                 ToolbarItem(placement: .title) {
                     Text(viewModel.selectedDay ?? Date(), style: .date)
                 }
                 ToolbarItem(placement: .topBarTrailing) {
-                    USEditButton(
-                        isEditing: $viewModel.isEditing,
-                        action: { isEditing in
-                            if isEditing {
-                                viewModel.cancel()
-                            } else {
-                                viewModel.prepareAddEditBatchViewModel(with: nil)
-                            }
-                        },
-                        activeContent: {
-                            AnyView(Text("Cancel"))
-                        },
-                        inactiveContent: {
-                            AnyView(Image(systemName: "plus"))
-                        }
-                    )
+                    Button {
+                        onClose()
+                    } label: {
+                        Image(systemName: "xmark")
+                    }
+                    .accessibilityLabel("Close")
                 }
             }
-            .navigationDestination(isPresented: $viewModel.addEditEventBatchModel.isPresented) {
-                AddEditEventBatchView(viewModel: viewModel.addEditEventBatchModel)
-            }
         }
-        .onChange(of: viewModel.addEditEventBatchModel.isPresented) {
-            if $0 != $1, !$1 {
-                viewModel.addEditEventBatchModel.reset()
-                viewModel.cancel()
-            }
-        }
-        .onChange(of: viewModel.addEditEventBatchModel.eventBatch) {
-            if $0 != $1, let eventBatchToCommit = $1 {
-                viewModel.apply(with: eventBatchToCommit)
-            }
-        }
-        .onChange(of: viewModel.isEditing) {
-            if $0 != $1 {
-                editMode?.wrappedValue = $1 ? .active : .inactive
-            }
-        }
+        .background(.colorBackgroundMain)
     }
 
     private func deleteItems(offsets: IndexSet) {

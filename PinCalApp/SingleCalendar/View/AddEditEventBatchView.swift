@@ -10,29 +10,24 @@ import SwiftUI
 struct AddEditEventBatchView: View {
     @Bindable var viewModel: AddEditEventBatchViewModel
     
-    @Environment(\.dismiss) private var dismiss
+    var onSave: () -> Void = {}
     
     var body: some View {
         VStack(alignment: .leading, spacing: 24) {
-            // Поле ввода имени
+            // Поле ввода имени с выбором цвета
             VStack(alignment: .leading, spacing: 8) {
                 Text("Имя")
                     .font(.headline)
                     .fontWeight(.medium)
                 
-                TextField("Введите имя", text: $viewModel.eventBatchName)
-                    .textFieldStyle(RoundedBorderTextFieldStyle())
-                    .padding(.horizontal, 4)
-                    .ignoresSafeArea(.keyboard)
-            }
-            
-            // Выбор цвета
-            VStack(alignment: .leading, spacing: 8) {
-                Text("Выберите цвет")
-                    .font(.headline)
-                    .fontWeight(.medium)
-                
-                ColorPickerView(selectedColor: $viewModel.selectedColor)
+                HStack(spacing: 12) {
+                    TextField("Введите имя", text: $viewModel.eventBatchName)
+                        .textFieldStyle(RoundedBorderTextFieldStyle())
+                    
+                    ColorPickerView(selectedColor: $viewModel.selectedColor)
+                }
+                .padding(.horizontal, 4)
+                .ignoresSafeArea(.keyboard)
             }
             
             // Events
@@ -41,7 +36,7 @@ struct AddEditEventBatchView: View {
                     .font(.headline)
                     .fontWeight(.medium)
                 
-                EventListView(viewModel: viewModel.eventListViewModel)
+                AddEditListView(viewModel: viewModel.addEditListViewModel)
             }
             
             
@@ -59,14 +54,9 @@ struct AddEditEventBatchView: View {
                 Button("Save") {
                     Task {
                         if viewModel.save() {
-                            dismiss()
+                            onSave()
                         }
                     }
-                }
-            }
-            ToolbarItem(placement: .topBarLeading) {
-                Button("Cancel") {
-                    dismiss()
                 }
             }
         }

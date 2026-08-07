@@ -16,14 +16,15 @@ final class AddEditEventBatchViewModel {
     var eventBatchId: Int64 = 0
     var eventBatchName: String = "1"
     var selectedColor: ColorOption?
-    var eventListViewModel: EventListViewModel
+    var addEditListViewModel: AddEditListViewModel
     var date: Date?
     var timestamp: UUID?
+    var selectedDays: [Date] = []
     
     var eventBatch: EventBatchDataSource?
     
     init(events: [EventDataSource] = []) {
-        eventListViewModel = .init(events: events)
+        addEditListViewModel = .init(events: events)
     }
     
     func save() -> Bool {
@@ -35,7 +36,7 @@ final class AddEditEventBatchViewModel {
             id: eventBatchId,
             name: eventBatchName,
             colorName: selectedColor.colorName,
-            events: eventListViewModel.events,
+            events: addEditListViewModel.events,
             date: date,
             timestamp: timestamp
         )
@@ -43,12 +44,12 @@ final class AddEditEventBatchViewModel {
     }
     
     func prepare(with events: [EventDataSource]) {
-        eventListViewModel.prepare(with: events)
+        addEditListViewModel.prepare(with: events)
     }
     
     func recolorAllEvents() {
         guard let selectedColor else { return }
-        eventListViewModel.recolorAll(to: selectedColor.colorName)
+        addEditListViewModel.recolorAll(to: selectedColor.colorName)
     }
     
     func reset() {
@@ -60,5 +61,6 @@ final class AddEditEventBatchViewModel {
         date = nil
         timestamp = nil
         eventBatch = nil
+        selectedDays = []
     }
 }

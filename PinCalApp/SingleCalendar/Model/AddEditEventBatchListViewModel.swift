@@ -22,10 +22,9 @@ final class AddEditEventBatchListViewModel {
     var isEditing = false
 
     func removeBatches(at indexPaths: IndexSet) {
-        indexPaths.forEach {
-            let eventBatchRemoved = eventBatches.remove(at: $0)
-            eventBatchesSelectedToDelete.append(eventBatchRemoved)
-        }
+        let removedBatches = indexPaths.map { eventBatches[$0] }
+        indexPaths.sorted(by: >).forEach { eventBatches.remove(at: $0) }
+        eventBatchesToDelete = removedBatches
     }
     
     func apply(with eventBatch: EventBatchDataSource) {
@@ -43,6 +42,7 @@ final class AddEditEventBatchListViewModel {
         self.eventBatches = eventBatches.sorted {
             ($0.events.map(\.date).min() ?? .distantPast) < ($1.events.map(\.date).min() ?? .distantPast)
         }
+        isEditing = true
     }
     
     func prepareAddEditBatchViewModel(with eventBatch: EventBatchDataSource?) {
@@ -50,9 +50,9 @@ final class AddEditEventBatchListViewModel {
         addEditEventBatchModel.eventBatchName = eventBatch?.name ?? "1"
         addEditEventBatchModel.selectedColor = ColorOption(eventBatch?.colorName ?? "") ?? .option1
         addEditEventBatchModel.date = eventBatch?.date ?? (eventBatch == nil ? selectedDay : nil)
+        addEditEventBatchModel.selectedDays = selectedDay.map { [$0] } ?? []
         addEditEventBatchModel.timestamp = eventBatch?.timestamp ?? UUID()
         addEditEventBatchModel.prepare(with: eventBatch?.events ?? [])
-        addEditEventBatchModel.isPresented = true
     }
     
     func commitDelete() {

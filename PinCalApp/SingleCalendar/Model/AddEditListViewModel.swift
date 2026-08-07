@@ -1,5 +1,5 @@
 //
-//  EventListViewModel.swift
+//  AddEditListViewModel.swift
 //  PinCalApp
 //
 //  Created by Oleg Bragin on 07.07.2026.
@@ -10,7 +10,7 @@ import Observation
 
 @MainActor
 @Observable
-final class EventListViewModel {
+final class AddEditListViewModel {
     private(set) var events = [EventDataSource]()
     private(set) var selectedDay: Date?
     
