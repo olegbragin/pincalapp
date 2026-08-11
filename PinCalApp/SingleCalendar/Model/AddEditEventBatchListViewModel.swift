@@ -16,7 +16,6 @@ final class AddEditEventBatchListViewModel {
     private(set) var selectedDay: Date?
     
     var addEditEventBatchModel = AddEditEventBatchViewModel()
-    var eventBatchesToChange = [EventBatchDataSource]()
     var eventBatchesToDelete = [EventBatchDataSource]()
     var eventBatchesSelectedToDelete = [EventBatchDataSource]()
     var isEditing = false
@@ -25,16 +24,6 @@ final class AddEditEventBatchListViewModel {
         let removedBatches = indexPaths.map { eventBatches[$0] }
         indexPaths.sorted(by: >).forEach { eventBatches.remove(at: $0) }
         eventBatchesToDelete = removedBatches
-    }
-    
-    func apply(with eventBatch: EventBatchDataSource) {
-        if let batchToReplace = eventBatches.first(where: { $0.id == eventBatch.id || $0.timestamp == eventBatch.timestamp }),
-           let indexToReplace = eventBatches.firstIndex(of: batchToReplace) {
-            eventBatches[indexToReplace] = eventBatch
-        } else {
-            eventBatches.append(eventBatch)
-        }
-        eventBatchesToChange = eventBatches
     }
     
     func prepare(with eventBatches: [EventBatchDataSource], and selectedDay: Date?) {

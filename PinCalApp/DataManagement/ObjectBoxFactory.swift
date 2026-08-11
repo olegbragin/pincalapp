@@ -13,9 +13,65 @@ struct ObjectBoxFactory {
     private(set) var store: Store!
 
     private init() {
+        if ProcessInfo.processInfo.arguments.contains(Self.uiTestSeedArgument) {
+            store = Self.seededStoreForUITests()
+            return
+        }
         // Инициализация Store, как показано выше
         store = try! Store(directoryPath: getDatabasePath().path)
         EventBatchMigration.runIfNeeded(store: store)
+    }
+
+    static let uiTestSeedArgument = "-UITestSeedData"
+
+    private static func seededStoreForUITests() -> Store {
+        let path = FileManager.default.temporaryDirectory
+            .appendingPathComponent("pincal-uitest-\(UUID().uuidString)")
+        try! FileManager.default.createDirectory(
+            at: path,
+            withIntermediateDirectories: true,
+            attributes: nil
+        )
+        let store = try! Store(directoryPath: path.path)
+        seedForUITests(store: store)
+        return store
+    }
+
+    private static func seedForUITests(store: Store) {
+        let calendarBox = store.box(for: PPCalendar.self)
+        let calendar = PPCalendar(name: "UI Test Calendar", year: currentYear, numberOfColumns: 2)
+        try? calendarBox.put(calendar)
+
+        let batch = PPEventBatch(title: "Women Cycle", color: ColorOption.option1.colorName)
+        let batchBox = store.box(for: PPEventBatch.self)
+        try? batchBox.put(batch)
+
+        let events = [
+            PPEvent(name: "Event1", color: ColorOption.option1.colorName, date: uiTestDate(day: 10)),
+            PPEvent(name: "Event1", color: ColorOption.option1.colorName, date: uiTestDate(day: 12))
+        ]
+        let eventBox = store.box(for: PPEvent.self)
+        try? eventBox.put(events)
+        batch.events.replace(events)
+        try? batch.events.applyToDb()
+
+        guard let savedCalendar = try? calendarBox.get(calendar.id) else { return }
+        savedCalendar.eventBatches.append(batch)
+        try? savedCalendar.eventBatches.applyToDb()
+    }
+
+    private static var currentYear: Int {
+        Calendar.current.component(.year, from: Date())
+    }
+
+    private static func uiTestDate(day: Int) -> Date {
+        let calendar = Calendar.current
+        let components = DateComponents(
+            year: currentYear,
+            month: calendar.component(.month, from: Date()),
+            day: day
+        )
+        return calendar.date(from: components)!
     }
 
     private func getDatabasePath() -> URL {

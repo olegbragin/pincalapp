@@ -56,7 +56,7 @@ struct USCalendarYearView: View {
     
     private func scrollToCurrentMonth(proxy: ScrollViewProxy, anchor: UnitPoint) {
         guard let index = viewModel.indexOfCurrentMonth else { return }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
             proxy.scrollTo(index, anchor: anchor)
         }
     }

@@ -12,11 +12,6 @@ import SwiftUI
 @MainActor
 @Observable
 final class SingleCalendarModel {
-    enum Action {
-        case change
-        case delete
-    }
-    
     enum State {
         case empty
         case content
@@ -142,12 +137,14 @@ final class SingleCalendarModel {
     func prepareAddEditEventBatchViewModel(for date: Date) {
         let addEditModel = addEditBatchListViewModel.addEditEventBatchModel
         addEditModel.eventBatchId = 0
-        addEditModel.eventBatchName = ""
-        addEditModel.selectedColor = nil
+        addEditModel.eventBatchName = "Event1"
+        addEditModel.selectedColor = .option1
         addEditModel.date = date
         addEditModel.selectedDays = [date]
         addEditModel.timestamp = UUID()
-        addEditModel.prepare(with: [])
+        addEditModel.prepare(with: [
+            EventDataSource(name: "Event1", date: date, color: ColorOption.option1.colorName)
+        ])
         isEditScreenPresented = true
     }
     
@@ -169,10 +166,13 @@ final class SingleCalendarModel {
         prepareAddEditEventBatchViewModel()
     }
     
-    func commitNewBatch() {
-        guard let eventBatch = addEditBatchListViewModel.addEditEventBatchModel.eventBatch,
-              eventBatch.id == 0 else { return }
-        originalBatches.append(eventBatch)
+    private func commitPendingBatch() {
+        guard let eventBatch = addEditBatchListViewModel.addEditEventBatchModel.eventBatch else { return }
+        if eventBatch.id == 0 {
+            originalBatches.append(eventBatch)
+        } else if let index = originalBatches.firstIndex(where: { key(for: $0) == key(for: eventBatch) }) {
+            originalBatches[index] = eventBatch
+        }
         updateYearModel(with: originalEvents)
         save(for: calendarid)
     }
@@ -206,25 +206,11 @@ final class SingleCalendarModel {
         }
     }
     
-    func apply(batches: [EventBatchDataSource], action: Action, for calendarId: Int64) {
-        switch action {
-        case .change:
-            var mergedBatches = originalBatches
-            for batch in batches {
-                if let index = mergedBatches.firstIndex(where: { key(for: $0) == key(for: batch) }) {
-                    mergedBatches[index] = batch
-                } else {
-                    mergedBatches.append(batch)
-                }
-            }
-            originalBatches = mergedBatches
-            updateYearModel(with: originalEvents)
-        case .delete:
-            for batch in batches {
-                originalBatches.removeAll(where: { key(for: $0) == key(for: batch) })
-            }
-            updateYearModel(with: originalEvents)
+    func deleteBatches(_ batches: [EventBatchDataSource], for calendarId: Int64) {
+        for batch in batches {
+            originalBatches.removeAll(where: { key(for: $0) == key(for: batch) })
         }
+        updateYearModel(with: originalEvents)
         save(for: calendarId)
         prepareAddEditBatchListViewModel(with: daySelectionManager.selectedDays)
     }
@@ -243,13 +229,13 @@ final class SingleCalendarModel {
         daySelectionManager.selectedDays = []
         isRoutingToBatchEditor = false
         if daySelectionManager.selectionMode == .multiple {
-            commitNewBatch()
+            commitPendingBatch()
             daySelectionManager.toggleSelectionMode()
             addedEvents = []
             selectedColor = nil
             updateYearModel(with: originalEvents)
         } else {
-            commitNewBatch()
+            commitPendingBatch()
         }
         addEditBatchListViewModel.addEditEventBatchModel.reset()
     }

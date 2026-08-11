@@ -37,6 +37,7 @@ struct AddEditEventBatchScreen: View {
         }
         .toolbarBackground(Color("colorBackgroundMain"), for: .navigationBar)
         .ignoresSafeArea(edges: .bottom)
+        .background(.colorBackgroundMain)
         .onChange(of: viewModel.daySelectionManager.selectedDays) { _, newValue in
             if let selectedDay = newValue.first {
                 viewModel.toggleEvent(on: selectedDay)
@@ -72,6 +73,7 @@ struct AddEditEventBatchScreen: View {
         USCalendarYearView(
             viewModel: viewModel.yearModel
         )
+        .accessibilityIdentifier("batch-editor-calendar")
     }
     
     private var titleContent: some View {

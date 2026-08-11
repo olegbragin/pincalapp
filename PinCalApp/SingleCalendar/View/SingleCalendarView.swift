@@ -10,6 +10,8 @@ import ObjectBox
 
 struct SingleCalendarView: View {
     @Bindable var viewModel: SingleCalendarModel
+    
+    @State private var columnCountSaveTask: Task<Void, Never>?
         
     var body: some View {
         ZStack {
@@ -23,6 +25,9 @@ struct SingleCalendarView: View {
         .ignoresSafeArea(edges: .bottom)
         .task(id: viewModel.calendarid) {
             await viewModel.fetch()
+        }
+        .onDisappear {
+            flushColumnCountSave()
         }
         .navigationDestination(isPresented: $viewModel.isEditScreenPresented) {
             AddEditEventBatchScreen(
@@ -49,7 +54,7 @@ struct SingleCalendarView: View {
             contentView
                 .onChange(of: viewModel.yearModel.numberOfColumns) {
                     if $0 != $1 {
-                        viewModel.save(for: viewModel.calendarid)
+                        scheduleColumnCountSave()
                     }
                 }
                 .onChange(of: viewModel.daySelectionManager.selectedDays) { _, newValue in
@@ -75,19 +80,9 @@ struct SingleCalendarView: View {
                         viewModel.resetSelectedDays()
                     }
                 }
-                .onChange(of: viewModel.addEditBatchListViewModel.addEditEventBatchModel.eventBatch) {
-                    if $0 != $1, let eventBatchToCommit = $1, eventBatchToCommit.id != 0 {
-                        viewModel.addEditBatchListViewModel.apply(with: eventBatchToCommit)
-                    }
-                }
-                .onChange(of: viewModel.addEditBatchListViewModel.eventBatchesToChange) {
-                    if $0 != $1 {
-                        viewModel.apply(batches: $1, action: .change, for: viewModel.calendarid)
-                    }
-                }
                 .onChange(of: viewModel.addEditBatchListViewModel.eventBatchesToDelete) {
                     if $0 != $1 {
-                        viewModel.apply(batches: $1, action: .delete, for: viewModel.calendarid)
+                        viewModel.deleteBatches($1, for: viewModel.calendarid)
                     }
                 }
         }
@@ -108,6 +103,22 @@ struct SingleCalendarView: View {
                 viewModel: viewModel.yearModel
             )
         }
+    }
+    
+    private func scheduleColumnCountSave() {
+        columnCountSaveTask?.cancel()
+        columnCountSaveTask = Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(350))
+            guard !Task.isCancelled else { return }
+            viewModel.save(for: viewModel.calendarid)
+        }
+    }
+    
+    private func flushColumnCountSave() {
+        guard columnCountSaveTask != nil else { return }
+        columnCountSaveTask?.cancel()
+        columnCountSaveTask = nil
+        viewModel.save(for: viewModel.calendarid)
     }
     
     private var editorContent: some View {

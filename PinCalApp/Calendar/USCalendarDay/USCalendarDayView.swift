@@ -15,9 +15,7 @@ struct USCalendarDayView: View {
             let side = geometry.size.width
             ZStack {
                 USCalendarDayEventView(
-                    events: model.events.map {
-                        Color($0)
-                    }
+                    events: model.events.map(Self.eventColor(for:))
                 )
                 .clipShape(RoundedRectangle(cornerRadius: 8))
                 .background(
@@ -43,7 +41,28 @@ struct USCalendarDayView: View {
             .frame(width: side, height: side)
         }
         .aspectRatio(1, contentMode: .fit)
+        .accessibilityIdentifier(accessibilityID)
     }
+    
+    private var accessibilityID: String {
+        guard let date = model.date else { return "day-empty" }
+        return "day-\(Self.dayIDFormatter.string(from: date))"
+    }
+    
+    private static let eventColorsByOption: [String: Color] = Dictionary(
+        uniqueKeysWithValues: ColorOption.allCases.map { ($0.colorName, $0.color) }
+    )
+    
+    private static func eventColor(for name: String) -> Color {
+        eventColorsByOption[name] ?? Color(name)
+    }
+    
+    private static let dayIDFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd"
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        return formatter
+    }()
     
     private var textColor: Color {
         switch (model.isToday, model.isInCurrentMonth) {

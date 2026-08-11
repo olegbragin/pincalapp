@@ -477,6 +477,75 @@ struct EventBatchCreationTests {
         #expect(july2OutOfMonth?.events.isEmpty == true)
     }
     
+    @Test func editingExistingBatchRemovesToggledOffEventsFromCalendar() async throws {
+        let store = try! Store(directoryPath: "memory:edit-\(UUID().uuidString)")
+        defer { store.close() }
+        
+        let calendarBox = store.box(for: PPCalendar.self)
+        let calendar = PPCalendar(name: "Test", year: 2026, numberOfColumns: 3)
+        try calendarBox.put(calendar)
+        
+        let day10 = date(year: 2026, month: 6, day: 10)
+        let day12 = date(year: 2026, month: 6, day: 12)
+        
+        let batch = PPEventBatch(title: "Women Cycle", color: "eventColorOption1")
+        let batchBox = store.box(for: PPEventBatch.self)
+        try batchBox.put(batch)
+        let events = [
+            PPEvent(name: "Event1", color: "eventColorOption1", date: day10),
+            PPEvent(name: "Event1", color: "eventColorOption1", date: day12)
+        ]
+        let eventBox = store.box(for: PPEvent.self)
+        try eventBox.put(events)
+        batch.events.replace(events)
+        try batch.events.applyToDb()
+        
+        let savedCalendar = try calendarBox.get(calendar.id)!
+        savedCalendar.eventBatches.append(batch)
+        try savedCalendar.eventBatches.applyToDb()
+        
+        let manager = CalendarManager(service: ObjectBoxCalendarStorage(store: store))
+        let model = SingleCalendarModel(calendarid: Int64(calendar.id), manager: manager)
+        await model.fetch()
+        #expect(model.state == .content)
+        
+        model.prepareAddEditBatchListViewModel(with: [day10])
+        let batchList = model.addEditBatchListViewModel
+        #expect(batchList.eventBatches.count == 1)
+        batchList.prepareAddEditBatchViewModel(with: batchList.eventBatches[0])
+        
+        let addEdit = batchList.addEditEventBatchModel
+        #expect(addEdit.eventBatchId != 0)
+        #expect(addEdit.addEditListViewModel.events.count == 2)
+        
+        addEdit.toggleEvent(on: day10)
+        addEdit.toggleEvent(on: day12)
+        #expect(addEdit.addEditListViewModel.events.isEmpty)
+        
+        #expect(addEdit.save())
+        model.resetSelectedDays()
+        
+        let dayModel = model.yearModel.months
+            .first(where: { $0.number == 6 })?
+            .weeks
+            .flatMap(\.days)
+            .first(where: { day in
+                guard let dayDate = day.date else { return false }
+                return Calendar.current.isDate(dayDate, inSameDayAs: day10)
+            })
+        #expect(dayModel?.events.isEmpty == true)
+        #expect(!model.hasEvents(on: day10))
+        
+        let storedBatches = store.box(for: PPEventBatch.self)
+        let deadline = Date().addingTimeInterval(3)
+        var persistedEvents = Array(try storedBatches.all()[0].events)
+        while !persistedEvents.isEmpty, Date() < deadline {
+            try await Task.sleep(for: .milliseconds(50))
+            persistedEvents = Array(try storedBatches.all()[0].events)
+        }
+        #expect(persistedEvents.isEmpty)
+    }
+    
     @Test func batchCreatedViaCalendarTogglesPersistsAndReflectsOnSingleCalendar() async throws {
         let store = try! Store(directoryPath: "memory:toggle-\(UUID().uuidString)")
         defer { store.close() }
@@ -497,7 +566,6 @@ struct EventBatchCreationTests {
         
         let day10 = date(year: 2026, month: 6, day: 10)
         let day12 = date(year: 2026, month: 6, day: 12)
-        addEdit.toggleEvent(on: day10)
         addEdit.toggleEvent(on: day12)
         addEdit.toggleEvent(on: day12)
         
@@ -523,5 +591,24 @@ struct EventBatchCreationTests {
                 return Calendar.current.isDate(dayDate, inSameDayAs: day10)
             })
         #expect(dayModel?.events.contains("eventColorOption1") == true)
+    }
+    
+    @Test func prepareAddEditEventBatchViewModelForDatePreadsSelectedDayAndEvent() {
+        let model = SingleCalendarModel(calendarid: 0)
+        let day10 = date(year: 2026, month: 6, day: 10)
+        
+        model.prepareAddEditEventBatchViewModel(for: day10)
+        
+        #expect(model.isEditScreenPresented)
+        let addEdit = model.addEditBatchListViewModel.addEditEventBatchModel
+        #expect(addEdit.selectedDays == [day10])
+        #expect(addEdit.eventBatchName == "Event1")
+        #expect(addEdit.selectedColor == .option1)
+        #expect(addEdit.canSave)
+        let events = addEdit.addEditListViewModel.events
+        #expect(events.count == 1)
+        #expect(events[0].name == "Event1")
+        #expect(events[0].color == "eventColorOption1")
+        #expect(addEdit.addEditListViewModel.hasEvent(on: day10))
     }
 }
