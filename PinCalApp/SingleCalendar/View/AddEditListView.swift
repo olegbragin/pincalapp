@@ -11,27 +11,26 @@ struct AddEditListView: View {
     @Bindable var viewModel: AddEditListViewModel
     
     var body: some View {
-        VStack {
-            List {
-                ForEach(viewModel.events, id: \.self) { event in
-                    Button(
-                        action: {
-                            viewModel.prepareAddEditViewModel(with: event)
-                        },
-                        label: {
-                            HStack {
-                                Text(.eventAt(event.name, event.date.formatted(date: .omitted, time: .shortened)))
-                                Spacer()
-                                Image(systemName: "chevron.right")
-                            }
-                            .frame(minWidth: 0, maxWidth: .infinity)
+        List {
+            ForEach(viewModel.events, id: \.self) { event in
+                Button(
+                    action: {
+                        viewModel.prepareAddEditViewModel(with: event)
+                    },
+                    label: {
+                        HStack {
+                            Text(.eventAt(event.name, event.date.formatted(date: .omitted, time: .shortened)))
+                            Spacer()
+                            Image(systemName: "chevron.right")
                         }
-                    )
-                    .listRowBackground(Color(event.color))
-                }
+                        .frame(minWidth: 0, maxWidth: .infinity)
+                    }
+                )
+                .listRowBackground(Color(event.color))
             }
-            .scrollContentBackground(.hidden)
         }
+        .scrollContentBackground(.hidden)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .navigationDestination(isPresented: $viewModel.addEditEventModel.isPresented) {
             AddEditEventView(viewModel: viewModel.addEditEventModel)
         }

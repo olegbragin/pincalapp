@@ -14,10 +14,13 @@ struct AddEditEventBatchScreen: View {
     var onCancel: () -> Void = {}
     
     var body: some View {
-        AddEditEventBatchView(
-            viewModel: viewModel,
-            onSave: onSave
-        )
+        GeometryReader { geometry in
+            if geometry.size.width > geometry.size.height {
+                horizontalLayout
+            } else {
+                verticalLayout
+            }
+        }
         .navigationBarBackButtonHidden(true)
         .toolbar {
             ToolbarItem(placement: .topBarLeading) {
@@ -33,6 +36,42 @@ struct AddEditEventBatchScreen: View {
             }
         }
         .toolbarBackground(Color("colorBackgroundMain"), for: .navigationBar)
+        .ignoresSafeArea(edges: .bottom)
+        .onChange(of: viewModel.daySelectionManager.selectedDays) { _, newValue in
+            if let selectedDay = newValue.first {
+                viewModel.toggleEvent(on: selectedDay)
+            }
+        }
+    }
+    
+    private var verticalLayout: some View {
+        VStack(spacing: 0) {
+            calendarContent
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            AddEditEventBatchView(
+                viewModel: viewModel,
+                onSave: onSave
+            )
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+    }
+    
+    private var horizontalLayout: some View {
+        HStack(spacing: 0) {
+            calendarContent
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            AddEditEventBatchView(
+                viewModel: viewModel,
+                onSave: onSave
+            )
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+    }
+    
+    private var calendarContent: some View {
+        USCalendarYearView(
+            viewModel: viewModel.yearModel
+        )
     }
     
     private var titleContent: some View {
@@ -44,34 +83,20 @@ struct AddEditEventBatchScreen: View {
     
     @ViewBuilder
     private var preferredTitle: some View {
-        let days = viewModel.selectedDays.sorted()
-        if let start = days.first {
-            if days.count > 1, let end = days.last {
-                Text("\(start.formatted(.dateTime.day().month(.abbreviated))) - \(end.formatted(.dateTime.day().month(.abbreviated).year()))")
-                    .font(.headline)
-                    .lineLimit(1)
-            } else {
-                Text(start.formatted(date: .long, time: .omitted))
-                    .font(.headline)
-                    .lineLimit(1)
-            }
+        if let title = viewModel.preferredTitle {
+            Text(title)
+                .font(.headline)
+                .lineLimit(1)
         }
     }
     
     @ViewBuilder
     private var compactTitle: some View {
-        let days = viewModel.selectedDays.sorted()
-        if let start = days.first {
-            if days.count > 1, let end = days.last {
-                Text("\(start.formatted(date: .numeric, time: .omitted))\n\(end.formatted(date: .numeric, time: .omitted))")
-                    .font(.headline)
-                    .multilineTextAlignment(.center)
-                    .lineLimit(2)
-            } else {
-                Text(start.formatted(date: .numeric, time: .omitted))
-                    .font(.headline)
-                    .lineLimit(1)
-            }
+        if let title = viewModel.compactTitle {
+            Text(title)
+                .font(.headline)
+                .multilineTextAlignment(.center)
+                .lineLimit(2)
         }
     }
 }

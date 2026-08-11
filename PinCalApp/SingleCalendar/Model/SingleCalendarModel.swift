@@ -81,7 +81,7 @@ final class SingleCalendarModel {
         } else {
             addedEvents.insert(event)
         }
-        updateYearModel(with: originalEvents.union(addedEvents))
+        updateDayModel(at: event.date, with: originalEvents.union(addedEvents))
         daySelectionManager.selectedDays = []
     }
     
@@ -280,6 +280,8 @@ final class SingleCalendarModel {
     }
     
     private func updateYearModel(with events: Set<EventDataSource>) {
+        let eventColorsByDay = colorsByStartOfDay(from: events)
+        let batchColorsByDay = batchColorsByStartOfDay()
         yearModel.months.forEach { month in
             month.weeks.forEach { week in
                 week.days
@@ -288,16 +290,51 @@ final class SingleCalendarModel {
                     }
                     .forEach { day in
                         guard let dayDate = day.date else { return }
-                        let dayEvents = events.filter {
-                            isSameDay($0.date, dayDate)
-                        }
-                        let dayBatchColors = originalBatches.compactMap { batch -> String? in
-                            guard let batchDate = batch.date, isSameDay(batchDate, dayDate) else { return nil }
-                            return batch.colorName
-                        }
-                        day.events = dayEvents.map(\.color) + dayBatchColors.filter { !$0.isEmpty }
+                        let key = Calendar.autoupdatingCurrent.startOfDay(for: dayDate)
+                        let newEvents = (eventColorsByDay[key] ?? []) + (batchColorsByDay[key] ?? [])
+                        guard day.events != newEvents else { return }
+                        day.events = newEvents
                     }
             }
         }
+    }
+    
+    private func updateDayModel(at date: Date, with events: Set<EventDataSource>) {
+        guard let day = dayModel(for: date) else { return }
+        let key = Calendar.autoupdatingCurrent.startOfDay(for: date)
+        let newEvents = (colorsByStartOfDay(from: events)[key] ?? []) + (batchColorsByStartOfDay()[key] ?? [])
+        guard day.events != newEvents else { return }
+        day.events = newEvents
+    }
+    
+    private func dayModel(for date: Date) -> USCalendarDayModel? {
+        var fallback: USCalendarDayModel?
+        for month in yearModel.months {
+            for week in month.weeks {
+                for day in week.days {
+                    guard let dayDate = day.date, isSameDay(dayDate, date) else { continue }
+                    if day.isInCurrentMonth { return day }
+                    fallback = day
+                }
+            }
+        }
+        return fallback
+    }
+    
+    private func colorsByStartOfDay(from events: Set<EventDataSource>) -> [Date: [String]] {
+        var result: [Date: [String]] = [:]
+        for event in events {
+            result[Calendar.autoupdatingCurrent.startOfDay(for: event.date), default: []].append(event.color)
+        }
+        return result
+    }
+    
+    private func batchColorsByStartOfDay() -> [Date: [String]] {
+        var result: [Date: [String]] = [:]
+        for batch in originalBatches {
+            guard let batchDate = batch.date, !batch.colorName.isEmpty else { continue }
+            result[Calendar.autoupdatingCurrent.startOfDay(for: batchDate), default: []].append(batch.colorName)
+        }
+        return result
     }
 }

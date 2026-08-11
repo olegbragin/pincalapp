@@ -23,8 +23,32 @@ final class AddEditEventBatchViewModel {
     
     var eventBatch: EventBatchDataSource?
     
+    var defaultColor: ColorOption? {
+        selectedColor ?? ColorOption(addEditListViewModel.events.first?.color ?? "")
+    }
+    
+    var canSave: Bool {
+        !eventBatchName.isEmpty && selectedColor != nil
+    }
+    
+    let daySelectionManager = USCalendarDaySelectionManager()
+    var yearModel = USCalendarYearModel()
+    private let dataProvider = USCalendarDataProvider()
+    
+    var preferredTitle: String? {
+        title(compact: false)
+    }
+    
+    var compactTitle: String? {
+        title(compact: true)
+    }
+    
     init(events: [EventDataSource] = []) {
         addEditListViewModel = .init(events: events)
+        addEditListViewModel.onEventsChanged = { [weak self] in
+            self?.refreshCalendarDays()
+        }
+        setupCalendar()
     }
     
     func save() -> Bool {
@@ -45,11 +69,98 @@ final class AddEditEventBatchViewModel {
     
     func prepare(with events: [EventDataSource]) {
         addEditListViewModel.prepare(with: events)
+        setupCalendar()
+    }
+    
+    func setupCalendar() {
+        daySelectionManager.selectionMode = .multiple
+        yearModel.months = dataProvider.months(forYear: calendarYear).map {
+            USCalendarMonthModel(dto: $0, daySelectionManager: daySelectionManager)
+        }
+        yearModel.numberOfCurrentMonth = dataProvider.numberOfCurrentMonth
+        updateYearModel()
+    }
+    
+    func toggleEvent(on date: Date) {
+        if addEditListViewModel.hasEvent(on: date) {
+            addEditListViewModel.removeEvent(on: date)
+        } else {
+            let colorName = selectedColor?.colorName ?? defaultColor?.colorName ?? ColorOption.option1.colorName
+            addEditListViewModel.addEvent(
+                .init(name: eventBatchName, date: date, color: colorName)
+            )
+        }
+        daySelectionManager.selectedDays = []
+        updateDay(for: date)
+    }
+    
+    func refreshCalendarDays() {
+        updateYearModel()
+    }
+    
+    private var calendarYear: Int {
+        if let firstEventDate = addEditListViewModel.events.map(\.date).min() {
+            return Calendar.current.component(.year, from: firstEventDate)
+        }
+        if let date {
+            return Calendar.current.component(.year, from: date)
+        }
+        return Calendar.current.component(.year, from: Date())
+    }
+    
+    private func updateYearModel() {
+        let colorsByDay = eventColorsByDay()
+        yearModel.months.forEach { month in
+            month.weeks.forEach { week in
+                week.days
+                    .filter(\.isInCurrentMonth)
+                    .forEach { day in
+                        guard let dayDate = day.date else { return }
+                        let colors = colorsByDay[Calendar.autoupdatingCurrent.startOfDay(for: dayDate)] ?? []
+                        guard day.events != colors else { return }
+                        day.events = colors
+                    }
+            }
+        }
+    }
+    
+    private func updateDay(for date: Date) {
+        guard let day = dayModel(for: date) else { return }
+        let colors = addEditListViewModel.events
+            .filter { Calendar.autoupdatingCurrent.isDate($0.date, inSameDayAs: date) }
+            .map(\.color)
+        guard day.events != colors else { return }
+        day.events = colors
+    }
+    
+    private func dayModel(for date: Date) -> USCalendarDayModel? {
+        var fallback: USCalendarDayModel?
+        for month in yearModel.months {
+            for week in month.weeks {
+                for day in week.days {
+                    guard let dayDate = day.date,
+                          Calendar.autoupdatingCurrent.isDate(dayDate, inSameDayAs: date)
+                    else { continue }
+                    if day.isInCurrentMonth { return day }
+                    fallback = day
+                }
+            }
+        }
+        return fallback
+    }
+    
+    private func eventColorsByDay() -> [Date: [String]] {
+        var result: [Date: [String]] = [:]
+        for event in addEditListViewModel.events {
+            result[Calendar.autoupdatingCurrent.startOfDay(for: event.date), default: []].append(event.color)
+        }
+        return result
     }
     
     func recolorAllEvents() {
         guard let selectedColor else { return }
         addEditListViewModel.recolorAll(to: selectedColor.colorName)
+        updateYearModel()
     }
     
     func reset() {
@@ -62,5 +173,33 @@ final class AddEditEventBatchViewModel {
         timestamp = nil
         eventBatch = nil
         selectedDays = []
+        daySelectionManager.reset()
+        yearModel.months = []
+    }
+    
+    private func title(compact: Bool) -> String? {
+        let days = selectedDays.sorted()
+        guard let start = days.first else { return nil }
+        if days.count == 1 {
+            return compact
+                ? start.formatted(date: .numeric, time: .omitted)
+                : start.formatted(date: .long, time: .omitted)
+        }
+        guard let end = days.last else { return nil }
+        if compact {
+            return "\(start.formatted(date: .numeric, time: .omitted))\n\(end.formatted(date: .numeric, time: .omitted))"
+        }
+        return periodTitle(from: start, to: end)
+    }
+    
+    private func periodTitle(from start: Date, to end: Date) -> String {
+        let calendar = Calendar.autoupdatingCurrent
+        let startDay = start.formatted(.dateTime.day())
+        let endDay = end.formatted(.dateTime.day())
+        if calendar.component(.month, from: start) == calendar.component(.month, from: end),
+           calendar.component(.year, from: start) == calendar.component(.year, from: end) {
+            return "\(startDay)-\(endDay) \(end.formatted(.dateTime.month(.abbreviated).year()))"
+        }
+        return "\(startDay) \(start.formatted(.dateTime.month(.wide))) - \(endDay) \(end.formatted(.dateTime.month(.wide).year()))"
     }
 }

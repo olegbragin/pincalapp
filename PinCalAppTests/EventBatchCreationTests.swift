@@ -145,6 +145,34 @@ struct EventBatchCreationTests {
         #expect(viewModel.eventBatch == nil)
     }
     
+    @Test func defaultColorDerivesFromPassedEventsWhenNoColorSelected() {
+        let viewModel = AddEditEventBatchViewModel(events: [event(day: 3, color: "eventColorOption2")])
+        viewModel.selectedColor = nil
+        
+        #expect(viewModel.defaultColor == .option2)
+    }
+    
+    @Test func defaultColorFallsBackToNilWithoutEventsOrColor() {
+        let viewModel = AddEditEventBatchViewModel()
+        viewModel.selectedColor = nil
+        
+        #expect(viewModel.defaultColor == nil)
+    }
+    
+    @Test func canSaveRequiresNameAndColor() {
+        let viewModel = AddEditEventBatchViewModel(events: [event(day: 3)])
+        
+        viewModel.eventBatchName = ""
+        viewModel.selectedColor = nil
+        #expect(!viewModel.canSave)
+        
+        viewModel.eventBatchName = "Women Cycle"
+        #expect(!viewModel.canSave)
+        
+        viewModel.selectedColor = .option1
+        #expect(viewModel.canSave)
+    }
+    
     @Test func recolorAllEventsRecolorsToSelectedBatchColor() {
         let viewModel = AddEditEventBatchViewModel(events: [event(day: 3, color: "eventColorOption2"), event(day: 4, color: "eventColorOption3")])
         viewModel.selectedColor = .option1
@@ -388,5 +416,112 @@ struct EventBatchCreationTests {
         #expect(visibleBatches.count == 1)
         #expect(visibleBatches[0].name == "Women Cycle")
         #expect(visibleBatches[0].events.count == 2)
+    }
+    
+    // MARK: - AddEditEventBatchScreen calendar toggling
+    
+    @Test func toggleEventAddsAndRemovesEventsOnBatchScreen() {
+        let viewModel = AddEditEventBatchViewModel()
+        viewModel.selectedColor = .option1
+        let day10 = date(year: 2026, month: 6, day: 10)
+        let day12 = date(year: 2026, month: 6, day: 12)
+        
+        viewModel.toggleEvent(on: day10)
+        viewModel.toggleEvent(on: day12)
+        viewModel.toggleEvent(on: day12)
+        
+        #expect(viewModel.addEditListViewModel.events.count == 1)
+        #expect(viewModel.addEditListViewModel.hasEvent(on: day10))
+        #expect(!viewModel.addEditListViewModel.hasEvent(on: day12))
+        #expect(viewModel.daySelectionManager.selectedDays.isEmpty)
+    }
+    
+    @Test func toggleEventColorsDaysOnBatchCalendar() {
+        let viewModel = AddEditEventBatchViewModel()
+        viewModel.selectedColor = .option1
+        viewModel.toggleEvent(on: date(year: 2026, month: 6, day: 10))
+        
+        let dayModel = viewModel.yearModel.months
+            .first(where: { $0.number == 6 })?
+            .weeks
+            .flatMap(\.days)
+            .first(where: { day in
+                guard let dayDate = day.date else { return false }
+                return Calendar.current.isDate(dayDate, inSameDayAs: date(year: 2026, month: 6, day: 10))
+            })
+        #expect(dayModel?.events == ["eventColorOption1"])
+    }
+    
+    @Test func toggleEventPrefersInMonthDayWhenDateSpansMonths() {
+        let viewModel = AddEditEventBatchViewModel()
+        viewModel.selectedColor = .option1
+        let july2 = date(year: 2026, month: 7, day: 2)
+        viewModel.toggleEvent(on: july2)
+        
+        let july2InMonth = viewModel.yearModel.months
+            .first(where: { $0.number == 7 })?
+            .weeks
+            .flatMap(\.days)
+            .first(where: { day in
+                day.isInCurrentMonth && day.date.map { Calendar.current.isDate($0, inSameDayAs: july2) } == true
+            })
+        #expect(july2InMonth?.events == ["eventColorOption1"])
+        
+        let july2OutOfMonth = viewModel.yearModel.months
+            .first(where: { $0.number == 6 })?
+            .weeks
+            .flatMap(\.days)
+            .first(where: { day in
+                !day.isInCurrentMonth && day.date.map { Calendar.current.isDate($0, inSameDayAs: july2) } == true
+            })
+        #expect(july2OutOfMonth?.events.isEmpty == true)
+    }
+    
+    @Test func batchCreatedViaCalendarTogglesPersistsAndReflectsOnSingleCalendar() async throws {
+        let store = try! Store(directoryPath: "memory:toggle-\(UUID().uuidString)")
+        defer { store.close() }
+        
+        let calendarBox = store.box(for: PPCalendar.self)
+        let calendar = PPCalendar(name: "Test", year: 2026, numberOfColumns: 3)
+        try calendarBox.put(calendar)
+        
+        let manager = CalendarManager(service: ObjectBoxCalendarStorage(store: store))
+        let model = SingleCalendarModel(calendarid: Int64(calendar.id), manager: manager)
+        await model.fetch()
+        #expect(model.state == .content)
+        
+        model.prepareAddEditEventBatchViewModel(for: date(year: 2026, month: 6, day: 10))
+        let addEdit = model.addEditBatchListViewModel.addEditEventBatchModel
+        addEdit.eventBatchName = "Women Cycle"
+        addEdit.selectedColor = .option1
+        
+        let day10 = date(year: 2026, month: 6, day: 10)
+        let day12 = date(year: 2026, month: 6, day: 12)
+        addEdit.toggleEvent(on: day10)
+        addEdit.toggleEvent(on: day12)
+        addEdit.toggleEvent(on: day12)
+        
+        #expect(addEdit.save())
+        model.resetSelectedDays()
+        
+        #expect(try await waitForBatchCount(1, in: store))
+        
+        let batchBox = store.box(for: PPEventBatch.self)
+        let persisted = try batchBox.all()[0]
+        #expect(persisted.title == "Women Cycle")
+        #expect(persisted.color == "eventColorOption1")
+        let persistedEvents = Array(persisted.events)
+        #expect(persistedEvents.count == 1)
+        #expect(Calendar.current.isDate(persistedEvents[0].date, inSameDayAs: day10))
+        
+        let dayModel = model.yearModel.months
+            .first(where: { $0.number == 6 })?
+            .weeks
+            .flatMap(\.days)
+            .first(where: { day in
+                guard let dayDate = day.date else { return false }
+                return Calendar.current.isDate(dayDate, inSameDayAs: day10)
+            })
+        #expect(dayModel?.events.contains("eventColorOption1") == true)
     }
 }

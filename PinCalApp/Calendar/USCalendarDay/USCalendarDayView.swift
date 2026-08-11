@@ -11,31 +11,38 @@ struct USCalendarDayView: View {
     @Bindable var model: USCalendarDayModel
     
     var body: some View {
-        ZStack {
-            USCalendarDayEventView(
-                events: model.events.map {
-                    Color($0)
-                }
-            )
-            .drawingGroup()
-            .clipShape(RoundedRectangle(cornerRadius: 8))
-            .aspectRatio(1, contentMode: .fit)
-            .background(
-                RoundedRectangle(cornerRadius: 8)
-                    .fill(backgroundColor)
-            )
-            .padding(2)
-            .overlay(
-                RoundedRectangle(cornerRadius: 8)
-                    .stroke(borderColor, lineWidth: 0.5)
-            )
-            
-            // Текст
-            Text(model.text)
-                .font(font)
-                .foregroundColor(Color(textColor))
-                .background(.clear)
+        GeometryReader { geometry in
+            let side = geometry.size.width
+            ZStack {
+                USCalendarDayEventView(
+                    events: model.events.map {
+                        Color($0)
+                    }
+                )
+                .clipShape(RoundedRectangle(cornerRadius: 8))
+                .background(
+                    RoundedRectangle(cornerRadius: 8)
+                        .fill(backgroundColor)
+                )
+                .padding(2)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 8)
+                        .stroke(borderColor, lineWidth: 0.5)
+                )
+                
+                // Текст
+                Text(model.text)
+                    .font(font)
+                    .foregroundColor(Color(textColor))
+                    .background(.clear)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.3)
+                    .allowsTightening(true)
+                    .padding(.horizontal, 2)
+            }
+            .frame(width: side, height: side)
         }
+        .aspectRatio(1, contentMode: .fit)
     }
     
     private var textColor: Color {

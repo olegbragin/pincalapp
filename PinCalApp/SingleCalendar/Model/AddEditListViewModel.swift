@@ -14,6 +14,8 @@ final class AddEditListViewModel {
     private(set) var events = [EventDataSource]()
     private(set) var selectedDay: Date?
     
+    var onEventsChanged: (() -> Void)?
+    
     var addEditEventModel = AddEditEventViewModel()
     
     init(events: [EventDataSource] = [EventDataSource]()) {
@@ -45,6 +47,24 @@ final class AddEditListViewModel {
             events[indexToReplace] = event
         } else {
             events.append(event)
+        }
+        onEventsChanged?()
+    }
+    
+    func addEvent(_ event: EventDataSource) {
+        events.append(event.withTimestamp(UUID()))
+        events.sort(by: { $0.date < $1.date })
+    }
+    
+    func removeEvent(on date: Date) {
+        events.removeAll {
+            Calendar.current.isDate($0.date, inSameDayAs: date)
+        }
+    }
+    
+    func hasEvent(on date: Date) -> Bool {
+        events.contains {
+            Calendar.current.isDate($0.date, inSameDayAs: date)
         }
     }
     

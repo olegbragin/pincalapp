@@ -15,6 +15,7 @@ struct ColorPickerView: View {
     
     @Binding var selectedColor: ColorOption?
     var style: Style = .compact
+    var defaultColor: ColorOption? = nil
     @State private var isColorOptionsPresented = false
     
     @Environment(\.isEnabled) private var isEnabled
@@ -33,7 +34,7 @@ struct ColorPickerView: View {
             isColorOptionsPresented = true
         } label: {
             Circle()
-                .fill(selectedColor?.color ?? Color.secondary.opacity(0.3))
+                .fill((selectedColor ?? defaultColor)?.color ?? Color.secondary.opacity(0.3))
                 .frame(width: 32, height: 32)
                 .overlay {
                     Circle()
@@ -45,7 +46,7 @@ struct ColorPickerView: View {
         .allowsHitTesting(isEnabled)
         .accessibilityLabel("Выберите цвет")
         .sheet(isPresented: $isColorOptionsPresented) {
-            ColorOptionSheet(selectedColor: $selectedColor)
+            ColorOptionSheet(selectedColor: $selectedColor, defaultColor: defaultColor)
         }
     }
     
@@ -61,7 +62,7 @@ struct ColorPickerView: View {
                             .frame(width: 50, height: 50)
                             .overlay(
                                 Circle()
-                                    .stroke(selectedColor?.color == colorOption.color ?
+                                    .stroke((selectedColor ?? defaultColor)?.color == colorOption.color ?
                                             Color.accentColor : Color.clear,
                                             lineWidth: 3)
                             )
@@ -83,6 +84,7 @@ struct ColorPickerView: View {
 
 private struct ColorOptionSheet: View {
     @Binding var selectedColor: ColorOption?
+    var defaultColor: ColorOption? = nil
     @Environment(\.dismiss) private var dismiss
     
     var body: some View {
@@ -105,6 +107,9 @@ private struct ColorOptionSheet: View {
                         if selectedColor == colorOption {
                             Image(systemName: "checkmark")
                                 .foregroundColor(.accentColor)
+                        } else if selectedColor == nil, defaultColor == colorOption {
+                            Image(systemName: "checkmark")
+                                .foregroundColor(.secondary)
                         }
                     }
                 }

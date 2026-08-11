@@ -24,7 +24,7 @@ struct AddEditEventBatchView: View {
                     TextField("Введите имя", text: $viewModel.eventBatchName)
                         .textFieldStyle(RoundedBorderTextFieldStyle())
                     
-                    ColorPickerView(selectedColor: $viewModel.selectedColor)
+                    ColorPickerView(selectedColor: $viewModel.selectedColor, defaultColor: viewModel.defaultColor)
                 }
                 .padding(.horizontal, 4)
                 .ignoresSafeArea(.keyboard)
@@ -38,9 +38,7 @@ struct AddEditEventBatchView: View {
                 
                 AddEditListView(viewModel: viewModel.addEditListViewModel)
             }
-            
-            
-            Spacer()
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .padding()
         .toolbarTitleDisplayMode(.inline)
@@ -58,6 +56,7 @@ struct AddEditEventBatchView: View {
                         }
                     }
                 }
+                .disabled(!viewModel.canSave)
             }
         }
     }
