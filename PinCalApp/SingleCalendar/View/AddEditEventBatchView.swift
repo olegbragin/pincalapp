@@ -21,8 +21,7 @@ struct AddEditEventBatchView: View {
                     .fontWeight(.medium)
                 
                 HStack(spacing: 12) {
-                    TextField("Введите имя", text: $viewModel.eventBatchName)
-                        .textFieldStyle(RoundedBorderTextFieldStyle())
+                    DSTextField(title: "Введите имя", text: $viewModel.eventBatchName)
                     
                     ColorPickerView(selectedColor: $viewModel.selectedColor, defaultColor: viewModel.defaultColor)
                 }
@@ -49,7 +48,7 @@ struct AddEditEventBatchView: View {
         }
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
-                Button {
+                DSButton {
                     Task {
                         if viewModel.save() {
                             onSave()
@@ -57,8 +56,8 @@ struct AddEditEventBatchView: View {
                     }
                 } label: {
                     Image(systemName: "checkmark")
+                        .accessibilityLabel("Save")
                 }
-                .accessibilityLabel("Save")
                 .disabled(!viewModel.canSave)
             }
         }

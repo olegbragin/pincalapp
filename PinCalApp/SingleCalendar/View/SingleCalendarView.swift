@@ -47,9 +47,7 @@ struct SingleCalendarView: View {
         case .empty:
             EmptyView()
         case .loading:
-            ProgressView {
-                Text("Loading")
-            }
+            DSProgressView(label: "Loading")
         case .content:
             contentView
                 .onChange(of: viewModel.yearModel.numberOfColumns) {
@@ -160,7 +158,7 @@ private struct SingleCalendarViewPreview: View {
             if let model {
                 SingleCalendarView(viewModel: model)
             } else {
-                ProgressView("Loading")
+                DSProgressView(label: "Loading")
                     .task {
                         await loadModel()
                     }

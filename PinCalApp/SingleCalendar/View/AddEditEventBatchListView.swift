@@ -18,21 +18,29 @@ struct AddEditEventBatchListView: View {
             VStack {
                 List {
                     ForEach(viewModel.eventBatches, id: \.self) { eventBatch in
-                        Button(
-                            action: {
-                                viewModel.prepareAddEditBatchViewModel(with: eventBatch)
-                                onBatchTap()
-                            },
-                            label: {
-                                HStack {
-                                    Text(eventBatch.name)
-                                    Spacer()
-                                    Image(systemName: "chevron.right")
+                        DSCard {
+                            Button(
+                                action: {
+                                    viewModel.prepareAddEditBatchViewModel(with: eventBatch)
+                                    onBatchTap()
+                                },
+                                label: {
+                                    HStack(spacing: 12) {
+                                        Text(eventBatch.name)
+                                        Spacer()
+                                        Image(systemName: "chevron.right")
+                                    }
+                                    .frame(minWidth: 0, maxWidth: .infinity)
                                 }
-                                .frame(minWidth: 0, maxWidth: .infinity)
-                            }
-                        )
-                        .listRowBackground(eventBatch.color)
+                            )
+                            .padding()
+                            .background(
+                                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                                    .fill(eventBatch.color)
+                            )
+                        }
+                        .listRowBackground(Color.clear)
+                        .listRowSeparator(.hidden)
                     }
                     .onDelete(perform: deleteItems)
                 }
@@ -47,12 +55,12 @@ struct AddEditEventBatchListView: View {
                     Text(viewModel.selectedDay ?? Date(), style: .date)
                 }
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button {
+                    DSButton {
                         onClose()
                     } label: {
                         Image(systemName: "xmark")
+                            .accessibilityLabel("Close")
                     }
-                    .accessibilityLabel("Close")
                 }
             }
         }

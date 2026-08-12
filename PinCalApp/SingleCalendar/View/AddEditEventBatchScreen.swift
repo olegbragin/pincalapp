@@ -24,7 +24,7 @@ struct AddEditEventBatchScreen: View {
         .navigationBarBackButtonHidden(true)
         .toolbar {
             ToolbarItem(placement: .topBarLeading) {
-                Button {
+                DSButton {
                     onCancel()
                 } label: {
                     Image(systemName: "chevron.left")

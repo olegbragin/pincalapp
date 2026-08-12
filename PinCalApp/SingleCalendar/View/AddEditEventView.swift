@@ -14,12 +14,11 @@ struct AddEditEventView: View {
     
     var body: some View {
         VStack(alignment: .leading, spacing: 24) {
-            DatePicker(
+            DSDatePicker(
+                title: "Выберите время события",
                 selection: $viewModel.selectedDate,
                 displayedComponents: .hourAndMinute
-            ) {
-                Text("Выберите время события")
-            }
+            )
             .environment(\.timeZone, TimeZone.current)
             
             // Поле ввода имени
@@ -28,9 +27,7 @@ struct AddEditEventView: View {
                     .font(.headline)
                     .fontWeight(.medium)
                 
-                TextField("Введите имя", text: $viewModel.eventName)
-                    .textFieldStyle(RoundedBorderTextFieldStyle())
-                    .padding(.horizontal, 4)
+                DSTextField(title: "Введите имя", text: $viewModel.eventName)
                     .ignoresSafeArea(.keyboard)
             }
             

@@ -13,20 +13,28 @@ struct AddEditListView: View {
     var body: some View {
         List {
             ForEach(viewModel.events, id: \.self) { event in
-                Button(
-                    action: {
-                        viewModel.prepareAddEditViewModel(with: event)
-                    },
-                    label: {
-                        HStack {
-                            Text(.eventAt(event.name, event.date.formatted(date: .omitted, time: .shortened)))
-                            Spacer()
-                            Image(systemName: "chevron.right")
+                DSCard {
+                    Button(
+                        action: {
+                            viewModel.prepareAddEditViewModel(with: event)
+                        },
+                        label: {
+                            HStack(spacing: 12) {
+                                Text(.eventAt(event.name, event.date.formatted(date: .omitted, time: .shortened)))
+                                Spacer()
+                                Image(systemName: "chevron.right")
+                            }
+                            .frame(minWidth: 0, maxWidth: .infinity)
                         }
-                        .frame(minWidth: 0, maxWidth: .infinity)
-                    }
-                )
-                .listRowBackground(Color(event.color))
+                    )
+                    .padding()
+                    .background(
+                        RoundedRectangle(cornerRadius: 16, style: .continuous)
+                            .fill(Color(event.color))
+                    )
+                }
+                .listRowBackground(Color.clear)
+                .listRowSeparator(.hidden)
             }
         }
         .scrollContentBackground(.hidden)

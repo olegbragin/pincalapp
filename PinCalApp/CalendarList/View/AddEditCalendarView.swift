@@ -16,8 +16,10 @@ struct AddEditCalendarView: View {
         VStack {
             // Верхняя панель с кнопками
             HStack {
-                Button("Закрыть") {
+                DSButton {
                     dismiss()
+                } label: {
+                    Text("Закрыть")
                 }
                 .foregroundColor(.red)
                 
@@ -30,12 +32,14 @@ struct AddEditCalendarView: View {
                 
                 Spacer()
                 
-                Button("Сохранить") {
+                DSButton {
                     Task {
                         if viewModel.save() {
                             dismiss()
                         }
                     }
+                } label: {
+                    Text("Сохранить")
                 }
                 .foregroundColor(.blue)
             }
@@ -55,9 +59,7 @@ struct AddEditCalendarView: View {
                             .font(.headline)
                             .fontWeight(.medium)
                         
-                        TextField("Введите имя", text: $viewModel.label)
-                            .textFieldStyle(RoundedBorderTextFieldStyle())
-                            .padding(.horizontal, 4)
+                        DSTextField(title: "Введите имя", text: $viewModel.label)
                     }
                 }
                 .padding()

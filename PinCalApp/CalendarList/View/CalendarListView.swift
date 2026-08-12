@@ -17,25 +17,20 @@ struct CalendarListView: View {
         VStack(spacing: 0) {
             List(selection: $selector.selectedItem) {
             ForEach(viewModel.calendars.indices, id: \.self) { index in
-                VStack {
-                    HStack {
-                        Image(systemName: "calendar")
-                        if viewModel.isEditing {
-                            TextField("Введите название календаря", text: $viewModel.calendars[index].name)
-                                .textFieldStyle(RoundedBorderTextFieldStyle())
-                        } else {
-                            Text(viewModel.calendars[index].name)
+                DSCard {
+                    VStack {
+                        HStack {
+                            Image(systemName: "calendar")
+                            if viewModel.isEditing {
+                                DSTextField(title: "Введите название календаря", text: $viewModel.calendars[index].name)
+                            } else {
+                                Text(viewModel.calendars[index].name)
+                            }
                         }
+                        Text("Number of columns: \(viewModel.calendars[index].numberOfColumns)")
                     }
-                    Text("Number of columns: \(viewModel.calendars[index].numberOfColumns)")
+                    .padding()
                 }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding()
-                .background(
-                    RoundedRectangle(cornerRadius: 16, style: .continuous)
-                        .fill(Color.clear)
-                        .stroke(Color.black, lineWidth: 1)
-                )
                 .listRowBackground(Color.clear)
                 .listRowSeparator(.hidden)
                 .tag(
