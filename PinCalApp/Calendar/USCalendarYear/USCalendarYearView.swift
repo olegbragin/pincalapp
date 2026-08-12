@@ -38,10 +38,10 @@ struct USCalendarYearView: View {
             }
         }
         .onAppear {
-            scrollToCurrentMonth(proxy: proxy, anchor: .top)
+            scrollToInitialMonth(proxy: proxy, anchor: .top)
         }
         .onChange(of: viewModel.numberOfColumns) {
-            scrollToCurrentMonth(proxy: proxy, anchor: .top)
+            scrollToInitialMonth(proxy: proxy, anchor: .top)
         }
         .highPriorityGesture(pinchToZoomGesture)
         .animation(.easeOut(duration: 0.3), value: viewModel.numberOfColumns)
@@ -54,8 +54,15 @@ struct USCalendarYearView: View {
         )
     }
     
-    private func scrollToCurrentMonth(proxy: ScrollViewProxy, anchor: UnitPoint) {
-        guard let index = viewModel.indexOfCurrentMonth else { return }
+    private func scrollToInitialMonth(proxy: ScrollViewProxy, anchor: UnitPoint) {
+        let index: Int?
+        if let target = viewModel.scrollTargetDate {
+            let monthNumber = Calendar.autoupdatingCurrent.component(.month, from: target)
+            index = viewModel.months.firstIndex { $0.number == monthNumber }
+        } else {
+            index = viewModel.indexOfCurrentMonth
+        }
+        guard let index else { return }
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
             proxy.scrollTo(index, anchor: anchor)
         }

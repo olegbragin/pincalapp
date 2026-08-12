@@ -49,13 +49,16 @@ struct AddEditEventBatchView: View {
         }
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
-                Button("Save") {
+                Button {
                     Task {
                         if viewModel.save() {
                             onSave()
                         }
                     }
+                } label: {
+                    Image(systemName: "checkmark")
                 }
+                .accessibilityLabel("Save")
                 .disabled(!viewModel.canSave)
             }
         }

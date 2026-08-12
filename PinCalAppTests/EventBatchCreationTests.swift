@@ -215,6 +215,45 @@ struct EventBatchCreationTests {
         #expect(viewModel.selectedColor == nil)
     }
     
+    @Test func batchTitleShowsPeriodFromEarliestToLatestEvent() {
+        let viewModel = AddEditEventBatchViewModel(events: [event(day: 20), event(day: 10)])
+        
+        #expect(viewModel.preferredTitle == "10 Jun 2026 - 20 Jun 2026")
+    }
+    
+    @Test func batchTitleShowsSingleEventDate() {
+        let viewModel = AddEditEventBatchViewModel(events: [event(day: 10)])
+        
+        #expect(viewModel.preferredTitle == "10 Jun 2026")
+    }
+    
+    @Test func batchTitleFallsBackToSelectedDayDateWithoutEvents() {
+        let viewModel = AddEditEventBatchViewModel()
+        viewModel.date = date(year: 2026, month: 6, day: 10)
+        
+        #expect(viewModel.preferredTitle == "10 Jun 2026")
+    }
+    
+    @Test func batchTitleIsNilWithoutEventsOrSelectedDay() {
+        let viewModel = AddEditEventBatchViewModel()
+        
+        #expect(viewModel.preferredTitle == nil)
+    }
+    
+    @Test func setupCalendarSetsScrollTargetToEarliestEvent() {
+        let viewModel = AddEditEventBatchViewModel(events: [event(day: 20), event(day: 10)])
+        
+        #expect(viewModel.yearModel.scrollTargetDate.map { Calendar.current.component(.day, from: $0) } == 10)
+    }
+    
+    @Test func setupCalendarFallsBackScrollTargetToSelectedDay() {
+        let viewModel = AddEditEventBatchViewModel()
+        viewModel.date = date(year: 2026, month: 1, day: 1)
+        viewModel.setupCalendar()
+        
+        #expect(viewModel.yearModel.scrollTargetDate.map { Calendar.current.component(.day, from: $0) } == 1)
+    }
+    
     // MARK: - SingleCalendarModel
     
     @Test func colorPickerDisabledInMultipleModeWithColorAndEvents() {

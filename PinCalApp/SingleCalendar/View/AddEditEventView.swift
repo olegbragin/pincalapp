@@ -51,13 +51,16 @@ struct AddEditEventView: View {
                 Text(viewModel.selectedDayToShowEvents ?? Date(), style: .date)
             }
             ToolbarItem(placement: .topBarTrailing) {
-                Button("Save") {
+                Button {
                     Task {
                         if viewModel.save() {
                             dismiss()
                         }
                     }
+                } label: {
+                    Image(systemName: "checkmark")
                 }
+                .accessibilityLabel("Save")
             }
         }
     }

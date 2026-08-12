@@ -78,6 +78,7 @@ final class AddEditEventBatchViewModel {
             USCalendarMonthModel(dto: $0, daySelectionManager: daySelectionManager)
         }
         yearModel.numberOfCurrentMonth = dataProvider.numberOfCurrentMonth
+        yearModel.scrollTargetDate = addEditListViewModel.events.map(\.date).min() ?? date
         updateYearModel()
     }
     
@@ -178,21 +179,34 @@ final class AddEditEventBatchViewModel {
     }
     
     private func title(compact: Bool) -> String? {
-        let days = selectedDays.sorted()
-        guard let start = days.first else { return nil }
-        if days.count == 1 {
-            return compact
-                ? start.formatted(date: .numeric, time: .omitted)
-                : start.formatted(date: .long, time: .omitted)
+        let dates = addEditListViewModel.events.map(\.date).sorted()
+        guard let start = dates.first else {
+            return date.map { singleDate($0, compact: compact) }
         }
-        guard let end = days.last else { return nil }
+        guard let end = dates.last, end > start else {
+            return singleDate(start, compact: compact)
+        }
         if compact {
-            return "\(start.formatted(date: .numeric, time: .omitted))\n\(end.formatted(date: .numeric, time: .omitted))"
+            return compactPeriod(from: start, to: end)
         }
-        return periodTitle(from: start, to: end)
+        return "\(fullDate(start)) - \(fullDate(end))"
     }
     
-    private func periodTitle(from start: Date, to end: Date) -> String {
+    private func singleDate(_ date: Date, compact: Bool) -> String {
+        compact
+            ? date.formatted(date: .numeric, time: .omitted)
+            : fullDate(date)
+    }
+    
+    private func fullDate(_ date: Date) -> String {
+        let calendar = Calendar.autoupdatingCurrent
+        let day = calendar.component(.day, from: date)
+        let month = date.formatted(.dateTime.month(.abbreviated))
+        let year = calendar.component(.year, from: date)
+        return "\(day) \(month) \(year)"
+    }
+    
+    private func compactPeriod(from start: Date, to end: Date) -> String {
         let calendar = Calendar.autoupdatingCurrent
         let startDay = start.formatted(.dateTime.day())
         let endDay = end.formatted(.dateTime.day())
@@ -200,6 +214,6 @@ final class AddEditEventBatchViewModel {
            calendar.component(.year, from: start) == calendar.component(.year, from: end) {
             return "\(startDay)-\(endDay) \(end.formatted(.dateTime.month(.abbreviated).year()))"
         }
-        return "\(startDay) \(start.formatted(.dateTime.month(.wide))) - \(endDay) \(end.formatted(.dateTime.month(.wide).year()))"
+        return "\(startDay) \(start.formatted(.dateTime.month(.abbreviated))) - \(endDay) \(end.formatted(.dateTime.month(.abbreviated).year()))"
     }
 }

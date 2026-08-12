@@ -18,6 +18,7 @@ final class USCalendarYearModel {
         didSet { internalNumberOfColumns = numberOfColumns }
     }
     var numberOfCurrentMonth: Int = 0
+    var scrollTargetDate: Date?
     var scrollPosition: CGFloat = 0
     
     var isLongPressEnabled: Bool = false
