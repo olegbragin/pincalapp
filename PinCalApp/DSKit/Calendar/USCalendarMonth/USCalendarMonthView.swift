@@ -11,9 +11,9 @@ struct USCalendarMonthView: View {
     @Bindable var viewModel: USCalendarMonthModel
     
     var body: some View {
-        LazyVStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 8) {
             Text(viewModel.label)
-            LazyVStack(alignment: .leading, spacing: 0) {
+            VStack(alignment: .leading, spacing: 0) {
                 USCalendarWeekHeaderView(viewModel: .init(weekSymbols: viewModel.weekDaySymbols))
                     .padding(.bottom, 0)
                 ForEach(viewModel.weeks) { week in

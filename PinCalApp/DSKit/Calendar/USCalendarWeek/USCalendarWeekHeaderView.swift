@@ -23,7 +23,6 @@ struct USCalendarWeekHeaderView: View {
                         .font(.footnote)
                         .foregroundColor(Color("colorForegroundDisabled"))
                         .background(.clear)
-                        .shadow(radius: 2)
                 }
             }
         }

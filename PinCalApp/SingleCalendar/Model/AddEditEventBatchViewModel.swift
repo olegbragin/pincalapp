@@ -34,6 +34,7 @@ final class AddEditEventBatchViewModel {
     let daySelectionManager = USCalendarDaySelectionManager()
     var yearModel = USCalendarYearModel()
     private let dataProvider = USCalendarDataProvider()
+    private var builtCalendarYear: Int?
     
     var preferredTitle: String? {
         title(compact: false)
@@ -74,10 +75,14 @@ final class AddEditEventBatchViewModel {
     
     func setupCalendar() {
         daySelectionManager.selectionMode = .multiple
-        yearModel.months = dataProvider.months(forYear: calendarYear).map {
-            USCalendarMonthModel(dto: $0, daySelectionManager: daySelectionManager)
+        let year = calendarYear
+        if yearModel.months.isEmpty || builtCalendarYear != year {
+            yearModel.months = dataProvider.months(forYear: year).map {
+                USCalendarMonthModel(dto: $0, daySelectionManager: daySelectionManager)
+            }
+            yearModel.numberOfCurrentMonth = dataProvider.numberOfCurrentMonth
+            builtCalendarYear = year
         }
-        yearModel.numberOfCurrentMonth = dataProvider.numberOfCurrentMonth
         yearModel.scrollTargetDate = addEditListViewModel.events.map(\.date).min() ?? date
         updateYearModel()
     }

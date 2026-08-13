@@ -14,13 +14,9 @@ struct USCalendarYearView: View {
     // Временный масштаб во время жеста (сбрасывается после)
     @GestureState private var tempMagnification: CGFloat = 1.0
     
-    var body: some View {
-        ScrollViewReader { proxy in
-            verticalLayout(proxy: proxy)
-        }
-    }
+    @State private var initialScrollIndex: Int?
     
-    private func verticalLayout(proxy: ScrollViewProxy) -> some View {
+    var body: some View {
         ScrollView {
             LazyVGrid(
                 columns: Array(
@@ -36,12 +32,14 @@ struct USCalendarYearView: View {
                     .id(index)
                 }
             }
+            .scrollTargetLayout()
         }
+        .scrollPosition(id: $initialScrollIndex, anchor: .top)
         .onAppear {
-            scrollToInitialMonth(proxy: proxy, anchor: .top)
+            setInitialScrollIndex()
         }
         .onChange(of: viewModel.numberOfColumns) {
-            scrollToInitialMonth(proxy: proxy, anchor: .top)
+            initialScrollIndex = targetMonthIndex
         }
         .highPriorityGesture(pinchToZoomGesture)
         .animation(.easeOut(duration: 0.3), value: viewModel.numberOfColumns)
@@ -54,18 +52,17 @@ struct USCalendarYearView: View {
         )
     }
     
-    private func scrollToInitialMonth(proxy: ScrollViewProxy, anchor: UnitPoint) {
-        let index: Int?
+    private func setInitialScrollIndex() {
+        guard initialScrollIndex == nil else { return }
+        initialScrollIndex = targetMonthIndex
+    }
+    
+    private var targetMonthIndex: Int? {
         if let target = viewModel.scrollTargetDate {
             let monthNumber = Calendar.autoupdatingCurrent.component(.month, from: target)
-            index = viewModel.months.firstIndex { $0.number == monthNumber }
-        } else {
-            index = viewModel.indexOfCurrentMonth
+            return viewModel.months.firstIndex { $0.number == monthNumber }
         }
-        guard let index else { return }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
-            proxy.scrollTo(index, anchor: anchor)
-        }
+        return viewModel.indexOfCurrentMonth
     }
 }
 

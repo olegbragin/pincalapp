@@ -11,42 +11,37 @@ struct USCalendarDayView: View {
     @Bindable var model: USCalendarDayModel
     
     var body: some View {
-        GeometryReader { geometry in
-            let side = geometry.size.width
-            ZStack {
-                USCalendarDayEventView(
-                    events: model.events.map(Self.eventColor(for:))
-                )
-                .clipShape(RoundedRectangle(cornerRadius: 8))
-                .background(
-                    RoundedRectangle(cornerRadius: 8)
-                        .fill(backgroundColor)
-                )
-                .padding(2)
-                .overlay(
-                    RoundedRectangle(cornerRadius: 8)
-                        .stroke(borderColor, lineWidth: 0.5)
-                )
-                
-                // Текст
-                Text(model.text)
-                    .font(font)
-                    .foregroundColor(Color(textColor))
-                    .background(.clear)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.3)
-                    .allowsTightening(true)
-                    .padding(.horizontal, 2)
-            }
-            .frame(width: side, height: side)
+        ZStack {
+            USCalendarDayEventView(
+                events: model.events.map(Self.eventColor(for:))
+            )
+            .clipShape(RoundedRectangle(cornerRadius: 8))
+            .background(
+                RoundedRectangle(cornerRadius: 8)
+                    .fill(backgroundColor)
+            )
+            .padding(2)
+            .overlay(
+                RoundedRectangle(cornerRadius: 8)
+                    .stroke(borderColor, lineWidth: 0.5)
+            )
+
+            // Текст
+            Text(model.text)
+                .font(font)
+                .foregroundColor(Color(textColor))
+                .background(.clear)
+                .lineLimit(1)
+                .allowsTightening(true)
+                .padding(.horizontal, 2)
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .aspectRatio(1, contentMode: .fit)
         .accessibilityIdentifier(accessibilityID)
     }
     
     private var accessibilityID: String {
-        guard let date = model.date else { return "day-empty" }
-        return "day-\(Self.dayIDFormatter.string(from: date))"
+        model.accessibilityID
     }
     
     private static let eventColorsByOption: [String: Color] = Dictionary(
@@ -56,13 +51,6 @@ struct USCalendarDayView: View {
     private static func eventColor(for name: String) -> Color {
         eventColorsByOption[name] ?? Color(name)
     }
-    
-    private static let dayIDFormatter: DateFormatter = {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "yyyy-MM-dd"
-        formatter.locale = Locale(identifier: "en_US_POSIX")
-        return formatter
-    }()
     
     private var textColor: Color {
         switch (model.isToday, model.isInCurrentMonth) {
@@ -75,10 +63,12 @@ struct USCalendarDayView: View {
         }
     }
     
+    private static let fontBaseSize: CGFloat = 10
+
     private var font: Font {
-        var font = Font.caption
+        let font = Font.system(size: Self.fontBaseSize)
         if model.isToday {
-            font = font.bold()
+            return font.bold()
         }
         return font
     }
