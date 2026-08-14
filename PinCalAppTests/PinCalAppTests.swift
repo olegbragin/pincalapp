@@ -10,6 +10,7 @@ import Foundation
 import ObjectBox
 @testable import PinCalApp
 
+@MainActor
 struct PinCalAppTests {
 
     @Test func example() async throws {

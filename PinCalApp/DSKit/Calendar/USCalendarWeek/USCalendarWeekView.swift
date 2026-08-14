@@ -12,12 +12,14 @@ struct USCalendarWeekView: View {
     private static let hapticFeedback = UINotificationFeedbackGenerator()
     
     @Bindable var viewModel: USCalendarWeekModel
+    var cellSize: CGFloat
     
     var body: some View {
-        HStack(spacing: 0) {
+        GridRow {
             ForEach(viewModel.days, id: \.id) { day in
                 USCalendarDayView(
-                    model: day
+                    model: day,
+                    cellSize: cellSize
                 )
                 .padding(.bottom, 0)
                 .onTapGesture {
@@ -42,21 +44,24 @@ struct USCalendarWeekView: View {
 }
 
 #Preview {
-    USCalendarWeekView(
-        viewModel: .init(
-            dto: .init(
-                number: 4,
-                days: [
-                    .init(date: Date(), number: 44, isInCurrentMonth: true, isToday: false),
-                    .init(date: Date(), number: 43, isInCurrentMonth: true, isToday: false),
-                    .init(date: Date(), number: 44, isInCurrentMonth: true, isToday: false),
-                    .init(date: Date(), number: 43, isInCurrentMonth: true, isToday: false),
-                    .init(date: Date(), number: 45, isInCurrentMonth: true, isToday: false),
-                    .init(date: Date(), number: 44, isInCurrentMonth: true, isToday: false),
-                    .init(date: Date(), number: 45, isInCurrentMonth: true, isToday: true),
-                ],
+    Grid {
+        USCalendarWeekView(
+            viewModel: .init(
+                dto: .init(
+                    number: 4,
+                    days: [
+                        .init(date: Date(), number: 44, isInCurrentMonth: true, isToday: false),
+                        .init(date: Date(), number: 43, isInCurrentMonth: true, isToday: false),
+                        .init(date: Date(), number: 44, isInCurrentMonth: true, isToday: false),
+                        .init(date: Date(), number: 43, isInCurrentMonth: true, isToday: false),
+                        .init(date: Date(), number: 45, isInCurrentMonth: true, isToday: false),
+                        .init(date: Date(), number: 44, isInCurrentMonth: true, isToday: false),
+                        .init(date: Date(), number: 45, isInCurrentMonth: true, isToday: true),
+                    ],
+                ),
+                daySelectionManager: USCalendarDaySelectionManager()
             ),
-            daySelectionManager: USCalendarDaySelectionManager()
+            cellSize: 50
         )
-    )
+    }
 }

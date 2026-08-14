@@ -9,16 +9,21 @@ import SwiftUI
 
 struct USCalendarMonthView: View {
     @Bindable var viewModel: USCalendarMonthModel
+    var cellSize: CGFloat
     
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 2) {
             Text(viewModel.label)
-            VStack(alignment: .leading, spacing: 0) {
-                USCalendarWeekHeaderView(viewModel: .init(weekSymbols: viewModel.weekDaySymbols))
-                    .padding(.bottom, 0)
+                .padding(.leading, max(cellSize / 2 - 8, 2))
+            Grid(horizontalSpacing: 0, verticalSpacing: 0) {
+                USCalendarWeekHeaderView(
+                    viewModel: viewModel.weekHeaderModel,
+                    cellSize: cellSize
+                )
                 ForEach(viewModel.weeks) { week in
                     USCalendarWeekView(
-                        viewModel: week
+                        viewModel: week,
+                        cellSize: cellSize
                     )
                 }
             }
@@ -36,6 +41,7 @@ struct USCalendarMonthView: View {
                 weeks: []
             ),
             daySelectionManager: USCalendarDaySelectionManager()
-        )
+        ),
+        cellSize: 50
     )
 }

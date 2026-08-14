@@ -9,14 +9,14 @@ import SwiftUI
 
 struct USCalendarWeekHeaderView: View {
     @Bindable var viewModel: USCalendarWeekHeaderModel
+    var cellSize: CGFloat
     
     var body: some View {
-        HStack(spacing: 0) {
+        GridRow {
             ForEach(viewModel.weekSymbols, id: \.id) { symbol in
                 ZStack {
                     RoundedRectangle(cornerRadius: 8)
                         .fill(.clear)
-                        .aspectRatio(1, contentMode: .fit)
                         .padding(2)
                     
                     Text(symbol.name)
@@ -24,13 +24,19 @@ struct USCalendarWeekHeaderView: View {
                         .foregroundColor(Color("colorForegroundDisabled"))
                         .background(.clear)
                 }
+                .frame(width: cellSize, height: cellSize)
             }
         }
     }
 }
 
 #Preview {
-    USCalendarWeekHeaderView(viewModel: .init(weekSymbols: [
-        "S", "T"
-    ]))
+    Grid {
+        USCalendarWeekHeaderView(
+            viewModel: .init(weekSymbols: [
+                "S", "T"
+            ]),
+            cellSize: 50
+        )
+    }
 }

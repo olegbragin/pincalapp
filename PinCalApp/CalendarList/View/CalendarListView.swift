@@ -40,6 +40,7 @@ struct CalendarListView: View {
             .onDelete(perform: deleteItems)
         }
         .listStyle(.insetGrouped)
+        .scrollContentBackground(.hidden)
         .toolbar {
             ToolbarItem(placement: .navigationBarTrailing) {
                 USEditButton(isEditing: $viewModel.isEditing) { isEditing in

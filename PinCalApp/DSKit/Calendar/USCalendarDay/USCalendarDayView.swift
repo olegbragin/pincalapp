@@ -9,12 +9,14 @@ import SwiftUI
 
 struct USCalendarDayView: View {
     @Bindable var model: USCalendarDayModel
+    var cellSize: CGFloat
     
     var body: some View {
         ZStack {
             USCalendarDayEventView(
-                events: model.events.map(Self.eventColor(for:))
+                events: eventColors
             )
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
             .clipShape(RoundedRectangle(cornerRadius: 8))
             .background(
                 RoundedRectangle(cornerRadius: 8)
@@ -23,7 +25,7 @@ struct USCalendarDayView: View {
             .padding(2)
             .overlay(
                 RoundedRectangle(cornerRadius: 8)
-                    .stroke(borderColor, lineWidth: 0.5)
+                    .strokeBorder(borderColor, lineWidth: 0.5)
             )
 
             // Текст
@@ -35,13 +37,21 @@ struct USCalendarDayView: View {
                 .allowsTightening(true)
                 .padding(.horizontal, 2)
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .aspectRatio(1, contentMode: .fit)
+        .frame(width: cellSize, height: cellSize)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(accessibilityLabel)
         .accessibilityIdentifier(accessibilityID)
     }
     
     private var accessibilityID: String {
         model.accessibilityID
+    }
+    
+    private var accessibilityLabel: String {
+        if model.events.isEmpty {
+            return model.text
+        }
+        return "\(model.text), \(model.events.count) events"
     }
     
     private static let eventColorsByOption: [String: Color] = Dictionary(
@@ -50,6 +60,17 @@ struct USCalendarDayView: View {
     
     private static func eventColor(for name: String) -> Color {
         eventColorsByOption[name] ?? Color(name)
+    }
+    
+    private static var eventColorsCache: [[String]: [Color]] = [:]
+    
+    private var eventColors: [Color] {
+        if let cached = Self.eventColorsCache[model.events] {
+            return cached
+        }
+        let colors = model.events.map(Self.eventColor(for:))
+        Self.eventColorsCache[model.events] = colors
+        return colors
     }
     
     private var textColor: Color {
@@ -63,10 +84,22 @@ struct USCalendarDayView: View {
         }
     }
     
-    private static let fontBaseSize: CGFloat = 10
+    private static let fontMinSize: CGFloat = 10
+    private static let fontMaxSize: CGFloat = 20
+    private static let fontSizeToCellRatio: CGFloat = 0.49
+    private static let fontDigitsWidthRatio: CGFloat = 1.3
+    private static let cellPadding: CGFloat = 2
+
+    private var fontSize: CGFloat {
+        let fitSize = (cellSize - Self.cellPadding * 2) / Self.fontDigitsWidthRatio
+        return min(
+            max(cellSize * Self.fontSizeToCellRatio, Self.fontMinSize),
+            min(Self.fontMaxSize, fitSize)
+        )
+    }
 
     private var font: Font {
-        let font = Font.system(size: Self.fontBaseSize)
+        let font = Font.system(size: fontSize)
         if model.isToday {
             return font.bold()
         }
@@ -103,6 +136,7 @@ struct USCalendarDayView: View {
                 isInCurrentMonth: true,
                 isToday: true
             )
-        )
+        ),
+        cellSize: 50
     )
 }

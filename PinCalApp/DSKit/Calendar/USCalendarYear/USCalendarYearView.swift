@@ -17,32 +17,43 @@ struct USCalendarYearView: View {
     @State private var initialScrollIndex: Int?
     
     var body: some View {
-        ScrollView {
-            LazyVGrid(
-                columns: Array(
-                    repeating: GridItem(.flexible()),
-                    count: viewModel.internalNumberOfColumns
-                )
-            ) {
-                ForEach(viewModel.months.indices, id: \.self) { index in
-                    let month = viewModel.months[index]
-                    USCalendarMonthView(
-                        viewModel: month
-                    )
-                    .id(index)
+        GeometryReader { proxy in
+            let cellSize = proxy.size.width / CGFloat(viewModel.internalNumberOfColumns) / 7
+            ScrollView {
+                LazyVGrid(
+                    columns: gridColumns,
+                    spacing: 16
+                ) {
+                    ForEach(viewModel.months.indices, id: \.self) { index in
+                        let month = viewModel.months[index]
+                        USCalendarMonthView(
+                            viewModel: month,
+                            cellSize: cellSize
+                        )
+                        .id(index)
+                    }
+                }
+                .scrollTargetLayout()
+            }
+            .scrollPosition(id: $initialScrollIndex, anchor: .top)
+            .onAppear {
+                setInitialScrollIndex()
+            }
+            .onChange(of: viewModel.numberOfColumns) {
+                initialScrollIndex = targetMonthIndex
+            }
+            .onChange(of: proxy.size) { oldSize, newSize in
+                guard oldSize != newSize else { return }
+                let target = initialScrollIndex ?? targetMonthIndex
+                guard let target else { return }
+                initialScrollIndex = nil
+                Task { @MainActor in
+                    initialScrollIndex = target
                 }
             }
-            .scrollTargetLayout()
+            .highPriorityGesture(pinchToZoomGesture)
+            .animation(.easeOut(duration: 0.3), value: viewModel.numberOfColumns)
         }
-        .scrollPosition(id: $initialScrollIndex, anchor: .top)
-        .onAppear {
-            setInitialScrollIndex()
-        }
-        .onChange(of: viewModel.numberOfColumns) {
-            initialScrollIndex = targetMonthIndex
-        }
-        .highPriorityGesture(pinchToZoomGesture)
-        .animation(.easeOut(duration: 0.3), value: viewModel.numberOfColumns)
     }
     
     private var pinchToZoomGesture: USCalendarPinchToZoomGesture {
@@ -50,6 +61,18 @@ struct USCalendarYearView: View {
             tempMagnification: $tempMagnification,
             numberOfColumns: $viewModel.numberOfColumns
         )
+    }
+    
+    private static var columnsCache: [Int: [GridItem]] = [:]
+    
+    private var gridColumns: [GridItem] {
+        let count = viewModel.internalNumberOfColumns
+        if let cached = Self.columnsCache[count] {
+            return cached
+        }
+        let columns = Array(repeating: GridItem(.flexible(), spacing: 0), count: count)
+        Self.columnsCache[count] = columns
+        return columns
     }
     
     private func setInitialScrollIndex() {

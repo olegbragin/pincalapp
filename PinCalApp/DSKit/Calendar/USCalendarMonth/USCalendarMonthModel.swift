@@ -14,6 +14,7 @@ final class USCalendarMonthModel: Identifiable {
     let label: String
     let number: Int
     let weekDaySymbols: [String]
+    let weekHeaderModel: USCalendarWeekHeaderModel
     let weeks: [USCalendarWeekModel]
     
     var isLongPressed: Bool = false
@@ -23,6 +24,7 @@ final class USCalendarMonthModel: Identifiable {
         self.label = dto.label
         self.number = dto.number
         self.weekDaySymbols = dto.weekDaySymbols
+        self.weekHeaderModel = USCalendarWeekHeaderModel(weekSymbols: dto.weekDaySymbols)
         self.weeks = dto.weeks.map {
             .init(dto: $0, daySelectionManager: daySelectionManager)
         }
