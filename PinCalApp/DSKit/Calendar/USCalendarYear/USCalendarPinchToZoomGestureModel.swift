@@ -17,10 +17,23 @@ final class USCalendarPinchToZoomGestureModel {
     private var lastMagnification: CGFloat = 1.0
     private var lastNumberOfColumns: Int = 3
     var numberOfColumns: Int
+    var maxNumberOfColumns: Int = 3
     
-    init(numberOfColumns: Int) {
+    init(numberOfColumns: Int, maxNumberOfColumns: Int = 3) {
         self.numberOfColumns = numberOfColumns
         self.lastNumberOfColumns = numberOfColumns
+        self.maxNumberOfColumns = maxNumberOfColumns
+    }
+    
+    /// Синхронизирует максимально допустимое количество колонок,
+    /// при необходимости сжимая текущее значение.
+    func updateMaxNumberOfColumns(_ max: Int) {
+        maxNumberOfColumns = max
+        let clamped = min(numberOfColumns, max)
+        if clamped != numberOfColumns {
+            numberOfColumns = clamped
+            lastNumberOfColumns = clamped
+        }
     }
     
     /// Обрабатывает жест масштабирования
@@ -67,7 +80,7 @@ final class USCalendarPinchToZoomGestureModel {
         }
         
         // 6. Ограничение диапазона колонок
-        newCount = max(1, min(newCount, 3))
+        newCount = max(1, min(newCount, maxNumberOfColumns))
         
         // 7. Обновление состояния только при изменении
         if newCount != lastNumberOfColumns {

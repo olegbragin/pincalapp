@@ -19,13 +19,20 @@ struct USCalendarPinchToZoomGesture: Gesture {
     
     @Binding var numberOfColumns: Int
     
+    var maxNumberOfColumns: Int
+    
     init(
         tempMagnification: GestureState<CGFloat>,
         numberOfColumns: Binding<Int>,
+        maxNumberOfColumns: Int
     ) {
         self._tempMagnification = tempMagnification
         self._numberOfColumns = numberOfColumns
-        self.viewModel = USCalendarPinchToZoomGestureModel(numberOfColumns: numberOfColumns.wrappedValue)
+        self.maxNumberOfColumns = maxNumberOfColumns
+        self.viewModel = USCalendarPinchToZoomGestureModel(
+            numberOfColumns: numberOfColumns.wrappedValue,
+            maxNumberOfColumns: maxNumberOfColumns
+        )
     }
     
     var body: some Gesture {
@@ -37,6 +44,7 @@ struct USCalendarPinchToZoomGesture: Gesture {
                 }
             }
             .onEnded { value in
+                viewModel.updateMaxNumberOfColumns(maxNumberOfColumns)
                 let duration = Date().timeIntervalSince(gestureStartTime ?? Date())
                 viewModel.handleMagnify(
                     magnification: value.magnification,

@@ -17,6 +17,12 @@ struct USCalendarYearView: View {
     @State private var initialScrollIndex: Int?
     
     private static let monthColumnSpacing: CGFloat = 8
+    private static let minMonthCellSize: CGFloat = 28
+    private static let minMonthWidth: CGFloat = minMonthCellSize * 7
+    
+    private static func maxColumns(forWidth width: CGFloat) -> Int {
+        max(3, Int(floor(width / minMonthWidth)))
+    }
     
     var body: some View {
         GeometryReader { proxy in
@@ -39,7 +45,11 @@ struct USCalendarYearView: View {
             }
             .scrollPosition(id: $initialScrollIndex, anchor: .top)
             .onAppear {
+                viewModel.maximumNumberOfColumns = Self.maxColumns(forWidth: proxy.size.width)
                 setInitialScrollIndex()
+            }
+            .onChange(of: proxy.size.width) { _, newWidth in
+                viewModel.maximumNumberOfColumns = Self.maxColumns(forWidth: newWidth)
             }
             .onChange(of: viewModel.numberOfColumns) {
                 initialScrollIndex = targetMonthIndex
@@ -61,7 +71,8 @@ struct USCalendarYearView: View {
     private var pinchToZoomGesture: USCalendarPinchToZoomGesture {
         USCalendarPinchToZoomGesture(
             tempMagnification: $tempMagnification,
-            numberOfColumns: $viewModel.numberOfColumns
+            numberOfColumns: $viewModel.numberOfColumns,
+            maxNumberOfColumns: viewModel.maximumNumberOfColumns
         )
     }
     

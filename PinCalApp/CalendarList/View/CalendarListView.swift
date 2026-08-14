@@ -18,7 +18,7 @@ struct CalendarListView: View {
             List(selection: $selector.selectedItem) {
             ForEach(viewModel.calendars.indices, id: \.self) { index in
                 DSCard {
-                    VStack {
+                    VStack(alignment: .leading, spacing: 4) {
                         HStack {
                             Image(systemName: "calendar")
                             if viewModel.isEditing {
@@ -30,6 +30,7 @@ struct CalendarListView: View {
                         Text("Number of columns: \(viewModel.calendars[index].numberOfColumns)")
                     }
                     .padding()
+                    .foregroundStyle(.primary)
                 }
                 .listRowBackground(Color.clear)
                 .listRowSeparator(.hidden)
