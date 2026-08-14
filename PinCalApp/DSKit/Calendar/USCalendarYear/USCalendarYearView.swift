@@ -16,9 +16,11 @@ struct USCalendarYearView: View {
     
     @State private var initialScrollIndex: Int?
     
+    private static let monthColumnSpacing: CGFloat = 8
+    
     var body: some View {
         GeometryReader { proxy in
-            let cellSize = proxy.size.width / CGFloat(viewModel.internalNumberOfColumns) / 7
+            let cellSize = (proxy.size.width - Self.monthColumnSpacing * CGFloat(viewModel.internalNumberOfColumns - 1)) / CGFloat(viewModel.internalNumberOfColumns) / 7
             ScrollView {
                 LazyVGrid(
                     columns: gridColumns,
@@ -70,7 +72,7 @@ struct USCalendarYearView: View {
         if let cached = Self.columnsCache[count] {
             return cached
         }
-        let columns = Array(repeating: GridItem(.flexible(), spacing: 0), count: count)
+        let columns = Array(repeating: GridItem(.flexible(), spacing: Self.monthColumnSpacing), count: count)
         Self.columnsCache[count] = columns
         return columns
     }
