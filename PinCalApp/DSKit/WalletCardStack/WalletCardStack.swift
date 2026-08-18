@@ -9,7 +9,7 @@ import SwiftUI
 
 /// A stacked deck of cards.
 /// Cards overlap vertically; the first item is frontmost. The user taps a card
-/// to select it, swipes left to remove it, or long-presses to edit it.
+/// to select it or swipes left to remove it.
 struct WalletCardStack<Item: Identifiable & Hashable, Content: View>: View {
     let items: [Item]
     var aspectRatio: CGFloat
@@ -19,7 +19,6 @@ struct WalletCardStack<Item: Identifiable & Hashable, Content: View>: View {
     var horizontalPadding: CGFloat
     var onSelect: (Item) -> Void
     var onRemove: ((Item) -> Void)?
-    var onLongPress: ((Item) -> Void)?
     var editingID: AnyHashable?
     let cardContent: (Item, CGFloat, CGFloat, Bool) -> Content
 
@@ -32,7 +31,6 @@ struct WalletCardStack<Item: Identifiable & Hashable, Content: View>: View {
         horizontalPadding: CGFloat = 12,
         onSelect: @escaping (Item) -> Void,
         onRemove: ((Item) -> Void)? = nil,
-        onLongPress: ((Item) -> Void)? = nil,
         editingID: AnyHashable? = nil,
         @ViewBuilder cardContent: @escaping (Item, CGFloat, CGFloat, Bool) -> Content
     ) {
@@ -44,7 +42,6 @@ struct WalletCardStack<Item: Identifiable & Hashable, Content: View>: View {
         self.horizontalPadding = horizontalPadding
         self.onSelect = onSelect
         self.onRemove = onRemove
-        self.onLongPress = onLongPress
         self.editingID = editingID
         self.cardContent = cardContent
     }
@@ -53,6 +50,7 @@ struct WalletCardStack<Item: Identifiable & Hashable, Content: View>: View {
         GeometryReader { proxy in
             let cardWidth = max(0, proxy.size.width - horizontalPadding * 2)
             let normalCardHeight = min(maxCardHeight, cardWidth / aspectRatio)
+            let totalContentHeight = normalCardHeight + peek * CGFloat(max(0, items.count - 1))
 
             ZStack(alignment: .top) {
                 ForEach(Array(items.enumerated()), id: \.element.id) { index, item in
@@ -74,10 +72,6 @@ struct WalletCardStack<Item: Identifiable & Hashable, Content: View>: View {
                         .onTapGesture {
                             guard !isEditing else { return }
                             onSelect(items[index])
-                        }
-                        .onLongPressGesture(minimumDuration: 0.5) {
-                            guard !isEditing else { return }
-                            onLongPress?(items[index])
                         }
                         .simultaneousGesture(
                             !isEditing && onRemove != nil
@@ -109,7 +103,7 @@ struct WalletCardStack<Item: Identifiable & Hashable, Content: View>: View {
             }
             .contentShape(Rectangle())
             .animation(.spring(response: 0.45, dampingFraction: 0.85), value: editingID)
-            .frame(width: proxy.size.width, height: proxy.size.height, alignment: .top)
+            .frame(width: proxy.size.width, height: totalContentHeight, alignment: .top)
         }
     }
 

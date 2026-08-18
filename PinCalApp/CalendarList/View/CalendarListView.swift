@@ -107,43 +107,41 @@ struct CalendarListView: View {
             if viewModel.calendars.isEmpty {
                 emptyDeck
             } else {
-                WalletCardStack(
-                    items: deckItems,
-                    onSelect: { calendar in
-                        guard viewModel.editingCalendarID == nil else { return }
-                        selector.selectedItem = .calendar(id: calendar.id)
-                    },
-                    onRemove: { calendar in
-                        withAnimation(.easeOut(duration: 0.3)) {
-                            viewModel.removeCalendarFromDeck(calendar)
-                        }
-                    },
-                    onLongPress: { calendar in
-                        withAnimation(.spring(response: 0.45, dampingFraction: 0.85)) {
-                            viewModel.startEditing(calendar)
-                        }
-                    },
-                    editingID: viewModel.editingCalendarID,
-                    cardContent: { calendar, width, height, isEditing in
-                        CalendarCardContent(
-                            calendar: calendar,
-                            width: width,
-                            height: height,
-                            isEditing: isEditing,
-                            editingName: $viewModel.editingCalendarName,
-                            gradient: Self.cardGradient(for: calendar.id),
-                            onEdit: {
-                                withAnimation(.spring(response: 0.45, dampingFraction: 0.85)) {
-                                    viewModel.startEditing(calendar)
-                                }
+                ScrollView {
+                    WalletCardStack(
+                        items: deckItems,
+                        onSelect: { calendar in
+                            guard viewModel.editingCalendarID == nil else { return }
+                            selector.selectedItem = .calendar(id: calendar.id)
+                        },
+                        onRemove: { calendar in
+                            withAnimation(.easeOut(duration: 0.3)) {
+                                viewModel.removeCalendarFromDeck(calendar)
                             }
-                        )
+                        },
+                        editingID: viewModel.editingCalendarID,
+                        cardContent: { calendar, width, height, isEditing in
+                            CalendarCardContent(
+                                calendar: calendar,
+                                width: width,
+                                height: height,
+                                isEditing: isEditing,
+                                editingName: $viewModel.editingCalendarName,
+                                gradient: Self.cardGradient(for: calendar.id),
+                                onEdit: {
+                                    withAnimation(.spring(response: 0.45, dampingFraction: 0.85)) {
+                                        viewModel.startEditing(calendar)
+                                    }
+                                }
+                            )
+                        }
+                    )
+                    .safeRefreshable {
+                        try? await viewModel.fetch()
                     }
-                )
-                .safeRefreshable {
-                    try? await viewModel.fetch()
+                    .frame(maxWidth: .infinity, alignment: .top)
                 }
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+                .scrollIndicators(.hidden)
             }
         }
     }
