@@ -15,6 +15,15 @@ final class PinCalAppUITestsLaunchTests: XCTestCase {
 
     override func setUpWithError() throws {
         continueAfterFailure = false
+        Task { @MainActor in
+            XCUIDevice.shared.orientation = .portrait
+        }
+    }
+
+    override func tearDownWithError() throws {
+        Task { @MainActor in
+            XCUIDevice.shared.orientation = .portrait
+        }
     }
 
     @MainActor

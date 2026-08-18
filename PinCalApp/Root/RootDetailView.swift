@@ -22,7 +22,7 @@ struct RootDetailView: View {
     }
 }
 
-private struct CalendarDetailView: View {
+struct CalendarDetailView: View {
     let calendarId: Int64
     @State private var model: SingleCalendarModel
 

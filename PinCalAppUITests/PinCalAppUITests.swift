@@ -10,16 +10,13 @@ import XCTest
 final class PinCalAppUITests: XCTestCase {
 
     override func setUpWithError() throws {
-        // Put setup code here. This method is called before the invocation of each test method in the class.
-
-        // In UI tests it is usually best to stop immediately when a failure occurs.
         continueAfterFailure = false
-
-        // In UI tests it’s important to set the initial state - such as interface orientation - required for your tests before they run. The setUp method is a good place to do this.
     }
 
     override func tearDownWithError() throws {
-        // Put teardown code here. This method is called after the invocation of each test method in the class.
+        Task { @MainActor in
+            XCUIDevice.shared.orientation = .portrait
+        }
     }
 
     @MainActor
@@ -40,7 +37,7 @@ final class PinCalAppUITests: XCTestCase {
         app.launch()
 
         // Open the seeded calendar from the sidebar.
-        app.staticTexts["UI Test Calendar"].tap()
+        app.staticTexts["UI Test Calendar"].firstMatch.tap()
 
         let day10 = dayIdentifier(day: 10)
         let day12 = dayIdentifier(day: 12)
