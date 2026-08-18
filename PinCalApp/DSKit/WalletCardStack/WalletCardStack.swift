@@ -108,6 +108,7 @@ struct WalletCardStack<Item: Identifiable & Hashable, Content: View>: View {
                 }
             }
             .contentShape(Rectangle())
+            .animation(.spring(response: 0.45, dampingFraction: 0.85), value: editingID)
             .frame(width: proxy.size.width, height: proxy.size.height, alignment: .top)
         }
     }

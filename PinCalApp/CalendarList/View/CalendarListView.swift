@@ -107,7 +107,7 @@ struct CalendarListView: View {
             if viewModel.calendars.isEmpty {
                 emptyDeck
             } else {
-                let stack = WalletCardStack(
+                WalletCardStack(
                     items: deckItems,
                     onSelect: { calendar in
                         guard viewModel.editingCalendarID == nil else { return }
@@ -140,20 +140,10 @@ struct CalendarListView: View {
                         )
                     }
                 )
-
-                if viewModel.editingCalendarID != nil {
-                    ScrollView {
-                        stack
-                            .frame(maxWidth: .infinity, alignment: .top)
-                    }
-                    .scrollIndicators(.hidden)
-                } else {
-                    stack
-                        .safeRefreshable {
-                            try? await viewModel.fetch()
-                        }
-                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+                .safeRefreshable {
+                    try? await viewModel.fetch()
                 }
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
             }
         }
     }
@@ -300,6 +290,17 @@ private extension View {
                     CalendarDetailView(calendarId: id)
                 }
             }
+        } else {
+            self
+        }
+    }
+}
+
+private extension View {
+    @ViewBuilder
+    func `if`<Content: View>(_ condition: Bool, transform: (Self) -> Content) -> some View {
+        if condition {
+            transform(self)
         } else {
             self
         }
