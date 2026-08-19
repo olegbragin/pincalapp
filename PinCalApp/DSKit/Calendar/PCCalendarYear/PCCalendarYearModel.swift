@@ -9,9 +9,6 @@ import SwiftUI
 
 @Observable
 final class PCCalendarYearModel {
-    
-    // Для тактильной отдачи (опционально)
-    private let hapticFeedback = UINotificationFeedbackGenerator()
     private(set) var internalNumberOfColumns: Int = 3
     
     var numberOfColumns: Int {

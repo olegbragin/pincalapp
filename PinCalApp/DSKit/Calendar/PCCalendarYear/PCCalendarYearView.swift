@@ -68,11 +68,17 @@ struct PCCalendarYearView: View {
         }
     }
     
-    private var pinchToZoomGesture: PCCalendarPinchToZoomGesture {
-        PCCalendarPinchToZoomGesture(
+    private var pinchToZoomGesture: PCPinchToZoomGesture {
+        PCPinchToZoomGesture(
             tempMagnification: $tempMagnification,
-            numberOfColumns: $viewModel.numberOfColumns,
-            maxNumberOfColumns: viewModel.maximumNumberOfColumns
+            onPinchedToZoomIn: {
+                let next = viewModel.numberOfColumns + 1
+                viewModel.numberOfColumns = min(viewModel.maximumNumberOfColumns, next)
+            },
+            onPinchedToZoomOut: {
+                let next = viewModel.numberOfColumns - 1
+                viewModel.numberOfColumns = max(1, next)
+            }
         )
     }
     

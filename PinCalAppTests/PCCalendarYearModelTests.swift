@@ -42,50 +42,60 @@ struct PCCalendarYearModelTests {
     }
 
     @Test func pinchModelClampsToMaximumOnZoomOut() {
-        let model = PCCalendarPinchToZoomGestureModel(numberOfColumns: 2, maxNumberOfColumns: 2)
-        var reportedChanges: [Int] = []
+        let model = PCPinchToZoomGestureModel()
+        var zoomInCount = 0
+        var zoomOutCount = 0
+        model.onPinchedToZoomIn = { zoomInCount += 1 }
+        model.onPinchedToZoomOut = { zoomOutCount += 1 }
 
         model.handleMagnify(
             magnification: 0.5,
             velocity: 0,
-            gestureDuration: 0.3,
-            didChange: { reportedChanges.append($0) }
+            gestureDuration: 0.3
         )
 
-        #expect(model.numberOfColumns == 2)
-        #expect(reportedChanges.isEmpty)
+        #expect(zoomInCount == 1)
+        #expect(zoomOutCount == 0)
     }
 
-    @Test func pinchModelIncreasesColumnsUpToMaximum() {
-        let model = PCCalendarPinchToZoomGestureModel(numberOfColumns: 2, maxNumberOfColumns: 3)
-        var reportedChanges: [Int] = []
+    @Test func pinchModelFiresZoomOutOnPinchIn() {
+        let model = PCPinchToZoomGestureModel()
+        var zoomInCount = 0
+        var zoomOutCount = 0
+        model.onPinchedToZoomIn = { zoomInCount += 1 }
+        model.onPinchedToZoomOut = { zoomOutCount += 1 }
 
         model.handleMagnify(
             magnification: 0.5,
             velocity: 0,
-            gestureDuration: 0.3,
-            didChange: { reportedChanges.append($0) }
+            gestureDuration: 0.3
         )
 
-        #expect(model.numberOfColumns == 3)
-        #expect(reportedChanges == [3])
+        #expect(zoomInCount == 1)
 
         model.handleMagnify(
             magnification: 0.5,
             velocity: 0,
-            gestureDuration: 0.3,
-            didChange: { reportedChanges.append($0) }
+            gestureDuration: 0.3
         )
 
-        #expect(model.numberOfColumns == 3)
+        #expect(zoomInCount == 1)
     }
 
-    @Test func updateMaxNumberOfColumnsReclampsCurrentValue() {
-        let model = PCCalendarPinchToZoomGestureModel(numberOfColumns: 5, maxNumberOfColumns: 6)
+    @Test func pinchModelFiresZoomInOnPinchOut() {
+        let model = PCPinchToZoomGestureModel()
+        var zoomInCount = 0
+        var zoomOutCount = 0
+        model.onPinchedToZoomIn = { zoomInCount += 1 }
+        model.onPinchedToZoomOut = { zoomOutCount += 1 }
 
-        model.updateMaxNumberOfColumns(4)
+        model.handleMagnify(
+            magnification: 2.0,
+            velocity: 0,
+            gestureDuration: 0.3
+        )
 
-        #expect(model.maxNumberOfColumns == 4)
-        #expect(model.numberOfColumns == 4)
+        #expect(zoomOutCount == 1)
+        #expect(zoomInCount == 0)
     }
 }
