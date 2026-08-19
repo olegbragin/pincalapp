@@ -49,3 +49,5 @@ extension CalendarDataSource: Equatable {
         lhs.id == rhs.id && lhs.name == rhs.name && lhs.year == rhs.year && lhs.numberOfColumns == rhs.numberOfColumns
     }
 }
+
+extension CalendarDataSource: CalendarCardData {}

@@ -15,12 +15,56 @@ struct SingleCalendarView: View {
         
     var body: some View {
         ZStack {
-            content
-                .padding(6)
-                .navigationTitle(viewModel.label)
-                .navigationBarTitleDisplayMode(.inline)
-                .toolbar { toolbarContent }
-                .id(viewModel.calendarid)
+            SingleCalendarStateView(state: viewModel.state) {
+                AnyView(
+                    SingleCalendarFrameView {
+                        SingleCalendarCalendarContent(
+                            isMultiSelect: viewModel.daySelectionManager.selectionMode == .multiple,
+                            selectedColor: $viewModel.selectedColor,
+                            isColorPickerDisabled: viewModel.isColorPickerDisabled,
+                            yearModel: viewModel.yearModel
+                        )
+                    }
+                    .onChange(of: viewModel.yearModel.numberOfColumns) {
+                        if $0 != $1 {
+                            scheduleColumnCountSave()
+                        }
+                    }
+                    .onChange(of: viewModel.daySelectionManager.selectedDays) { _, newValue in
+                        if viewModel.daySelectionManager.selectionMode == .multiple, let selectedDay = newValue.first {
+                            if let selectedColor = viewModel.selectedColor {
+                                viewModel.changeEvent(.init(name: "Event1", date: selectedDay, color: selectedColor.colorName))
+                            }
+                        } else if let selectedDay = newValue.first {
+                            if viewModel.hasEvents(on: selectedDay) {
+                                viewModel.prepareAddEditBatchListViewModel(with: newValue)
+                            } else {
+                                viewModel.prepareAddEditEventBatchViewModel(for: selectedDay)
+                            }
+                        }
+                    }
+                    .onChange(of: viewModel.isEditPresented) { oldValue, newValue in
+                        if oldValue != newValue, !newValue {
+                            viewModel.onBatchListDismissed()
+                        }
+                    }
+                    .onChange(of: viewModel.isEditScreenPresented) { oldValue, newValue in
+                        if oldValue != newValue, !newValue {
+                            viewModel.resetSelectedDays()
+                        }
+                    }
+                    .onChange(of: viewModel.addEditBatchListViewModel.eventBatchesToDelete) {
+                        if $0 != $1 {
+                            viewModel.deleteBatches($1, for: viewModel.calendarid)
+                        }
+                    }
+                )
+            }
+            .padding(6)
+            .navigationTitle(viewModel.label)
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar { toolbarContent }
+            .id(viewModel.calendarid)
         }
         .ignoresSafeArea(edges: .bottom)
         .task(id: viewModel.calendarid) {
@@ -37,68 +81,10 @@ struct SingleCalendarView: View {
             )
         }
         .sheet(isPresented: $viewModel.isEditPresented) {
-            editorContent
-        }
-    }
-    
-    @ViewBuilder
-    private var content: some View {
-        switch viewModel.state {
-        case .empty:
-            EmptyView()
-        case .loading:
-            DSProgressView(label: "Loading")
-        case .content:
-            contentView
-                .onChange(of: viewModel.yearModel.numberOfColumns) {
-                    if $0 != $1 {
-                        scheduleColumnCountSave()
-                    }
-                }
-                .onChange(of: viewModel.daySelectionManager.selectedDays) { _, newValue in
-                    if viewModel.daySelectionManager.selectionMode == .multiple, let selectedDay = newValue.first {
-                        if let selectedColor = viewModel.selectedColor {
-                            viewModel.changeEvent(.init(name: "Event1", date: selectedDay, color: selectedColor.colorName))
-                        }
-                    } else if let selectedDay = newValue.first {
-                        if viewModel.hasEvents(on: selectedDay) {
-                            viewModel.prepareAddEditBatchListViewModel(with: newValue)
-                        } else {
-                            viewModel.prepareAddEditEventBatchViewModel(for: selectedDay)
-                        }
-                    }
-                }
-                .onChange(of: viewModel.isEditPresented) { oldValue, newValue in
-                    if oldValue != newValue, !newValue {
-                        viewModel.onBatchListDismissed()
-                    }
-                }
-                .onChange(of: viewModel.isEditScreenPresented) { oldValue, newValue in
-                    if oldValue != newValue, !newValue {
-                        viewModel.resetSelectedDays()
-                    }
-                }
-                .onChange(of: viewModel.addEditBatchListViewModel.eventBatchesToDelete) {
-                    if $0 != $1 {
-                        viewModel.deleteBatches($1, for: viewModel.calendarid)
-                    }
-                }
-        }
-    }
-    
-    private var contentView: some View {
-        calendarContent
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-    }
-    
-    private var calendarContent: some View {
-        VStack(spacing: 0) {
-            if viewModel.daySelectionManager.selectionMode == .multiple {
-                ColorPickerView(selectedColor: $viewModel.selectedColor, style: .expanded)
-                    .disabled(viewModel.isColorPickerDisabled)
-            }
-            USCalendarYearView(
-                viewModel: viewModel.yearModel
+            SingleCalendarEditorContent(
+                viewModel: viewModel.addEditBatchListViewModel,
+                onClose: { viewModel.isEditPresented = false },
+                onBatchTap: { viewModel.routeToBatchEditor() }
             )
         }
     }
@@ -117,14 +103,6 @@ struct SingleCalendarView: View {
         columnCountSaveTask?.cancel()
         columnCountSaveTask = nil
         viewModel.save(for: viewModel.calendarid)
-    }
-    
-    private var editorContent: some View {
-        AddEditEventBatchListView(
-            viewModel: viewModel.addEditBatchListViewModel,
-            onClose: { viewModel.isEditPresented = false },
-            onBatchTap: { viewModel.routeToBatchEditor() }
-        )
     }
     
     @ToolbarContentBuilder

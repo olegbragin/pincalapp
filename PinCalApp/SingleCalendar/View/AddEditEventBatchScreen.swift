@@ -16,9 +16,9 @@ struct AddEditEventBatchScreen: View {
     var body: some View {
         GeometryReader { geometry in
             if geometry.size.width > geometry.size.height {
-                horizontalLayout
+                BatchEditorHorizontalLayout(viewModel: viewModel, onSave: onSave)
             } else {
-                verticalLayout
+                BatchEditorVerticalLayout(viewModel: viewModel, onSave: onSave)
             }
         }
         .navigationBarBackButtonHidden(true)
@@ -32,7 +32,10 @@ struct AddEditEventBatchScreen: View {
                 }
             }
             ToolbarItem(placement: .principal) {
-                titleContent
+                BatchEditorTitleContent(
+                    preferredTitle: viewModel.preferredTitle,
+                    compactTitle: viewModel.compactTitle
+                )
             }
         }
         .toolbarBackground(Color("colorBackgroundMain"), for: .navigationBar)
@@ -42,63 +45,6 @@ struct AddEditEventBatchScreen: View {
             if let selectedDay = newValue.first {
                 viewModel.toggleEvent(on: selectedDay)
             }
-        }
-    }
-    
-    private var verticalLayout: some View {
-        VStack(spacing: 0) {
-            calendarContent
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-            AddEditEventBatchView(
-                viewModel: viewModel,
-                onSave: onSave
-            )
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-        }
-    }
-    
-    private var horizontalLayout: some View {
-        HStack(spacing: 0) {
-            calendarContent
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-            AddEditEventBatchView(
-                viewModel: viewModel,
-                onSave: onSave
-            )
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-        }
-    }
-    
-    private var calendarContent: some View {
-        USCalendarYearView(
-            viewModel: viewModel.yearModel
-        )
-        .accessibilityIdentifier("batch-editor-calendar")
-    }
-    
-    private var titleContent: some View {
-        ViewThatFits(in: .horizontal) {
-            preferredTitle
-            compactTitle
-        }
-    }
-    
-    @ViewBuilder
-    private var preferredTitle: some View {
-        if let title = viewModel.preferredTitle {
-            Text(title)
-                .font(.headline)
-                .lineLimit(1)
-        }
-    }
-    
-    @ViewBuilder
-    private var compactTitle: some View {
-        if let title = viewModel.compactTitle {
-            Text(title)
-                .font(.headline)
-                .multilineTextAlignment(.center)
-                .lineLimit(2)
         }
     }
 }
