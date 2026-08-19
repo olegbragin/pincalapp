@@ -18,7 +18,7 @@ final class SingleCalendarModel {
         case loading
     }
     
-    private let dataProvider = USCalendarDataProvider()
+    private let dataProvider = PCCalendarDataProvider()
     private let manager: CalendarManager
     
     private var originalBatches: [EventBatchDataSource] = []
@@ -27,11 +27,11 @@ final class SingleCalendarModel {
     private(set) var calendarid: Int64
     private(set) var label: String = ""
     
-    let daySelectionManager = USCalendarDaySelectionManager()
+    let daySelectionManager = PCCalendarDaySelectionManager()
     
-    var selectedColor: ColorOption?
+    var selectedColor: PCColorOption?
     
-    private(set) var yearModel = USCalendarYearModel()
+    private(set) var yearModel = PCCalendarYearModel()
     private(set) var addEditBatchListViewModel = AddEditEventBatchListViewModel()
     
     var state: State = .empty
@@ -95,7 +95,7 @@ final class SingleCalendarModel {
         
         label = calendar.name
         yearModel.months = dataProvider.months(forYear: calendar.year).map {
-            USCalendarMonthModel(dto: $0, daySelectionManager: daySelectionManager)
+            PCCalendarMonthModel(dto: $0, daySelectionManager: daySelectionManager)
         }
         yearModel.numberOfCurrentMonth = dataProvider.numberOfCurrentMonth
         yearModel.set(initialNumberOfColumns: calendar.numberOfColumns)
@@ -126,7 +126,7 @@ final class SingleCalendarModel {
         let addEditModel = addEditBatchListViewModel.addEditEventBatchModel
         addEditModel.eventBatchId = 0
         addEditModel.eventBatchName = sortedEvents.first?.name ?? ""
-        addEditModel.selectedColor = ColorOption(sortedEvents.first?.color ?? "") ?? selectedColor
+        addEditModel.selectedColor = PCColorOption(sortedEvents.first?.color ?? "") ?? selectedColor
         addEditModel.date = nil
         addEditModel.selectedDays = sortedEvents.map(\.date)
         addEditModel.timestamp = UUID()
@@ -143,7 +143,7 @@ final class SingleCalendarModel {
         addEditModel.selectedDays = [date]
         addEditModel.timestamp = UUID()
         addEditModel.prepare(with: [
-            EventDataSource(name: "Event1", date: date, color: ColorOption.option1.colorName)
+            EventDataSource(name: "Event1", date: date, color: PCColorOption.option1.colorName)
         ])
         isEditScreenPresented = true
     }
@@ -293,8 +293,8 @@ final class SingleCalendarModel {
         day.events = newEvents
     }
     
-    private func dayModel(for date: Date) -> USCalendarDayModel? {
-        var fallback: USCalendarDayModel?
+    private func dayModel(for date: Date) -> PCCalendarDayModel? {
+        var fallback: PCCalendarDayModel?
         for month in yearModel.months {
             for week in month.weeks {
                 for day in week.days {

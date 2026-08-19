@@ -7,8 +7,8 @@
 
 import SwiftUI
 
-struct USCalendarMonthView: View {
-    @Bindable var viewModel: USCalendarMonthModel
+struct PCCalendarMonthView: View {
+    @Bindable var viewModel: PCCalendarMonthModel
     var cellSize: CGFloat
     
     var body: some View {
@@ -16,12 +16,12 @@ struct USCalendarMonthView: View {
             Text(viewModel.label)
                 .padding(.leading, max(cellSize / 2 - 8, 2))
             Grid(horizontalSpacing: 0, verticalSpacing: 0) {
-                USCalendarWeekHeaderView(
+                PCCalendarWeekHeaderView(
                     viewModel: viewModel.weekHeaderModel,
                     cellSize: cellSize
                 )
                 ForEach(viewModel.weeks) { week in
-                    USCalendarWeekView(
+                    PCCalendarWeekView(
                         viewModel: week,
                         cellSize: cellSize
                     )
@@ -32,7 +32,7 @@ struct USCalendarMonthView: View {
 }
 
 #Preview {
-    USCalendarMonthView(
+    PCCalendarMonthView(
         viewModel: .init(
             dto: .init(
                 number: 1,
@@ -40,7 +40,7 @@ struct USCalendarMonthView: View {
                 weekDaySymbols: ["S"],
                 weeks: []
             ),
-            daySelectionManager: USCalendarDaySelectionManager()
+            daySelectionManager: PCCalendarDaySelectionManager()
         ),
         cellSize: 50
     )

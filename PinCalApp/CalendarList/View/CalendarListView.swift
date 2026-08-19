@@ -39,7 +39,7 @@ struct CalendarListView: View {
                         .foregroundStyle(.white)
                         .frame(width: 56, height: 56)
                 }
-                .dsGlass(cornerRadius: 28)
+                .pcGlass(cornerRadius: 28)
                 .clipShape(Circle())
                 .shadow(color: .black.opacity(0.25), radius: 8, y: 4)
                 .padding(.trailing, 20)

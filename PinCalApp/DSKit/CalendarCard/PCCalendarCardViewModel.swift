@@ -1,5 +1,5 @@
 //
-//  CalendarCardViewModel.swift
+//  PCCalendarCardViewModel.swift
 //  PinCalApp
 //
 //  Created by Oleg Bragin on 19.08.2026.
@@ -8,7 +8,7 @@
 import SwiftUI
 
 @Observable
-final class CalendarCardViewModel {
+final class PCCalendarCardViewModel {
     var name: String
     let numberOfColumns: Int
     let id: Int64
@@ -17,11 +17,11 @@ final class CalendarCardViewModel {
     private(set) var isEditing: Bool = false
     var editingName: String = ""
 
-    var onEditStarted: ((CalendarCardViewModel) -> Void)?
+    var onEditStarted: ((PCCalendarCardViewModel) -> Void)?
     var onEditCommitted: ((Int64, String) -> Void)?
     var onEditCancelled: (() -> Void)?
 
-    init(calendar: any CalendarCardData) {
+    init(calendar: any PCCalendarCardData) {
         self.id = calendar.id
         self.name = calendar.name
         self.numberOfColumns = calendar.numberOfColumns

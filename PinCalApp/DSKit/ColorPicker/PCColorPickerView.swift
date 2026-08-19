@@ -1,5 +1,5 @@
 //
-//  ColorPickerView.swift
+//  PCColorPickerView.swift
 //  PinCalApp
 //
 //  Created by Oleg Bragin on 24.02.2026.
@@ -7,29 +7,29 @@
 
 import SwiftUI
 
-struct ColorPickerView: View {
+struct PCColorPickerView: View {
     enum Style {
         case compact
         case expanded
     }
     
-    @Binding var selectedColor: ColorOption?
+    @Binding var selectedColor: PCColorOption?
     var style: Style = .compact
-    var defaultColor: ColorOption? = nil
+    var defaultColor: PCColorOption? = nil
     
     var body: some View {
         switch style {
         case .compact:
-            CompactColorPicker(selectedColor: $selectedColor, defaultColor: defaultColor)
+            PCCompactColorPicker(selectedColor: $selectedColor, defaultColor: defaultColor)
         case .expanded:
-            ExpandedColorPicker(selectedColor: $selectedColor, defaultColor: defaultColor)
+            PCExpandedColorPicker(selectedColor: $selectedColor, defaultColor: defaultColor)
         }
     }
 }
 
 #Preview {
     VStack(spacing: 24) {
-        ColorPickerView(selectedColor: .constant(.option1))
-        ColorPickerView(selectedColor: .constant(.option2), style: .expanded)
+        PCColorPickerView(selectedColor: .constant(.option1))
+        PCColorPickerView(selectedColor: .constant(.option2), style: .expanded)
     }
 }

@@ -13,7 +13,7 @@ struct AddEditListView: View {
     var body: some View {
         List {
             ForEach(viewModel.events, id: \.self) { event in
-                DSCard {
+                PCCard {
                     Button(
                         action: {
                             viewModel.prepareAddEditViewModel(with: event)

@@ -1,5 +1,5 @@
 //
-//  USCalendarDayView.swift
+//  PCCalendarDayView.swift
 //  USkateAppV2
 //
 //  Created by Oleg Bragin on 25.01.2026.
@@ -7,13 +7,13 @@
 
 import SwiftUI
 
-struct USCalendarDayView: View {
-    @Bindable var model: USCalendarDayModel
+struct PCCalendarDayView: View {
+    @Bindable var model: PCCalendarDayModel
     var cellSize: CGFloat
     
     var body: some View {
         ZStack {
-            USCalendarDayEventView(
+            PCCalendarDayEventView(
                 events: eventColors
             )
             .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -55,7 +55,7 @@ struct USCalendarDayView: View {
     }
     
     private static let eventColorsByOption: [String: Color] = Dictionary(
-        uniqueKeysWithValues: ColorOption.allCases.map { ($0.colorName, $0.color) }
+        uniqueKeysWithValues: PCColorOption.allCases.map { ($0.colorName, $0.color) }
     )
     
     private static func eventColor(for name: String) -> Color {
@@ -128,7 +128,7 @@ struct USCalendarDayView: View {
 }
 
 #Preview {
-    USCalendarDayView(
+    PCCalendarDayView(
         model: .init(
             dto: .init(
                 date: Date(),

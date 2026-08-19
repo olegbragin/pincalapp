@@ -1,6 +1,6 @@
 import SwiftUI
 
-struct DSProgressView: View {
+struct PCProgressView: View {
     var label: String? = nil
 
     var body: some View {

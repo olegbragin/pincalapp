@@ -1,5 +1,5 @@
 //
-//  USCalendarWeekModel.swift
+//  PCCalendarWeekModel.swift
 //  USkateAppV2
 //
 //  Created by Oleg Bragin on 28.01.2026.
@@ -9,21 +9,21 @@ import Foundation
 import SwiftUI
 
 @Observable
-final class USCalendarWeekModel: Identifiable {
+final class PCCalendarWeekModel: Identifiable {
     let id = UUID()
-    let days: [USCalendarDayModel]
-    let daySelectionManager: USCalendarDaySelectionManager
+    let days: [PCCalendarDayModel]
+    let daySelectionManager: PCCalendarDaySelectionManager
     
     var isLongPressed: Bool = false
     
-    init(dto: USCalendarWeekDataSource, daySelectionManager: USCalendarDaySelectionManager) {
+    init(dto: PCCalendarWeekDataSource, daySelectionManager: PCCalendarDaySelectionManager) {
         self.daySelectionManager = daySelectionManager
         self.days = dto.days.map {
-            USCalendarDayModel(dto: $0)
+            PCCalendarDayModel(dto: $0)
         }
     }
     
-    func select(day: USCalendarDayModel) {
+    func select(day: PCCalendarDayModel) {
         daySelectionManager.select(day: day)
     }
 }

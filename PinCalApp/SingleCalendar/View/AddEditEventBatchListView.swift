@@ -18,7 +18,7 @@ struct AddEditEventBatchListView: View {
             VStack {
                 List {
                     ForEach(viewModel.eventBatches, id: \.self) { eventBatch in
-                        DSCard {
+                        PCCard {
                             Button(
                                 action: {
                                     viewModel.prepareAddEditBatchViewModel(with: eventBatch)
@@ -55,7 +55,7 @@ struct AddEditEventBatchListView: View {
                     Text(viewModel.selectedDay ?? Date(), style: .date)
                 }
                 ToolbarItem(placement: .topBarTrailing) {
-                    DSButton {
+                    PCButton {
                         onClose()
                     } label: {
                         Image(systemName: "xmark")

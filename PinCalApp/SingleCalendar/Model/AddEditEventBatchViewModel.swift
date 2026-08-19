@@ -15,7 +15,7 @@ final class AddEditEventBatchViewModel {
     
     var eventBatchId: Int64 = 0
     var eventBatchName: String = "1"
-    var selectedColor: ColorOption?
+    var selectedColor: PCColorOption?
     var addEditListViewModel: AddEditListViewModel
     var date: Date?
     var timestamp: UUID?
@@ -23,17 +23,17 @@ final class AddEditEventBatchViewModel {
     
     var eventBatch: EventBatchDataSource?
     
-    var defaultColor: ColorOption? {
-        selectedColor ?? ColorOption(addEditListViewModel.events.first?.color ?? "")
+    var defaultColor: PCColorOption? {
+        selectedColor ?? PCColorOption(addEditListViewModel.events.first?.color ?? "")
     }
     
     var canSave: Bool {
         !eventBatchName.isEmpty && selectedColor != nil
     }
     
-    let daySelectionManager = USCalendarDaySelectionManager()
-    var yearModel = USCalendarYearModel()
-    private let dataProvider = USCalendarDataProvider()
+    let daySelectionManager = PCCalendarDaySelectionManager()
+    var yearModel = PCCalendarYearModel()
+    private let dataProvider = PCCalendarDataProvider()
     private var builtCalendarYear: Int?
     
     var preferredTitle: String? {
@@ -78,7 +78,7 @@ final class AddEditEventBatchViewModel {
         let year = calendarYear
         if yearModel.months.isEmpty || builtCalendarYear != year {
             yearModel.months = dataProvider.months(forYear: year).map {
-                USCalendarMonthModel(dto: $0, daySelectionManager: daySelectionManager)
+                PCCalendarMonthModel(dto: $0, daySelectionManager: daySelectionManager)
             }
             yearModel.numberOfCurrentMonth = dataProvider.numberOfCurrentMonth
             builtCalendarYear = year
@@ -91,7 +91,7 @@ final class AddEditEventBatchViewModel {
         if addEditListViewModel.hasEvent(on: date) {
             addEditListViewModel.removeEvent(on: date)
         } else {
-            let colorName = selectedColor?.colorName ?? defaultColor?.colorName ?? ColorOption.option1.colorName
+            let colorName = selectedColor?.colorName ?? defaultColor?.colorName ?? PCColorOption.option1.colorName
             addEditListViewModel.addEvent(
                 .init(name: eventBatchName, date: date, color: colorName)
             )
@@ -139,8 +139,8 @@ final class AddEditEventBatchViewModel {
         day.events = colors
     }
     
-    private func dayModel(for date: Date) -> USCalendarDayModel? {
-        var fallback: USCalendarDayModel?
+    private func dayModel(for date: Date) -> PCCalendarDayModel? {
+        var fallback: PCCalendarDayModel?
         for month in yearModel.months {
             for week in month.weeks {
                 for day in week.days {

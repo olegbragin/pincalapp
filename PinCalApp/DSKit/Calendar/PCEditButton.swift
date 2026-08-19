@@ -1,5 +1,5 @@
 //
-//  USEditButton.swift
+//  PCEditButton.swift
 //  USkateAppV2
 //
 //  Created by Oleg Bragin on 26.03.2026.
@@ -8,7 +8,7 @@
 import Foundation
 import SwiftUI
 
-struct USEditButton: View {
+struct PCEditButton: View {
     @Binding var isEditing: Bool
     private let action: (Bool) -> Void
     private let activeContent: () -> AnyView
@@ -44,6 +44,6 @@ struct USEditButton: View {
 }
 
 #Preview {
-    USEditButton(isEditing: .constant(true))
-    USEditButton(isEditing: .constant(false))
+    PCEditButton(isEditing: .constant(true))
+    PCEditButton(isEditing: .constant(false))
 }

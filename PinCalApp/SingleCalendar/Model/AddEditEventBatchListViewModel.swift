@@ -37,7 +37,7 @@ final class AddEditEventBatchListViewModel {
     func prepareAddEditBatchViewModel(with eventBatch: EventBatchDataSource?) {
         addEditEventBatchModel.eventBatchId = eventBatch?.id ?? 0
         addEditEventBatchModel.eventBatchName = eventBatch?.name ?? "1"
-        addEditEventBatchModel.selectedColor = ColorOption(eventBatch?.colorName ?? "") ?? .option1
+        addEditEventBatchModel.selectedColor = PCColorOption(eventBatch?.colorName ?? "") ?? .option1
         addEditEventBatchModel.date = eventBatch?.date ?? (eventBatch == nil ? selectedDay : nil)
         addEditEventBatchModel.selectedDays = selectedDay.map { [$0] } ?? []
         addEditEventBatchModel.timestamp = eventBatch?.timestamp ?? UUID()

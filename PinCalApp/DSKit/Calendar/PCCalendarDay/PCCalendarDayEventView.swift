@@ -1,6 +1,6 @@
 import SwiftUI
 
-struct USCalendarDayEventView: View {
+struct PCCalendarDayEventView: View {
     var events: [Color]
 
     var body: some View {
@@ -15,7 +15,7 @@ struct USCalendarDayEventView: View {
 }
 
 #Preview {
-    USCalendarDayEventView(events: [
+    PCCalendarDayEventView(events: [
         .red, .green, .blue
     ])
 }

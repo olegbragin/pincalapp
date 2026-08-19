@@ -1,6 +1,6 @@
 import SwiftUI
 
-struct DSGlassModifier: ViewModifier {
+struct PCGlassModifier: ViewModifier {
     var cornerRadius: CGFloat
 
     func body(content: Content) -> some View {
@@ -30,7 +30,7 @@ struct DSGlassModifier: ViewModifier {
 }
 
 extension View {
-    func dsGlass(cornerRadius: CGFloat = 12) -> some View {
-        modifier(DSGlassModifier(cornerRadius: cornerRadius))
+    func pcGlass(cornerRadius: CGFloat = 12) -> some View {
+        modifier(PCGlassModifier(cornerRadius: cornerRadius))
     }
 }

@@ -1,5 +1,5 @@
 //
-//  SafeRefreshableModifier.swift
+//  PCSafeRefreshableModifier.swift
 //  PinCalApp
 //
 //  Created by Oleg Bragin on 17.08.2026.
@@ -11,7 +11,7 @@ import SwiftUI
 /// On iOS 26+, uses a custom DragGesture-based implementation to work around
 /// a SwiftUI bug where `.refreshable` on `ScrollView` causes contentOffset jumps.
 /// On older iOS versions, uses the standard `.refreshable` modifier.
-struct SafeRefreshableModifier: ViewModifier {
+struct PCSafeRefreshableModifier: ViewModifier {
     let refreshAction: @Sendable () async -> Void
 
     @State private var isRefreshing = false
@@ -82,6 +82,6 @@ extension View {
     /// to work around a SwiftUI `.refreshable` bug. On older iOS versions, uses
     /// the standard `.refreshable`.
     func safeRefreshable(action: @escaping @Sendable () async -> Void) -> some View {
-        modifier(SafeRefreshableModifier(refreshAction: action))
+        modifier(PCSafeRefreshableModifier(refreshAction: action))
     }
 }

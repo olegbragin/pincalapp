@@ -1,5 +1,5 @@
 //
-//  USCalendarWeekHeaderView.swift
+//  PCCalendarWeekHeaderView.swift
 //  USkateAppV2
 //
 //  Created by Oleg Bragin on 28.01.2026.
@@ -7,8 +7,8 @@
 
 import SwiftUI
 
-struct USCalendarWeekHeaderView: View {
-    @Bindable var viewModel: USCalendarWeekHeaderModel
+struct PCCalendarWeekHeaderView: View {
+    @Bindable var viewModel: PCCalendarWeekHeaderModel
     var cellSize: CGFloat
     
     var body: some View {
@@ -32,7 +32,7 @@ struct USCalendarWeekHeaderView: View {
 
 #Preview {
     Grid {
-        USCalendarWeekHeaderView(
+        PCCalendarWeekHeaderView(
             viewModel: .init(weekSymbols: [
                 "S", "T"
             ]),

@@ -1,5 +1,5 @@
 //
-//  USCalendarPinchToZoomGesture.swift
+//  PCCalendarPinchToZoomGesture.swift
 //  USkateAppV2
 //
 //  Created by Oleg Bragin on 26.03.2026.
@@ -8,8 +8,8 @@
 import SwiftUI
 import UIKit
 
-struct USCalendarPinchToZoomGesture: Gesture {
-    @State var viewModel: USCalendarPinchToZoomGestureModel
+struct PCCalendarPinchToZoomGesture: Gesture {
+    @State var viewModel: PCCalendarPinchToZoomGestureModel
     // Для тактильной отдачи (опционально)
     private let hapticFeedback = UINotificationFeedbackGenerator()
     
@@ -29,7 +29,7 @@ struct USCalendarPinchToZoomGesture: Gesture {
         self._tempMagnification = tempMagnification
         self._numberOfColumns = numberOfColumns
         self.maxNumberOfColumns = maxNumberOfColumns
-        self.viewModel = USCalendarPinchToZoomGestureModel(
+        self.viewModel = PCCalendarPinchToZoomGestureModel(
             numberOfColumns: numberOfColumns.wrappedValue,
             maxNumberOfColumns: maxNumberOfColumns
         )

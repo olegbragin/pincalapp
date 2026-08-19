@@ -1,5 +1,5 @@
 //
-//  USCalendarPinchToZoomGestureModel.swift
+//  PCCalendarPinchToZoomGestureModel.swift
 //  USkateAppV2
 //
 //  Created by Oleg Bragin on 26.03.2026.
@@ -9,7 +9,7 @@ import Foundation
 import Observation
 
 @Observable
-final class USCalendarPinchToZoomGestureModel {
+final class PCCalendarPinchToZoomGestureModel {
     private let baseSensitivity: CGFloat = 0.12
     private let minSensitivity: CGFloat = 0.08
     private var smoothMagnification: CGFloat = 1.0  // Для сглаживания

@@ -1,5 +1,5 @@
 //
-//  CompactColorPicker.swift
+//  PCCompactColorPicker.swift
 //  PinCalApp
 //
 //  Created by Oleg Bragin on 19.08.2026.
@@ -7,9 +7,9 @@
 
 import SwiftUI
 
-struct CompactColorPicker: View {
-    @Binding var selectedColor: ColorOption?
-    var defaultColor: ColorOption? = nil
+struct PCCompactColorPicker: View {
+    @Binding var selectedColor: PCColorOption?
+    var defaultColor: PCColorOption? = nil
     @Environment(\.isEnabled) private var isEnabled
     @State private var isColorOptionsPresented = false
 
@@ -30,16 +30,16 @@ struct CompactColorPicker: View {
         .allowsHitTesting(isEnabled)
         .accessibilityLabel("Выберите цвет")
         .sheet(isPresented: $isColorOptionsPresented) {
-            ColorOptionSheet(selectedColor: $selectedColor, defaultColor: defaultColor)
+            PCColorOptionSheet(selectedColor: $selectedColor, defaultColor: defaultColor)
         }
     }
 }
 
 #Preview {
     VStack(spacing: 24) {
-        CompactColorPicker(selectedColor: .constant(.option1))
-        CompactColorPicker(selectedColor: .constant(nil))
-        CompactColorPicker(selectedColor: .constant(.option2))
+        PCCompactColorPicker(selectedColor: .constant(.option1))
+        PCCompactColorPicker(selectedColor: .constant(nil))
+        PCCompactColorPicker(selectedColor: .constant(.option2))
             .disabled(true)
     }
 }

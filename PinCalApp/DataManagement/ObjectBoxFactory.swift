@@ -42,13 +42,13 @@ struct ObjectBoxFactory {
         let calendar = PPCalendar(name: "UI Test Calendar", year: currentYear, numberOfColumns: 2)
         try? calendarBox.put(calendar)
 
-        let batch = PPEventBatch(title: "Women Cycle", color: ColorOption.option1.colorName)
+        let batch = PPEventBatch(title: "Women Cycle", color: PCColorOption.option1.colorName)
         let batchBox = store.box(for: PPEventBatch.self)
         try? batchBox.put(batch)
 
         let events = [
-            PPEvent(name: "Event1", color: ColorOption.option1.colorName, date: uiTestDate(day: 10)),
-            PPEvent(name: "Event1", color: ColorOption.option1.colorName, date: uiTestDate(day: 12))
+            PPEvent(name: "Event1", color: PCColorOption.option1.colorName, date: uiTestDate(day: 10)),
+            PPEvent(name: "Event1", color: PCColorOption.option1.colorName, date: uiTestDate(day: 12))
         ]
         let eventBox = store.box(for: PPEvent.self)
         try? eventBox.put(events)

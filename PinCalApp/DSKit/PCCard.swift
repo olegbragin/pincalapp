@@ -1,6 +1,6 @@
 import SwiftUI
 
-struct DSCard<Content: View>: View {
+struct PCCard<Content: View>: View {
     var cornerRadius: CGFloat = 16
     private let content: Content
 
@@ -12,6 +12,6 @@ struct DSCard<Content: View>: View {
     var body: some View {
         content
             .frame(maxWidth: .infinity, alignment: .leading)
-            .dsGlass(cornerRadius: cornerRadius)
+            .pcGlass(cornerRadius: cornerRadius)
     }
 }

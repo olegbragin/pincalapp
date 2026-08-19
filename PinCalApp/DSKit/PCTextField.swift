@@ -1,6 +1,6 @@
 import SwiftUI
 
-struct DSTextField: View {
+struct PCTextField: View {
     let title: String
     @Binding var text: String
 

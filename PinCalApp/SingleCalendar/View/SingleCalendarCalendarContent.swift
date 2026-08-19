@@ -9,30 +9,30 @@ import SwiftUI
 
 struct SingleCalendarCalendarContent: View {
     var isMultiSelect: Bool
-    @Binding var selectedColor: ColorOption?
+    @Binding var selectedColor: PCColorOption?
     var isColorPickerDisabled: Bool
-    var yearModel: USCalendarYearModel
+    var yearModel: PCCalendarYearModel
 
     var body: some View {
         VStack(spacing: 0) {
             if isMultiSelect {
-                ExpandedColorPicker(selectedColor: $selectedColor)
+                PCExpandedColorPicker(selectedColor: $selectedColor)
                     .disabled(isColorPickerDisabled)
             }
-            USCalendarYearView(viewModel: yearModel)
+            PCCalendarYearView(viewModel: yearModel)
         }
     }
 }
 
 #Preview {
-    let dataProvider = USCalendarDataProvider()
+    let dataProvider = PCCalendarDataProvider()
     let year = Calendar.autoupdatingCurrent.component(.year, from: Date())
-    let yearModel = USCalendarYearModel(
+    let yearModel = PCCalendarYearModel(
         numberOfCurrentMonth: dataProvider.numberOfCurrentMonth,
         numberOfColumns: 2
     )
     yearModel.months = dataProvider.months(forYear: year).map {
-        USCalendarMonthModel(dto: $0, daySelectionManager: USCalendarDaySelectionManager())
+        PCCalendarMonthModel(dto: $0, daySelectionManager: PCCalendarDaySelectionManager())
     }
     return SingleCalendarCalendarContent(
         isMultiSelect: true,

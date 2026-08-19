@@ -1,5 +1,5 @@
 //
-//  USCalendarWeekDataSource.swift
+//  PCCalendarWeekDataSource.swift
 //  USkateAppV2
 //
 //  Created by Oleg Bragin on 01.02.2026.
@@ -7,7 +7,7 @@
 
 import Foundation
 
-struct USCalendarWeekDataSource {
+struct PCCalendarWeekDataSource {
     let number: Int
-    let days: [USCalendarDayDataSource]
+    let days: [PCCalendarDayDataSource]
 }

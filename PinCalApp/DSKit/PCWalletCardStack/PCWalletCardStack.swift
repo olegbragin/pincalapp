@@ -1,5 +1,5 @@
 //
-//  WalletCardStack.swift
+//  PCWalletCardStack.swift
 //  PinCalApp
 //
 //  Created by Oleg Bragin on 14.08.2026.
@@ -10,7 +10,7 @@ import SwiftUI
 /// A stacked deck of cards.
 /// Cards overlap vertically; the first item is frontmost. The user taps a card
 /// to select it or swipes left to remove it.
-struct WalletCardStack<Item: Identifiable & Hashable, Content: View>: View {
+struct PCWalletCardStack<Item: Identifiable & Hashable, Content: View>: View {
     let items: [Item]
     var aspectRatio: CGFloat
     var maxCardHeight: CGFloat

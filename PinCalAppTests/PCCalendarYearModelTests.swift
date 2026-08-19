@@ -1,5 +1,5 @@
 //
-//  USCalendarYearModelTests.swift
+//  PCCalendarYearModelTests.swift
 //  PinCalAppTests
 //
 //  Created by Oleg Bragin on 14.08.2026.
@@ -10,10 +10,10 @@ import Foundation
 @testable import PinCalApp
 
 @MainActor
-struct USCalendarYearModelTests {
+struct PCCalendarYearModelTests {
 
     @Test func setInitialNumberOfColumnsSyncsBothProperties() {
-        let model = USCalendarYearModel()
+        let model = PCCalendarYearModel()
 
         model.set(initialNumberOfColumns: 5)
 
@@ -22,7 +22,7 @@ struct USCalendarYearModelTests {
     }
 
     @Test func maximumNumberOfColumnsClampsCurrentColumns() {
-        let model = USCalendarYearModel()
+        let model = PCCalendarYearModel()
         model.set(initialNumberOfColumns: 5)
 
         model.maximumNumberOfColumns = 4
@@ -32,7 +32,7 @@ struct USCalendarYearModelTests {
     }
 
     @Test func raisingMaximumNumberOfColumnsPreservesCurrentColumns() {
-        let model = USCalendarYearModel()
+        let model = PCCalendarYearModel()
         model.set(initialNumberOfColumns: 3)
 
         model.maximumNumberOfColumns = 6
@@ -42,7 +42,7 @@ struct USCalendarYearModelTests {
     }
 
     @Test func pinchModelClampsToMaximumOnZoomOut() {
-        let model = USCalendarPinchToZoomGestureModel(numberOfColumns: 2, maxNumberOfColumns: 2)
+        let model = PCCalendarPinchToZoomGestureModel(numberOfColumns: 2, maxNumberOfColumns: 2)
         var reportedChanges: [Int] = []
 
         model.handleMagnify(
@@ -57,7 +57,7 @@ struct USCalendarYearModelTests {
     }
 
     @Test func pinchModelIncreasesColumnsUpToMaximum() {
-        let model = USCalendarPinchToZoomGestureModel(numberOfColumns: 2, maxNumberOfColumns: 3)
+        let model = PCCalendarPinchToZoomGestureModel(numberOfColumns: 2, maxNumberOfColumns: 3)
         var reportedChanges: [Int] = []
 
         model.handleMagnify(
@@ -81,7 +81,7 @@ struct USCalendarYearModelTests {
     }
 
     @Test func updateMaxNumberOfColumnsReclampsCurrentValue() {
-        let model = USCalendarPinchToZoomGestureModel(numberOfColumns: 5, maxNumberOfColumns: 6)
+        let model = PCCalendarPinchToZoomGestureModel(numberOfColumns: 5, maxNumberOfColumns: 6)
 
         model.updateMaxNumberOfColumns(4)
 

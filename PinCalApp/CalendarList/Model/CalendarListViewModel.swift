@@ -29,7 +29,7 @@ final class CalendarListViewModel {
         cardViewModels.values.contains { $0.isEditing }
     }
 
-    private var cardViewModels: [Int64: CalendarCardViewModel] = [:]
+    private var cardViewModels: [Int64: PCCalendarCardViewModel] = [:]
 
     var appVersion: String {
         let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "?"
@@ -41,11 +41,11 @@ final class CalendarListViewModel {
         self.manager = manager
     }
 
-    func cardViewModel(for calendar: CalendarDataSource) -> CalendarCardViewModel {
+    func cardViewModel(for calendar: CalendarDataSource) -> PCCalendarCardViewModel {
         if let existing = cardViewModels[calendar.id] {
             return existing
         }
-        let vm = CalendarCardViewModel(calendar: calendar)
+        let vm = PCCalendarCardViewModel(calendar: calendar)
         vm.onEditCommitted = { [weak self] id, newName in
             self?.handleEditCommitted(id: id, newName: newName)
         }

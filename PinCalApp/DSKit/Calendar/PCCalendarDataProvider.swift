@@ -7,7 +7,7 @@
 
 import Foundation
 
-struct USCalendarDataProvider {
+struct PCCalendarDataProvider {
     private var calendar: Calendar
     
     var numberOfCurrentMonth: Int {
@@ -22,10 +22,10 @@ struct USCalendarDataProvider {
         self.calendar.locale = .current
     }
     
-    func months(forYear year: Int) -> [USCalendarMonthDataSource] {
+    func months(forYear year: Int) -> [PCCalendarMonthDataSource] {
         (0...11).map {
             let monthNumber = $0 + 1
-            return USCalendarMonthDataSource(
+            return PCCalendarMonthDataSource(
                 number: monthNumber,
                 label: calendar.standaloneMonthSymbols[$0],
                 weekDaySymbols: orderedWeekdaySymbols,
@@ -41,7 +41,7 @@ struct USCalendarDataProvider {
     private func weeks(
         forMonth month: Int,
         ofYear year: Int
-    ) -> [USCalendarWeekDataSource] {
+    ) -> [PCCalendarWeekDataSource] {
         let todayDate = Date()
         
         // 1. Первый день заданного месяца
@@ -70,8 +70,8 @@ struct USCalendarDataProvider {
         }
         
         // 5. Группируем по неделям
-        var weeks: [USCalendarWeekDataSource] = []
-        var currentWeek: [USCalendarDayDataSource] = []
+        var weeks: [PCCalendarWeekDataSource] = []
+        var currentWeek: [PCCalendarDayDataSource] = []
         
         for date in dates {
             let weekday = calendar.component(.weekday, from: date)
@@ -80,7 +80,7 @@ struct USCalendarDataProvider {
             if isFirstDayOfWeek && !currentWeek.isEmpty {
                 let weekNumber = calendar.component(.weekOfYear, from: date)
                 weeks.append(
-                    USCalendarWeekDataSource(
+                    PCCalendarWeekDataSource(
                         number: weekNumber,
                         days: currentWeek
                     )
@@ -95,7 +95,7 @@ struct USCalendarDataProvider {
             let isInMonth = (month == monthOfDate) && (year == yearOfDate)
             
             currentWeek.append(
-                USCalendarDayDataSource(
+                PCCalendarDayDataSource(
                     date: date,
                     number: dayNumberOfDate,
                     isInCurrentMonth: isInMonth,
@@ -107,7 +107,7 @@ struct USCalendarDataProvider {
         if !currentWeek.isEmpty {
             let weekNumber = calendar.component(.weekOfYear, from: todayDate)
             weeks.append(
-                USCalendarWeekDataSource(
+                PCCalendarWeekDataSource(
                     number: weekNumber,
                     days: currentWeek
                 )
@@ -134,7 +134,7 @@ struct USCalendarDataProvider {
                 let monthOfDate = calendar.component(.month, from: date)
                 let yearOfDate = calendar.component(.year, from: date)
                 let isInMonth = (month == monthOfDate) && (year == yearOfDate)
-                return USCalendarDayDataSource(
+                return PCCalendarDayDataSource(
                     date: date,
                     number: dayNumberOfDate,
                     isInCurrentMonth: isInMonth,
@@ -144,7 +144,7 @@ struct USCalendarDataProvider {
             
             let weekNumber = calendar.component(.weekOfYear, from: nextDate)
             weeks.append(
-                USCalendarWeekDataSource(
+                PCCalendarWeekDataSource(
                     number: weekNumber,
                     days: nextWeekDays
                 )

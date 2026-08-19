@@ -1,6 +1,6 @@
 import SwiftUI
 
-struct DSButton<Label: View>: View {
+struct PCButton<Label: View>: View {
     private let action: () -> Void
     private let label: Label
 

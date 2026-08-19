@@ -1,5 +1,5 @@
 //
-//  USCalendarWeekHeaderModel.swift
+//  PCCalendarWeekHeaderModel.swift
 //  USkateAppV2
 //
 //  Created by Oleg Bragin on 28.01.2026.
@@ -9,7 +9,7 @@ import Foundation
 import Observation
 
 @Observable
-final class USCalendarWeekHeaderModel {
+final class PCCalendarWeekHeaderModel {
     struct WeekSymbol: Identifiable {
         let id = UUID()
         let name: String

@@ -1,5 +1,5 @@
 //
-//  CalendarCardView.swift
+//  PCCalendarCardView.swift
 //  PinCalApp
 //
 //  Created by Oleg Bragin on 19.08.2026.
@@ -7,8 +7,8 @@
 
 import SwiftUI
 
-struct CalendarCardView: View {
-    @Bindable var viewModel: CalendarCardViewModel
+struct PCCalendarCardView: View {
+    @Bindable var viewModel: PCCalendarCardViewModel
     var onTap: (() -> Void)?
 
     var body: some View {

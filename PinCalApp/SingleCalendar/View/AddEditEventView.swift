@@ -14,7 +14,7 @@ struct AddEditEventView: View {
     
     var body: some View {
         VStack(alignment: .leading, spacing: 24) {
-            DSDatePicker(
+            PCDatePicker(
                 title: "Выберите время события",
                 selection: $viewModel.selectedDate,
                 displayedComponents: .hourAndMinute
@@ -27,7 +27,7 @@ struct AddEditEventView: View {
                     .font(.headline)
                     .fontWeight(.medium)
                 
-                DSTextField(title: "Введите имя", text: $viewModel.eventName)
+                PCTextField(title: "Введите имя", text: $viewModel.eventName)
                     .ignoresSafeArea(.keyboard)
             }
             
@@ -37,7 +37,7 @@ struct AddEditEventView: View {
                     .font(.headline)
                     .fontWeight(.medium)
                 
-                ColorPickerView(selectedColor: $viewModel.selectedColor)
+                PCColorPickerView(selectedColor: $viewModel.selectedColor)
             }
             Spacer()
         }

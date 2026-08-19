@@ -1,5 +1,5 @@
 //
-//  ColorOption.swift
+//  PCColorOption.swift
 //  USkateAppV2
 //
 //  Created by Oleg Bragin on 24.02.2026.
@@ -7,7 +7,7 @@
 
 import SwiftUI
 
-enum ColorOption: CaseIterable {
+enum PCColorOption: CaseIterable {
     case option1,
          option2,
          option3,

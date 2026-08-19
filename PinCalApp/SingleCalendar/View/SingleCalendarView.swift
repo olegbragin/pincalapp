@@ -136,7 +136,7 @@ private struct SingleCalendarViewPreview: View {
             if let model {
                 SingleCalendarView(viewModel: model)
             } else {
-                DSProgressView(label: "Loading")
+                PCProgressView(label: "Loading")
                     .task {
                         await loadModel()
                     }
@@ -156,14 +156,14 @@ private struct SingleCalendarViewPreview: View {
         try! calendarBox.put(calendar)
         
         let events = [
-            PPEvent(name: "Event1", color: ColorOption.option1.colorName, date: someDate(daysFromNow: -2)),
-            PPEvent(name: "Event2", color: ColorOption.option2.colorName, date: someDate(daysFromNow: 0)),
-            PPEvent(name: "Event3", color: ColorOption.option3.colorName, date: someDate(daysFromNow: 5))
+            PPEvent(name: "Event1", color: PCColorOption.option1.colorName, date: someDate(daysFromNow: -2)),
+            PPEvent(name: "Event2", color: PCColorOption.option2.colorName, date: someDate(daysFromNow: 0)),
+            PPEvent(name: "Event3", color: PCColorOption.option3.colorName, date: someDate(daysFromNow: 5))
         ]
         let eventBox = store.box(for: PPEvent.self)
         try! eventBox.put(events)
         
-        let batch = PPEventBatch(title: "Women Cycle", color: ColorOption.option1.colorName)
+        let batch = PPEventBatch(title: "Women Cycle", color: PCColorOption.option1.colorName)
         let batchBox = store.box(for: PPEventBatch.self)
         try! batchBox.put(batch)
         batch.events.replace(events)

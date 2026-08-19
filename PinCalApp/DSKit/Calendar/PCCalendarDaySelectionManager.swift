@@ -1,5 +1,5 @@
 //
-//  USCalendarDaySelectionManager.swift
+//  PCCalendarDaySelectionManager.swift
 //  USkateAppV2
 //
 //  Created by Oleg Bragin on 27.04.2026.
@@ -10,11 +10,11 @@ import Observation
 
 @MainActor
 @Observable
-final class USCalendarDaySelectionManager {
+final class PCCalendarDaySelectionManager {
     var selectedDays: Set<Date> = []
-    var selectionMode: USCalendarSelectionMode = .single
+    var selectionMode: PCCalendarSelectionMode = .single
     
-    func select(day: USCalendarDayModel) {
+    func select(day: PCCalendarDayModel) {
         guard
             day.isInCurrentMonth,
             let selectedDay = day.date

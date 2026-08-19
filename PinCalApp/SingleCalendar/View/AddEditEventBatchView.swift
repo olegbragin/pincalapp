@@ -21,9 +21,9 @@ struct AddEditEventBatchView: View {
                     .fontWeight(.medium)
                 
                 HStack(spacing: 12) {
-                    DSTextField(title: "Введите имя", text: $viewModel.eventBatchName)
+                    PCTextField(title: "Введите имя", text: $viewModel.eventBatchName)
                     
-                    ColorPickerView(selectedColor: $viewModel.selectedColor, defaultColor: viewModel.defaultColor)
+                    PCColorPickerView(selectedColor: $viewModel.selectedColor, defaultColor: viewModel.defaultColor)
                 }
                 .padding(.horizontal, 4)
                 .ignoresSafeArea(.keyboard)
@@ -48,7 +48,7 @@ struct AddEditEventBatchView: View {
         }
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
-                DSButton {
+                PCButton {
                     Task {
                         if viewModel.save() {
                             onSave()

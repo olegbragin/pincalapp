@@ -7,17 +7,17 @@
 
 import SwiftUI
 
-struct USCalendarWeekView: View {
+struct PCCalendarWeekView: View {
     // Для тактильной отдачи
     private static let hapticFeedback = UINotificationFeedbackGenerator()
     
-    @Bindable var viewModel: USCalendarWeekModel
+    @Bindable var viewModel: PCCalendarWeekModel
     var cellSize: CGFloat
     
     var body: some View {
         GridRow {
             ForEach(viewModel.days, id: \.id) { day in
-                USCalendarDayView(
+                PCCalendarDayView(
                     model: day,
                     cellSize: cellSize
                 )
@@ -45,7 +45,7 @@ struct USCalendarWeekView: View {
 
 #Preview {
     Grid {
-        USCalendarWeekView(
+        PCCalendarWeekView(
             viewModel: .init(
                 dto: .init(
                     number: 4,
@@ -59,7 +59,7 @@ struct USCalendarWeekView: View {
                         .init(date: Date(), number: 45, isInCurrentMonth: true, isToday: true),
                     ],
                 ),
-                daySelectionManager: USCalendarDaySelectionManager()
+                daySelectionManager: PCCalendarDaySelectionManager()
             ),
             cellSize: 50
         )

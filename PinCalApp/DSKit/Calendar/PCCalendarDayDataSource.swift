@@ -1,5 +1,5 @@
 //
-//  USCalendarDayDataSource.swift
+//  PCCalendarDayDataSource.swift
 //  USkateAppV2
 //
 //  Created by Oleg Bragin on 01.02.2026.
@@ -8,7 +8,7 @@
 import Foundation
 import SwiftUI
 
-struct USCalendarDayDataSource {
+struct PCCalendarDayDataSource {
     let date: Date
     let number: Int
     let isInCurrentMonth: Bool

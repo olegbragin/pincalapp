@@ -34,7 +34,7 @@ final class AddEditListViewModel {
         addEditEventModel.selectedDayToShowEvents = event.date
         addEditEventModel.eventName = event.name
         addEditEventModel.eventId = event.id
-        addEditEventModel.selectedColor = ColorOption(event.color)
+        addEditEventModel.selectedColor = PCColorOption(event.color)
         addEditEventModel.selectedDate = event.date
         addEditEventModel.timestamp = event.timestamp
         addEditEventModel.isPresented = true

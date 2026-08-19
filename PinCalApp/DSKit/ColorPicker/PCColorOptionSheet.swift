@@ -1,5 +1,5 @@
 //
-//  ColorOptionSheet.swift
+//  PCColorOptionSheet.swift
 //  PinCalApp
 //
 //  Created by Oleg Bragin on 19.08.2026.
@@ -7,14 +7,14 @@
 
 import SwiftUI
 
-struct ColorOptionSheet: View {
-    @Binding var selectedColor: ColorOption?
-    var defaultColor: ColorOption? = nil
+struct PCColorOptionSheet: View {
+    @Binding var selectedColor: PCColorOption?
+    var defaultColor: PCColorOption? = nil
     @Environment(\.dismiss) private var dismiss
     
     var body: some View {
         NavigationStack {
-            List(ColorOption.allCases, id: \.self) { colorOption in
+            List(PCColorOption.allCases, id: \.self) { colorOption in
                 Button {
                     selectedColor = colorOption
                     dismiss()
@@ -47,5 +47,5 @@ struct ColorOptionSheet: View {
 }
 
 #Preview {
-    ColorOptionSheet(selectedColor: .constant(.option1))
+    PCColorOptionSheet(selectedColor: .constant(.option1))
 }

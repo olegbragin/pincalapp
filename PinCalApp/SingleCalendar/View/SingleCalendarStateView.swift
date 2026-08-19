@@ -16,7 +16,7 @@ struct SingleCalendarStateView: View {
         case .empty:
             EmptyView()
         case .loading:
-            DSProgressView(label: "Loading")
+            PCProgressView(label: "Loading")
         case .content:
             calendarContent()
         }

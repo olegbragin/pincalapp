@@ -8,23 +8,23 @@
 import SwiftUI
 
 struct BatchEditorCalendarContent: View {
-    var viewModel: USCalendarYearModel
+    var viewModel: PCCalendarYearModel
 
     var body: some View {
-        USCalendarYearView(viewModel: viewModel)
+        PCCalendarYearView(viewModel: viewModel)
             .accessibilityIdentifier("batch-editor-calendar")
     }
 }
 
 #Preview {
-    let dataProvider = USCalendarDataProvider()
+    let dataProvider = PCCalendarDataProvider()
     let year = Calendar.autoupdatingCurrent.component(.year, from: Date())
-    let yearModel = USCalendarYearModel(
+    let yearModel = PCCalendarYearModel(
         numberOfCurrentMonth: dataProvider.numberOfCurrentMonth,
         numberOfColumns: 2
     )
     yearModel.months = dataProvider.months(forYear: year).map {
-        USCalendarMonthModel(dto: $0, daySelectionManager: USCalendarDaySelectionManager())
+        PCCalendarMonthModel(dto: $0, daySelectionManager: PCCalendarDaySelectionManager())
     }
     return BatchEditorCalendarContent(viewModel: yearModel)
 }

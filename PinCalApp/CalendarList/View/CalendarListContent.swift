@@ -9,7 +9,7 @@ import SwiftUI
 
 struct CalendarListContent: View {
     var calendars: [CalendarDataSource]
-    var cardViewModelFactory: (CalendarDataSource) -> CalendarCardViewModel
+    var cardViewModelFactory: (CalendarDataSource) -> PCCalendarCardViewModel
     var onCalendarTap: (CalendarDataSource) -> Void
     var onCalendarDelete: (CalendarDataSource) -> Void
     var onRefresh: () async throws -> Void
@@ -20,7 +20,7 @@ struct CalendarListContent: View {
         } else {
             List {
                 ForEach(calendars) { calendar in
-                    CalendarCardView(
+                    PCCalendarCardView(
                         viewModel: cardViewModelFactory(calendar)
                     ) {
                         onCalendarTap(calendar)
@@ -55,7 +55,7 @@ struct CalendarListContent: View {
             CalendarDataSource(id: 1, name: "My Calendar", year: 2026, numberOfColumns: 3),
             CalendarDataSource(id: 2, name: "Work", year: 2026, numberOfColumns: 2)
         ],
-        cardViewModelFactory: { CalendarCardViewModel(calendar: $0) },
+        cardViewModelFactory: { PCCalendarCardViewModel(calendar: $0) },
         onCalendarTap: { _ in },
         onCalendarDelete: { _ in },
         onRefresh: {}
@@ -65,7 +65,7 @@ struct CalendarListContent: View {
 #Preview("Empty") {
     CalendarListContent(
         calendars: [],
-        cardViewModelFactory: { CalendarCardViewModel(calendar: $0) },
+        cardViewModelFactory: { PCCalendarCardViewModel(calendar: $0) },
         onCalendarTap: { _ in },
         onCalendarDelete: { _ in },
         onRefresh: {}

@@ -1,5 +1,5 @@
 //
-//  USCalendarDayModel.swift
+//  PCCalendarDayModel.swift
 //  USkateAppV2
 //
 //  Created by Oleg Bragin on 01.02.2026.
@@ -8,7 +8,7 @@
 import Foundation
 
 @Observable
-final class USCalendarDayModel: Identifiable {
+final class PCCalendarDayModel: Identifiable {
     let id = UUID()
     let text: String
     let isToday: Bool
@@ -18,7 +18,7 @@ final class USCalendarDayModel: Identifiable {
     
     var events: [String] = []
     
-    init(dto: USCalendarDayDataSource) {
+    init(dto: PCCalendarDayDataSource) {
         self.text = "\(dto.number)"
         self.isToday = dto.isToday
         self.isInCurrentMonth = dto.isInCurrentMonth

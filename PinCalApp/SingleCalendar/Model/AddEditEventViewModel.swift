@@ -16,7 +16,7 @@ final class AddEditEventViewModel {
     
     var eventId: Int64 = 0
     var eventName: String = "1"
-    var selectedColor: ColorOption?
+    var selectedColor: PCColorOption?
     var selectedDate: Date = .now
     var timestamp: UUID?
     

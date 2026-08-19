@@ -8,8 +8,8 @@
 import SwiftUI
 import OrderedCollections
 
-struct USCalendarYearView: View {
-    @Bindable var viewModel: USCalendarYearModel
+struct PCCalendarYearView: View {
+    @Bindable var viewModel: PCCalendarYearModel
     
     // Временный масштаб во время жеста (сбрасывается после)
     @GestureState private var tempMagnification: CGFloat = 1.0
@@ -34,7 +34,7 @@ struct USCalendarYearView: View {
                 ) {
                     ForEach(viewModel.months.indices, id: \.self) { index in
                         let month = viewModel.months[index]
-                        USCalendarMonthView(
+                        PCCalendarMonthView(
                             viewModel: month,
                             cellSize: cellSize
                         )
@@ -68,8 +68,8 @@ struct USCalendarYearView: View {
         }
     }
     
-    private var pinchToZoomGesture: USCalendarPinchToZoomGesture {
-        USCalendarPinchToZoomGesture(
+    private var pinchToZoomGesture: PCCalendarPinchToZoomGesture {
+        PCCalendarPinchToZoomGesture(
             tempMagnification: $tempMagnification,
             numberOfColumns: $viewModel.numberOfColumns,
             maxNumberOfColumns: viewModel.maximumNumberOfColumns
@@ -107,14 +107,14 @@ struct USCalendarYearView: View {
 }
 
 private func yearViewPreview() -> some View {
-    let dataProvider = USCalendarDataProvider()
+    let dataProvider = PCCalendarDataProvider()
     let year = Calendar.autoupdatingCurrent.component(.year, from: Date())
-    let yearModel = USCalendarYearModel(
+    let yearModel = PCCalendarYearModel(
         numberOfCurrentMonth: dataProvider.numberOfCurrentMonth,
         numberOfColumns: 2
     )
     yearModel.months = dataProvider.months(forYear: year).map {
-        USCalendarMonthModel(dto: $0, daySelectionManager: USCalendarDaySelectionManager())
+        PCCalendarMonthModel(dto: $0, daySelectionManager: PCCalendarDaySelectionManager())
     }
-    return USCalendarYearView(viewModel: yearModel)
+    return PCCalendarYearView(viewModel: yearModel)
 }

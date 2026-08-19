@@ -50,4 +50,4 @@ extension CalendarDataSource: Equatable {
     }
 }
 
-extension CalendarDataSource: CalendarCardData {}
+extension CalendarDataSource: PCCalendarCardData {}

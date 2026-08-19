@@ -1,5 +1,5 @@
 //
-//  USCalendarYearModel.swift
+//  PCCalendarYearModel.swift
 //  USkateAppV2
 //
 //  Created by Oleg Bragin on 01.02.2026.
@@ -8,7 +8,7 @@
 import SwiftUI
 
 @Observable
-final class USCalendarYearModel {
+final class PCCalendarYearModel {
     
     // Для тактильной отдачи (опционально)
     private let hapticFeedback = UINotificationFeedbackGenerator()
@@ -36,7 +36,7 @@ final class USCalendarYearModel {
         return months.firstIndex { $0.number == numberOfCurrentMonth }
     }
 
-    var months: [USCalendarMonthModel] = []
+    var months: [PCCalendarMonthModel] = []
     
     init(
         numberOfCurrentMonth: Int = 0,
