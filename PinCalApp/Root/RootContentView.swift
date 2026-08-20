@@ -13,8 +13,8 @@ struct RootContentView: View {
                 systemImage: "archivebox",
                 description: Text("Coming soon")
             )
-        case .calendar:
-            CalendarListView()
+        default:
+            EmptyView()
         }
     }
 }
