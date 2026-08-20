@@ -1,29 +1,45 @@
-//
-//  RootView.swift
-//  USkateAppV2
-//
-//  Created by Oleg Bragin on 07.02.2026.
-//
-
 import SwiftUI
 
 struct RootView: View {
-    @State var navigation = RootNavigation()
+    @State private var navigation = RootNavigation()
 
     var body: some View {
         NavigationSplitView {
-            RootContentView(navigation: $navigation)
+            sidebarColumn
+        } content: {
+            RootContentView()
         } detail: {
-            NavigationStack {
-                switch navigation.selectedItem {
-                case .calendar(let id):
-                    CalendarDetailView(calendarId: id)
-                default:
-                    Text("Select a calendar from the sidebar")
-                }
-            }
-            .background(.colorBackgroundMain)
+            detailColumn
         }
-        .padding(0)
+        .environment(navigation)
+    }
+
+    private var sidebarColumn: some View {
+        List(selection: $navigation.selectedCategory) {
+            Section("Menu") {
+                Label("Calendars", systemImage: "calendar")
+                    .tag(RootSelection.calendarList)
+                    .accessibilityIdentifier("sidebar-calendars")
+                Label("Archived", systemImage: "archivebox")
+                    .tag(RootSelection.archived)
+                    .accessibilityIdentifier("sidebar-archived")
+            }
+        }
+        .navigationTitle("PinCal")
+    }
+
+    private var detailColumn: some View {
+        NavigationStack {
+            if let id = navigation.selectedCalendarId {
+                CalendarDetailView(calendarId: id)
+            } else {
+                ContentUnavailableView(
+                    "Select a calendar",
+                    systemImage: "calendar",
+                    description: Text("Choose a calendar from the list")
+                )
+            }
+        }
+        .background(.colorBackgroundMain)
     }
 }

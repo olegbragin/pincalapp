@@ -7,5 +7,6 @@
 
 enum RootSelection: Equatable, Hashable {
     case calendarList
+    case archived
     case calendar(id: Int64)
 }

@@ -1,14 +1,20 @@
-//
-//  RootContentView.swift
-//  PinCalApp
-//
-
 import SwiftUI
 
 struct RootContentView: View {
-    @Binding var navigation: RootNavigation
+    @Environment(RootNavigation.self) var navigation
 
     var body: some View {
-        CalendarListView(navigation: $navigation)
+        switch navigation.selectedCategory {
+        case .calendarList, .none:
+            CalendarListView()
+        case .archived:
+            ContentUnavailableView(
+                "Archived calendars",
+                systemImage: "archivebox",
+                description: Text("Coming soon")
+            )
+        case .calendar:
+            CalendarListView()
+        }
     }
 }

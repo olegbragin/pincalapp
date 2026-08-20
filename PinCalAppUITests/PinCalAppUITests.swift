@@ -1,10 +1,3 @@
-//
-//  PinCalAppUITests.swift
-//  PinCalAppUITests
-//
-//  Created by Oleg Bragin on 04.05.2026.
-//
-
 import XCTest
 
 final class PinCalAppUITests: XCTestCase {
@@ -21,13 +14,8 @@ final class PinCalAppUITests: XCTestCase {
 
     @MainActor
     func testExample() throws {
-        // UI tests must launch the application that they test.
         let app = XCUIApplication()
         app.launch()
-
-        // Use XCTAssert and related functions to verify your tests produce the correct results.
-        // XCUIAutomation Documentation
-        // https://developer.apple.com/documentation/xcuiautomation
     }
 
     @MainActor
@@ -36,7 +24,8 @@ final class PinCalAppUITests: XCTestCase {
         app.launchArguments = ["-UITestSeedData"]
         app.launch()
 
-        // Open the seeded calendar from the sidebar.
+        // Navigate: sidebar → Calendars → calendar
+        app.cells.element(boundBy: 0).tap()
         app.staticTexts["UI Test Calendar"].firstMatch.tap()
 
         let day10 = dayIdentifier(day: 10)
@@ -88,8 +77,11 @@ final class PinCalAppUITests: XCTestCase {
         app.launchArguments = ["-UITestSeedData"]
         app.launch()
 
+        // Navigate to the calendar list via sidebar.
+        app.cells.element(boundBy: 0).tap()
+
         let calendarName = app.staticTexts["UI Test Calendar"]
-        XCTAssertTrue(calendarName.waitForExistence(timeout: 5), "Sidebar should show the seeded calendar")
+        XCTAssertTrue(calendarName.waitForExistence(timeout: 5), "Calendar list should show the seeded calendar")
 
         calendarName.tap()
 
@@ -101,7 +93,8 @@ final class PinCalAppUITests: XCTestCase {
         }
         app.buttons["Back"].tap()
 
-        XCTAssertTrue(calendarName.waitForExistence(timeout: 5), "Sidebar should be visible again after popping")
+        // On compact, Back goes to the content column (calendar list).
+        XCTAssertTrue(calendarName.waitForExistence(timeout: 5), "Calendar list should be visible after popping")
 
         calendarName.tap()
         XCTAssertTrue(multiselectButton.waitForExistence(timeout: 5), "Re-selecting the same calendar should work")
@@ -112,6 +105,9 @@ final class PinCalAppUITests: XCTestCase {
         let app = XCUIApplication()
         app.launchArguments = ["-UITestSeedData"]
         app.launch()
+
+        // Navigate to the calendar list via sidebar.
+        app.cells.element(boundBy: 0).tap()
 
         let firstCalendar = app.staticTexts["UI Test Calendar"].firstMatch
         let secondCalendar = app.staticTexts["Second Calendar"].firstMatch
@@ -146,7 +142,6 @@ final class PinCalAppUITests: XCTestCase {
 
     @MainActor
     func testLaunchPerformance() throws {
-        // This measures how long it takes to launch your application.
         measure(metrics: [XCTApplicationLaunchMetric()]) {
             XCUIApplication().launch()
         }

@@ -20,5 +20,11 @@ struct CalendarDetailView: View {
         SingleCalendarView(viewModel: model)
             .id(calendarId)
             .accessibilityIdentifier("calendar-detail-\(calendarId)")
+            .task(id: calendarId) {
+                if model.calendarid != calendarId {
+                    model = SingleCalendarModel(calendarid: calendarId)
+                }
+                await model.fetch()
+            }
     }
 }

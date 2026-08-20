@@ -1,30 +1,25 @@
-//
-//  CalendarListContent.swift
-//  PinCalApp
-//
-//  Created by Oleg Bragin on 19.08.2026.
-//
-
 import SwiftUI
 
 struct CalendarListContent: View {
+    @Environment(RootNavigation.self) var navigation
+    
     var calendars: [CalendarDataSource]
     var cardViewModelFactory: (CalendarDataSource) -> PCCalendarCardViewModel
-    var onCalendarTap: (CalendarDataSource) -> Void
     var onCalendarDelete: (CalendarDataSource) -> Void
     var onRefresh: () async throws -> Void
-
+    
     var body: some View {
+        @Bindable var bindableRouter = navigation
+        
         if calendars.isEmpty {
             CalendarEmptyStateView()
         } else {
-            List {
+            List(selection: $bindableRouter.selectedCalendarId) {
                 ForEach(calendars) { calendar in
                     PCCalendarCardView(
                         viewModel: cardViewModelFactory(calendar)
-                    ) {
-                        onCalendarTap(calendar)
-                    }
+                    )
+                    .tag(calendar.id)
                     .listRowSeparator(.hidden)
                     .listRowBackground(Color.clear)
                     .listRowInsets(EdgeInsets(top: 6, leading: 16, bottom: 6, trailing: 16))
@@ -56,7 +51,6 @@ struct CalendarListContent: View {
             CalendarDataSource(id: 2, name: "Work", year: 2026, numberOfColumns: 2)
         ],
         cardViewModelFactory: { PCCalendarCardViewModel(calendar: $0) },
-        onCalendarTap: { _ in },
         onCalendarDelete: { _ in },
         onRefresh: {}
     )
@@ -66,7 +60,6 @@ struct CalendarListContent: View {
     CalendarListContent(
         calendars: [],
         cardViewModelFactory: { PCCalendarCardViewModel(calendar: $0) },
-        onCalendarTap: { _ in },
         onCalendarDelete: { _ in },
         onRefresh: {}
     )

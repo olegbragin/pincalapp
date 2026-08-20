@@ -15,6 +15,7 @@ final class PerfScrollTests: XCTestCase {
         app.launchArguments = ["-UITestSeedData"]
         app.launch()
 
+        app.cells.element(boundBy: 0).tap()
         app.staticTexts["UI Test Calendar"].firstMatch.tap()
 
         // Interact with the batch editor first while the current month is guaranteed on screen.

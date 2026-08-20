@@ -26,7 +26,7 @@ struct PCCalendarYearView: View {
     
     var body: some View {
         GeometryReader { proxy in
-            let cellSize = (proxy.size.width - Self.monthColumnSpacing * CGFloat(viewModel.internalNumberOfColumns - 1)) / CGFloat(viewModel.internalNumberOfColumns) / 7
+            let cellSize = max(1, (proxy.size.width - Self.monthColumnSpacing * CGFloat(viewModel.internalNumberOfColumns - 1)) / CGFloat(viewModel.internalNumberOfColumns) / 7)
             ScrollView {
                 LazyVGrid(
                     columns: gridColumns,

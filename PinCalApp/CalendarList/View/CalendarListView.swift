@@ -1,24 +1,13 @@
-//
-//  CalendarListView.swift
-//  USkateAppV2
-//
-//  Created by Oleg Bragin on 09.02.2026.
-//
-
 import SwiftUI
 
 struct CalendarListView: View {
-    @Binding var navigation: RootNavigation
     @State private var viewModel = CalendarListViewModel()
-
-    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
     var body: some View {
         VStack(spacing: 0) {
             CalendarListContent(
                 calendars: viewModel.calendars,
                 cardViewModelFactory: { viewModel.cardViewModel(for: $0) },
-                onCalendarTap: { navigation.selectedItem = .calendar(id: $0.id) },
                 onCalendarDelete: { viewModel.removeCalendarFromList($0) },
                 onRefresh: { try await viewModel.fetch() }
             )
@@ -86,35 +75,6 @@ struct CalendarListView: View {
         }
         .sheet(isPresented: $viewModel.isAddEditSheetPresented) {
             AddEditCalendarView(viewModel: viewModel.addEditCalendarViewModel)
-        }
-        .compactCalendarNavigationDestination(
-            isCompact: horizontalSizeClass == .compact,
-            item: selectedItemBinding
-        )
-    }
-
-    private var selectedItemBinding: Binding<RootSelection?> {
-        Binding(
-            get: { navigation.selectedItem },
-            set: { navigation.selectedItem = $0 }
-        )
-    }
-}
-
-private extension View {
-    @ViewBuilder
-    func compactCalendarNavigationDestination(
-        isCompact: Bool,
-        item: Binding<RootSelection?>
-    ) -> some View {
-        if isCompact {
-            navigationDestination(item: item) { selection in
-                if case .calendar(let id) = selection {
-                    CalendarDetailView(calendarId: id)
-                }
-            }
-        } else {
-            self
         }
     }
 }

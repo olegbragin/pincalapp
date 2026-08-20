@@ -9,7 +9,6 @@ import SwiftUI
 
 struct PCCalendarCardView: View {
     @Bindable var viewModel: PCCalendarCardViewModel
-    var onTap: (() -> Void)?
 
     var body: some View {
         ZStack {
@@ -92,10 +91,5 @@ struct PCCalendarCardView: View {
         .frame(height: 200)
         .contentShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
         .animation(.spring(response: 0.35, dampingFraction: 0.85), value: viewModel.isEditing)
-        .onTapGesture {
-            if !viewModel.isEditing {
-                onTap?()
-            }
-        }
     }
 }
