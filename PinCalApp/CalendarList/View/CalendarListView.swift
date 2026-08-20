@@ -8,7 +8,7 @@
 import SwiftUI
 
 struct CalendarListView: View {
-    @Binding var selector: RootSelectionCoordinator
+    @Binding var navigation: RootNavigation
     @State private var viewModel = CalendarListViewModel()
 
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
@@ -18,7 +18,7 @@ struct CalendarListView: View {
             CalendarListContent(
                 calendars: viewModel.calendars,
                 cardViewModelFactory: { viewModel.cardViewModel(for: $0) },
-                onCalendarTap: { selector.selectedItem = .calendar(id: $0.id) },
+                onCalendarTap: { navigation.selectedItem = .calendar(id: $0.id) },
                 onCalendarDelete: { viewModel.removeCalendarFromList($0) },
                 onRefresh: { try await viewModel.fetch() }
             )
@@ -95,8 +95,8 @@ struct CalendarListView: View {
 
     private var selectedItemBinding: Binding<RootSelection?> {
         Binding(
-            get: { selector.selectedItem },
-            set: { selector.selectedItem = $0 }
+            get: { navigation.selectedItem },
+            set: { navigation.selectedItem = $0 }
         )
     }
 }

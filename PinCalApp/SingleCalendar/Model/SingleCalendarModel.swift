@@ -20,6 +20,7 @@ final class SingleCalendarModel {
     
     private let dataProvider = PCCalendarDataProvider()
     private let manager: CalendarManager
+    private var calendarObserver: AnyObject?
     
     private var originalBatches: [EventBatchDataSource] = []
     private var addedEvents: Set<EventDataSource> = []
@@ -64,6 +65,14 @@ final class SingleCalendarModel {
     init(calendarid: Int64, manager: CalendarManager = CalendarManager()) {
         self.calendarid = calendarid
         self.manager = manager
+        if calendarid != 0 {
+            calendarObserver = manager.subscribeToCalendars { [weak self] in
+                guard let self else { return }
+                Task { @MainActor in
+                    await self.fetch()
+                }
+            }
+        }
     }
     
     var isColorPickerDisabled: Bool {
@@ -81,17 +90,12 @@ final class SingleCalendarModel {
     }
     
     func fetch() async {
-        // reset()
-        
         guard state != .content, !Task.isCancelled else { return }
-        // isLoading = true
         
         guard let calendar = try? await self.manager.getCalendar(id: calendarid) else {
             state = .empty
             return
         }
-        
-        // try? await Task.sleep(for: .seconds(3))
         
         label = calendar.name
         yearModel.months = dataProvider.months(forYear: calendar.year).map {

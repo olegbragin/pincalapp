@@ -58,6 +58,9 @@ struct ObjectBoxFactory {
         guard let savedCalendar = try? calendarBox.get(calendar.id) else { return }
         savedCalendar.eventBatches.append(batch)
         try? savedCalendar.eventBatches.applyToDb()
+
+        let calendar2 = PPCalendar(name: "Second Calendar", year: currentYear, numberOfColumns: 3)
+        try? calendarBox.put(calendar2)
     }
 
     private static var currentYear: Int {

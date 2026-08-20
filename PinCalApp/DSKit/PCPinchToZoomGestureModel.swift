@@ -10,12 +10,18 @@ import Observation
 
 @Observable
 final class PCPinchToZoomGestureModel {
+    private enum Direction {
+        case idle
+        case zoomIn
+        case zoomOut
+    }
+
     private let baseSensitivity: CGFloat = 0.12
     private let minSensitivity: CGFloat = 0.08
     private var smoothMagnification: CGFloat = 1.0
     private var accumulatedDelta: CGFloat = 0.0
     private var lastMagnification: CGFloat = 1.0
-    private var lastDirection: Int = 0
+    private var lastDirection: Direction = .idle
 
     var onPinchedToZoomIn: (() -> Void)?
     var onPinchedToZoomOut: (() -> Void)?
@@ -53,19 +59,22 @@ final class PCPinchToZoomGestureModel {
         var newDirection = lastDirection
 
         if accumulatedDelta > triggerThreshold {
-            newDirection = -1
+            newDirection = .zoomOut
             accumulatedDelta *= 0.25
         } else if accumulatedDelta < -triggerThreshold {
-            newDirection = 1
+            newDirection = .zoomIn
             accumulatedDelta *= 0.25
         }
 
         if newDirection != lastDirection {
             lastDirection = newDirection
-            if newDirection == -1 {
+            switch newDirection {
+            case .zoomOut:
                 onPinchedToZoomOut?()
-            } else if newDirection == 1 {
+            case .zoomIn:
                 onPinchedToZoomIn?()
+            case .idle:
+                break
             }
         }
     }

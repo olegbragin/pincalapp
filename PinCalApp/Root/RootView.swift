@@ -8,19 +8,22 @@
 import SwiftUI
 
 struct RootView: View {
-    @State var selector = RootSelectionCoordinator()
-    
+    @State var navigation = RootNavigation()
+
     var body: some View {
-        NavigationSplitView(
-            sidebar: {
-                RootContentView(selector: $selector)
-            },
-            detail: {
-                RootDetailView(selector: $selector)
-                    .background(.colorBackgroundMain)
+        NavigationSplitView {
+            RootContentView(navigation: $navigation)
+        } detail: {
+            NavigationStack {
+                switch navigation.selectedItem {
+                case .calendar(let id):
+                    CalendarDetailView(calendarId: id)
+                default:
+                    Text("Select a calendar from the sidebar")
+                }
             }
-        )
+            .background(.colorBackgroundMain)
+        }
         .padding(0)
     }
 }
-

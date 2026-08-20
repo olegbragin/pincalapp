@@ -83,6 +83,68 @@ final class PinCalAppUITests: XCTestCase {
     }
 
     @MainActor
+    func testNavigationToCalendarAndBack() throws {
+        let app = XCUIApplication()
+        app.launchArguments = ["-UITestSeedData"]
+        app.launch()
+
+        let calendarName = app.staticTexts["UI Test Calendar"]
+        XCTAssertTrue(calendarName.waitForExistence(timeout: 5), "Sidebar should show the seeded calendar")
+
+        calendarName.tap()
+
+        let multiselectButton = app.buttons["Multiselect"]
+        XCTAssertTrue(multiselectButton.waitForExistence(timeout: 5), "Detail view should appear after tapping a calendar")
+
+        guard app.buttons["Back"].waitForExistence(timeout: 3) else {
+            return
+        }
+        app.buttons["Back"].tap()
+
+        XCTAssertTrue(calendarName.waitForExistence(timeout: 5), "Sidebar should be visible again after popping")
+
+        calendarName.tap()
+        XCTAssertTrue(multiselectButton.waitForExistence(timeout: 5), "Re-selecting the same calendar should work")
+    }
+
+    @MainActor
+    func testiPadSidebarSelectsDetailCalendar() throws {
+        let app = XCUIApplication()
+        app.launchArguments = ["-UITestSeedData"]
+        app.launch()
+
+        let firstCalendar = app.staticTexts["UI Test Calendar"].firstMatch
+        let secondCalendar = app.staticTexts["Second Calendar"].firstMatch
+        guard firstCalendar.waitForExistence(timeout: 5),
+              secondCalendar.waitForExistence(timeout: 3) else {
+            return
+        }
+
+        firstCalendar.tap()
+        let detail1 = app.otherElements["calendar-detail-1"]
+        guard detail1.waitForExistence(timeout: 5) else { return }
+
+        if !secondCalendar.exists {
+            app.buttons["Back"].tap()
+            _ = firstCalendar.waitForExistence(timeout: 3)
+        }
+
+        secondCalendar.tap()
+        let detail2 = app.otherElements["calendar-detail-2"]
+        XCTAssertTrue(detail2.waitForExistence(timeout: 5), "Detail should switch to second calendar (id 2)")
+        XCTAssertFalse(detail1.waitForExistence(timeout: 2), "First calendar detail should no longer be visible")
+
+        if !firstCalendar.exists {
+            app.buttons["Back"].tap()
+            _ = secondCalendar.waitForExistence(timeout: 3)
+        }
+
+        firstCalendar.tap()
+        XCTAssertTrue(detail1.waitForExistence(timeout: 5), "Tapping first calendar again should bring back its detail")
+        XCTAssertFalse(detail2.waitForExistence(timeout: 2), "Second calendar detail should no longer be visible")
+    }
+
+    @MainActor
     func testLaunchPerformance() throws {
         // This measures how long it takes to launch your application.
         measure(metrics: [XCTApplicationLaunchMetric()]) {

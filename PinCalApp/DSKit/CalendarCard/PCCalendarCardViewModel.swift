@@ -10,7 +10,7 @@ import SwiftUI
 @Observable
 final class PCCalendarCardViewModel {
     var name: String
-    let numberOfColumns: Int
+    var numberOfColumns: Int
     let id: Int64
     let gradient: LinearGradient
 

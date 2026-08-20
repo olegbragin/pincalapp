@@ -30,6 +30,7 @@ final class CalendarListViewModel {
     }
 
     private var cardViewModels: [Int64: PCCalendarCardViewModel] = [:]
+    private var calendarObserver: AnyObject?
 
     var appVersion: String {
         let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "?"
@@ -39,6 +40,12 @@ final class CalendarListViewModel {
 
     init(manager: CalendarManager = .init()) {
         self.manager = manager
+        calendarObserver = manager.subscribeToCalendars { [weak self] in
+            guard let self else { return }
+            Task { @MainActor in
+                try? await self.fetch()
+            }
+        }
     }
 
     func cardViewModel(for calendar: CalendarDataSource) -> PCCalendarCardViewModel {
@@ -55,8 +62,9 @@ final class CalendarListViewModel {
 
     func fetch() async throws {
         let fetched = try await manager.getAllCalendars()
-        if fetched != self.calendars {
-            self.calendars = fetched
+        self.calendars = fetched
+        for calendar in calendars {
+            cardViewModels[calendar.id]?.numberOfColumns = calendar.numberOfColumns
         }
     }
 
