@@ -39,7 +39,6 @@ final class SingleCalendarModel {
     var isEditPresented = false
     var isEditScreenPresented = false
     var isLegendSheetPresented = false
-    private(set) var isRoutingToBatchEditor = false
     
     private var originalEvents: Set<EventDataSource> {
         Set(originalBatches.flatMap(\.events))
@@ -152,16 +151,6 @@ final class SingleCalendarModel {
         isEditScreenPresented = true
     }
     
-    func routeToBatchEditor() {
-        isEditPresented = false
-        isRoutingToBatchEditor = true
-        Task { @MainActor in
-            try? await Task.sleep(for: .milliseconds(400))
-            isRoutingToBatchEditor = false
-            isEditScreenPresented = true
-        }
-    }
-    
     func handleSelectionConfirmation() {
         guard !addedEvents.isEmpty else {
             cancelMultipleChanges()
@@ -205,9 +194,7 @@ final class SingleCalendarModel {
     
     func onBatchListDismissed() {
         daySelectionManager.selectedDays = []
-        if !isRoutingToBatchEditor {
-            addEditBatchListViewModel.reset()
-        }
+        addEditBatchListViewModel.reset()
     }
     
     func deleteBatches(_ batches: [EventBatchDataSource], for calendarId: Int64) {
@@ -224,14 +211,12 @@ final class SingleCalendarModel {
         state = .empty
         isEditPresented = false
         isEditScreenPresented = false
-        isRoutingToBatchEditor = false
         isLegendSheetPresented = false
         addEditBatchListViewModel.reset()
     }
     
     func resetSelectedDays() {
         daySelectionManager.selectedDays = []
-        isRoutingToBatchEditor = false
         if daySelectionManager.selectionMode == .multiple {
             commitPendingBatch()
             daySelectionManager.toggleSelectionMode()

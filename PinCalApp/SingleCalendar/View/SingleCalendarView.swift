@@ -73,19 +73,20 @@ struct SingleCalendarView: View {
         .onDisappear {
             flushColumnCountSave()
         }
-        .navigationDestination(isPresented: $viewModel.isEditScreenPresented) {
-            AddEditEventBatchScreen(
-                viewModel: viewModel.addEditBatchListViewModel.addEditEventBatchModel,
-                onSave: { viewModel.isEditScreenPresented = false },
-                onCancel: { viewModel.isEditScreenPresented = false }
+        .navigationDestination(isPresented: $viewModel.isEditPresented) {
+            AddEditEventBatchListView(
+                viewModel: viewModel.addEditBatchListViewModel
             )
         }
-        .sheet(isPresented: $viewModel.isEditPresented) {
-            SingleCalendarEditorContent(
-                viewModel: viewModel.addEditBatchListViewModel,
-                onClose: { viewModel.isEditPresented = false },
-                onBatchTap: { viewModel.routeToBatchEditor() }
+        .navigationDestination(isPresented: $viewModel.isEditScreenPresented) {
+            AddEditEventBatchScreen(
+                viewModel: viewModel.addEditBatchListViewModel.addEditEventBatchModel
             )
+        }
+        .onChange(of: viewModel.addEditBatchListViewModel.addEditEventBatchModel.isPresented) { oldValue, newValue in
+            if oldValue != newValue, !newValue {
+                viewModel.resetSelectedDays()
+            }
         }
     }
     

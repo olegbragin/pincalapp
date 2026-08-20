@@ -9,28 +9,17 @@ import SwiftUI
 
 struct AddEditEventBatchScreen: View {
     @Bindable var viewModel: AddEditEventBatchViewModel
-    
-    var onSave: () -> Void = {}
-    var onCancel: () -> Void = {}
-    
+    @Environment(\.dismiss) private var dismiss
+
     var body: some View {
         GeometryReader { geometry in
             if geometry.size.width > geometry.size.height {
-                BatchEditorHorizontalLayout(viewModel: viewModel, onSave: onSave)
+                BatchEditorHorizontalLayout(viewModel: viewModel, onSave: save)
             } else {
-                BatchEditorVerticalLayout(viewModel: viewModel, onSave: onSave)
+                BatchEditorVerticalLayout(viewModel: viewModel, onSave: save)
             }
         }
-        .navigationBarBackButtonHidden(true)
         .toolbar {
-            ToolbarItem(placement: .topBarLeading) {
-                PCButton {
-                    onCancel()
-                } label: {
-                    Image(systemName: "chevron.left")
-                        .accessibilityLabel("Back")
-                }
-            }
             ToolbarItem(placement: .principal) {
                 BatchEditorTitleContent(
                     preferredTitle: viewModel.preferredTitle,
@@ -45,6 +34,12 @@ struct AddEditEventBatchScreen: View {
             if let selectedDay = newValue.first {
                 viewModel.toggleEvent(on: selectedDay)
             }
+        }
+    }
+
+    private func save() {
+        if viewModel.save() {
+            dismiss()
         }
     }
 }
