@@ -9,6 +9,11 @@ import SwiftUI
 
 @main
 struct PinCalAppApp: App {
+    init() {
+        UITableView.appearance().backgroundColor = .clear
+        UITableViewCell.appearance().backgroundColor = .clear
+    }
+
     var body: some Scene {
         WindowGroup {
             RootView()

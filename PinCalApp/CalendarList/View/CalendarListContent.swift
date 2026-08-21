@@ -21,7 +21,6 @@ struct CalendarListContent: View {
                     )
                     .tag(calendar.id)
                     .listRowSeparator(.hidden)
-                    .listRowBackground(Color.clear)
                     .listRowInsets(EdgeInsets(top: 6, leading: 16, bottom: 6, trailing: 16))
                     .swipeActions(edge: .trailing) {
                         Button(role: .destructive) {
@@ -35,6 +34,7 @@ struct CalendarListContent: View {
                 }
             }
             .listStyle(.plain)
+            .background(.clear)
             .scrollContentBackground(.hidden)
             .refreshable {
                 try? await onRefresh()
