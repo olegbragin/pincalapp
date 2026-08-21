@@ -20,6 +20,7 @@ final class PCCalendarCardViewModel {
     var onEditStarted: ((PCCalendarCardViewModel) -> Void)?
     var onEditCommitted: ((Int64, String) -> Void)?
     var onEditCancelled: (() -> Void)?
+    var onDelete: (() -> Void)?
 
     init(calendar: any PCCalendarCardData) {
         self.id = calendar.id

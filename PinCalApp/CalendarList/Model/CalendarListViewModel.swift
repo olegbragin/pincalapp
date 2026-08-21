@@ -12,11 +12,39 @@ enum PendingChange: Equatable {
     case removed(CalendarDataSource, originalIndex: Int)
 }
 
+enum DisplayMode: String, CaseIterable {
+    case list
+    case grid
+
+    var icon: String {
+        switch self {
+        case .list: return "rectangle.grid.1x2"
+        case .grid: return "rectangle.grid.2x2"
+        }
+    }
+
+    var label: String {
+        switch self {
+        case .list: return "List"
+        case .grid: return "Grid"
+        }
+    }
+
+    var toggled: DisplayMode {
+        switch self {
+        case .list: return .grid
+        case .grid: return .list
+        }
+    }
+}
+
+@MainActor
 @Observable
 final class CalendarListViewModel {
     private var manager: CalendarManager
 
     var calendars: [CalendarDataSource] = []
+    var displayMode: DisplayMode = .list
 
     var addEditCalendarViewModel = AddEditCalendarViewModel()
     var isAddEditSheetPresented = false
@@ -29,8 +57,8 @@ final class CalendarListViewModel {
         cardViewModels.values.contains { $0.isEditing }
     }
 
-    private var cardViewModels: [Int64: PCCalendarCardViewModel] = [:]
-    private var calendarObserver: AnyObject?
+    @ObservationIgnored private var cardViewModels: [Int64: PCCalendarCardViewModel] = [:]
+    @ObservationIgnored private var calendarObserver: AnyObject?
 
     var appVersion: String {
         let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "?"
@@ -55,6 +83,10 @@ final class CalendarListViewModel {
         let vm = PCCalendarCardViewModel(calendar: calendar)
         vm.onEditCommitted = { [weak self] id, newName in
             self?.handleEditCommitted(id: id, newName: newName)
+        }
+        vm.onDelete = { [weak self] in
+            guard let self else { return }
+            self.removeCalendarFromList(calendar)
         }
         cardViewModels[calendar.id] = vm
         return vm

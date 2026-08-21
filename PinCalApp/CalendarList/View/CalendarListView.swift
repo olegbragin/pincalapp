@@ -7,6 +7,7 @@ struct CalendarListView: View {
         VStack(spacing: 0) {
             CalendarListContent(
                 calendars: viewModel.calendars,
+                displayMode: viewModel.displayMode,
                 cardViewModelFactory: { viewModel.cardViewModel(for: $0) },
                 onCalendarDelete: { viewModel.removeCalendarFromList($0) },
                 onRefresh: { try await viewModel.fetch() }
@@ -62,6 +63,15 @@ struct CalendarListView: View {
                     } label: {
                         Image(systemName: "arrow.uturn.backward")
                     }
+                }
+            }
+            ToolbarItem(placement: .navigationBarTrailing) {
+                Button {
+                    withAnimation(.easeInOut(duration: 0.3)) {
+                        viewModel.displayMode = viewModel.displayMode.toggled
+                    }
+                } label: {
+                    Label(viewModel.displayMode.toggled.label, systemImage: viewModel.displayMode.toggled.icon)
                 }
             }
         }

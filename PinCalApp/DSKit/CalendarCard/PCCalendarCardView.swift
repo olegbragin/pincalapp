@@ -75,6 +75,24 @@ struct PCCalendarCardView: View {
                                 .fill(.white.opacity(0.15))
                         )
                         .transition(.opacity)
+                } else {
+                    HStack {
+                        Spacer()
+                        Button {
+                            viewModel.onDelete?()
+                        } label: {
+                            Image(systemName: "trash")
+                                .font(.system(size: 12, weight: .semibold))
+                                .foregroundStyle(.white.opacity(0.6))
+                                .frame(width: 28, height: 28)
+                                .background(
+                                    Circle()
+                                        .fill(.white.opacity(0.15))
+                                )
+                        }
+                        .buttonStyle(.plain)
+                    }
+                    .transition(.opacity)
                 }
             }
             .foregroundColor(.white)
