@@ -10,6 +10,7 @@ import ObjectBox
 
 struct SingleCalendarView: View {
     @Bindable var viewModel: SingleCalendarModel
+    @Environment(RootNavigation.self) var navigation
     
     @State private var columnCountSaveTask: Task<Void, Never>?
         
@@ -38,19 +39,11 @@ struct SingleCalendarView: View {
                         } else if let selectedDay = newValue.first {
                             if viewModel.hasEvents(on: selectedDay) {
                                 viewModel.prepareAddEditBatchListViewModel(with: newValue)
+                                navigation.push(.batchList)
                             } else {
                                 viewModel.prepareAddEditEventBatchViewModel(for: selectedDay)
+                                navigation.push(.batchEditor)
                             }
-                        }
-                    }
-                    .onChange(of: viewModel.isEditPresented) { oldValue, newValue in
-                        if oldValue != newValue, !newValue {
-                            viewModel.onBatchListDismissed()
-                        }
-                    }
-                    .onChange(of: viewModel.isEditScreenPresented) { oldValue, newValue in
-                        if oldValue != newValue, !newValue {
-                            viewModel.resetSelectedDays()
                         }
                     }
                     .onChange(of: viewModel.addEditBatchListViewModel.eventBatchesToDelete) {
@@ -65,6 +58,20 @@ struct SingleCalendarView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { toolbarContent }
             .id(viewModel.calendarid)
+            .navigationDestination(for: AppRoute.self) { route in
+                switch route {
+                case .calendarDetail:
+                    EmptyView()
+                case .batchList:
+                    AddEditEventBatchListView(
+                        viewModel: viewModel.addEditBatchListViewModel
+                    )
+                case .batchEditor:
+                    AddEditEventBatchScreen(
+                        viewModel: viewModel.addEditBatchListViewModel.addEditEventBatchModel
+                    )
+                }
+            }
         }
         .ignoresSafeArea(edges: .bottom)
         .task(id: viewModel.calendarid) {
@@ -73,18 +80,8 @@ struct SingleCalendarView: View {
         .onDisappear {
             flushColumnCountSave()
         }
-        .navigationDestination(isPresented: $viewModel.isEditPresented) {
-            AddEditEventBatchListView(
-                viewModel: viewModel.addEditBatchListViewModel
-            )
-        }
-        .navigationDestination(isPresented: $viewModel.isEditScreenPresented) {
-            AddEditEventBatchScreen(
-                viewModel: viewModel.addEditBatchListViewModel.addEditEventBatchModel
-            )
-        }
-        .onChange(of: viewModel.addEditBatchListViewModel.addEditEventBatchModel.isPresented) { oldValue, newValue in
-            if oldValue != newValue, !newValue {
+        .onChange(of: navigation.path.count) { _, newCount in
+            if newCount == 0 {
                 viewModel.resetSelectedDays()
             }
         }
@@ -108,7 +105,7 @@ struct SingleCalendarView: View {
     
     @ToolbarContentBuilder
     private var toolbarContent: some ToolbarContent {
-        if !viewModel.isEditPresented && !viewModel.isEditScreenPresented {
+        if navigation.path.count == 0 {
             ToolbarItem {
                 Button(
                     viewModel.daySelectionManager.selectionMode == .multiple ? "Save" : "Multiselect",

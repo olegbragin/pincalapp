@@ -13,8 +13,6 @@ struct RootContentView: View {
                 systemImage: "archivebox",
                 description: Text("Coming soon")
             )
-        default:
-            EmptyView()
         }
     }
 }

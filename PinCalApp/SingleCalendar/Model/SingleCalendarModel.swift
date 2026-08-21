@@ -36,8 +36,6 @@ final class SingleCalendarModel {
     private(set) var addEditBatchListViewModel = AddEditEventBatchListViewModel()
     
     var state: State = .empty
-    var isEditPresented = false
-    var isEditScreenPresented = false
     var isLegendSheetPresented = false
     
     private var originalEvents: Set<EventDataSource> {
@@ -134,7 +132,6 @@ final class SingleCalendarModel {
         addEditModel.selectedDays = sortedEvents.map(\.date)
         addEditModel.timestamp = UUID()
         addEditModel.prepare(with: sortedEvents)
-        isEditScreenPresented = true
     }
     
     func prepareAddEditEventBatchViewModel(for date: Date) {
@@ -148,7 +145,6 @@ final class SingleCalendarModel {
         addEditModel.prepare(with: [
             EventDataSource(name: "Event1", date: date, color: PCColorOption.option1.colorName)
         ])
-        isEditScreenPresented = true
     }
     
     func handleSelectionConfirmation() {
@@ -159,7 +155,7 @@ final class SingleCalendarModel {
         prepareAddEditEventBatchViewModel()
     }
     
-    private func commitPendingBatch() {
+    func commitPendingBatch() {
         guard let eventBatch = addEditBatchListViewModel.addEditEventBatchModel.eventBatch else { return }
         if eventBatch.id == 0 {
             originalBatches.append(eventBatch)
@@ -179,7 +175,6 @@ final class SingleCalendarModel {
     
     func prepareAddEditBatchListViewModel(with selectedDays: Set<Date>) {
         guard let selectedDay = selectedDays.first else {
-            isEditPresented = false
             addEditBatchListViewModel.reset()
             return
         }
@@ -189,7 +184,6 @@ final class SingleCalendarModel {
             } || (batch.date.map { isSameDay($0, selectedDay) } ?? false)
         }
         addEditBatchListViewModel.prepare(with: dayBatches, and: selectedDay)
-        isEditPresented = true
     }
     
     func onBatchListDismissed() {
@@ -209,8 +203,6 @@ final class SingleCalendarModel {
     func reset() {
         label = ""
         state = .empty
-        isEditPresented = false
-        isEditScreenPresented = false
         isLegendSheetPresented = false
         addEditBatchListViewModel.reset()
     }

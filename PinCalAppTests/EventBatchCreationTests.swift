@@ -300,7 +300,6 @@ struct EventBatchCreationTests {
         
         model.prepareAddEditEventBatchViewModel()
         
-        #expect(model.isEditScreenPresented)
         let addEdit = model.addEditBatchListViewModel.addEditEventBatchModel
         #expect(addEdit.eventBatchName == "Event1")
         #expect(addEdit.selectedColor == .option1)
@@ -315,7 +314,7 @@ struct EventBatchCreationTests {
         
         model.prepareAddEditEventBatchViewModel()
         
-        #expect(!model.isEditScreenPresented)
+        #expect(model.addEditBatchListViewModel.addEditEventBatchModel.eventBatch == nil)
     }
     
     @Test func cancelMultipleChangesExitsModeAndClearsState() {
@@ -638,7 +637,6 @@ struct EventBatchCreationTests {
         
         model.prepareAddEditEventBatchViewModel(for: day10)
         
-        #expect(model.isEditScreenPresented)
         let addEdit = model.addEditBatchListViewModel.addEditEventBatchModel
         #expect(addEdit.selectedDays == [day10])
         #expect(addEdit.eventBatchName == "Event1")

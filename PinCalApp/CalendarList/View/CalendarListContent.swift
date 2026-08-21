@@ -14,12 +14,12 @@ struct CalendarListContent: View {
         if calendars.isEmpty {
             CalendarEmptyStateView()
         } else {
-            List(selection: $bindableRouter.selectedCalendarId) {
+            List(selection: $bindableRouter.selectedRoute) {
                 ForEach(calendars) { calendar in
                     PCCalendarCardView(
                         viewModel: cardViewModelFactory(calendar)
                     )
-                    .tag(calendar.id)
+                    .tag(AppRoute.calendarDetail(calendar.id))
                     .listRowSeparator(.hidden)
                     .listRowInsets(EdgeInsets(top: 6, leading: 16, bottom: 6, trailing: 16))
                     .swipeActions(edge: .trailing) {
@@ -40,6 +40,9 @@ struct CalendarListContent: View {
                 try? await onRefresh()
             }
             .scrollDismissesKeyboard(.interactively)
+            .onChange(of: navigation.selectedRoute) { _, _ in
+                navigation.path = NavigationPath()
+            }
         }
     }
 }

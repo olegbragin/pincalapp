@@ -5,8 +5,15 @@
 //  Created by Oleg Bragin on 19.02.2026.
 //
 
+import Foundation
+
 enum RootSelection: Equatable, Hashable {
     case calendarList
     case archived
-    case calendar(id: Int64)
+}
+
+enum AppRoute: Hashable {
+    case calendarDetail(Int64)
+    case batchList
+    case batchEditor
 }

@@ -15,7 +15,8 @@ struct RootView: View {
     }
 
     private var sidebarColumn: some View {
-        List(selection: $navigation.selectedCategory) {
+        @Bindable var bindableNavigation = navigation
+        return List(selection: $bindableNavigation.selectedCategory) {
             Section("Menu") {
                 Label("Calendars", systemImage: "calendar")
                     .tag(RootSelection.calendarList)
@@ -29,15 +30,18 @@ struct RootView: View {
     }
 
     private var detailColumn: some View {
-        NavigationStack {
-            if let id = navigation.selectedCalendarId {
-                CalendarDetailView(calendarId: id)
-            } else {
-                ContentUnavailableView(
-                    "Select a calendar",
-                    systemImage: "calendar",
-                    description: Text("Choose a calendar from the list")
-                )
+        @Bindable var bindableNavigation = navigation
+        return NavigationStack(path: $bindableNavigation.path) {
+            Group {
+                if case .calendarDetail(let id) = navigation.selectedRoute {
+                    CalendarDetailView(calendarId: id)
+                } else {
+                    ContentUnavailableView(
+                        "Select a calendar",
+                        systemImage: "calendar",
+                        description: Text("Choose a calendar from the list")
+                    )
+                }
             }
         }
         .background(.colorBackgroundMain)

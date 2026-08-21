@@ -9,6 +9,7 @@ import SwiftUI
 
 struct AddEditEventBatchListView: View {
     @Bindable var viewModel: AddEditEventBatchListViewModel
+    @Environment(RootNavigation.self) var navigation
 
     var body: some View {
         List {
@@ -17,7 +18,7 @@ struct AddEditEventBatchListView: View {
                     Button(
                         action: {
                             viewModel.prepareAddEditBatchViewModel(with: eventBatch)
-                            viewModel.addEditEventBatchModel.isPresented = true
+                            navigation.push(.batchEditor)
                         },
                         label: {
                             HStack(spacing: 12) {
@@ -48,11 +49,6 @@ struct AddEditEventBatchListView: View {
             ToolbarItem(placement: .title) {
                 Text(viewModel.selectedDay ?? Date(), style: .date)
             }
-        }
-        .navigationDestination(isPresented: $viewModel.addEditEventBatchModel.isPresented) {
-            AddEditEventBatchScreen(
-                viewModel: viewModel.addEditEventBatchModel
-            )
         }
         .background(.colorBackgroundMain)
     }
