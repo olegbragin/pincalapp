@@ -12,6 +12,7 @@ class PPCalendar: Entity {
     var name: String = ""
     var year: Int = 0
     var numberOfColumns: Int = 0
+    var isArchived: Bool = false
     
     // objectbox: backlink = "calendars"
     var events: ToMany<PPEvent> = nil
@@ -24,7 +25,8 @@ class PPCalendar: Entity {
         id: Id = 0,
         name: String,
         year: Int,
-        numberOfColumns: Int
+        numberOfColumns: Int,
+        isArchived: Bool = false
     ) {
         if id > 0 {
             self.id = id
@@ -32,5 +34,6 @@ class PPCalendar: Entity {
         self.name = name
         self.year = year
         self.numberOfColumns = numberOfColumns
+        self.isArchived = isArchived
     }
 }

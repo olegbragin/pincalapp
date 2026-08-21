@@ -5,7 +5,7 @@
   "entities": [
     {
       "id": "1:733612980013388544",
-      "lastPropertyId": "4:2411535501137855488",
+      "lastPropertyId": "5:642319787537174272",
       "name": "PPCalendar",
       "properties": [
         {
@@ -28,6 +28,11 @@
           "id": "4:2411535501137855488",
           "name": "numberOfColumns",
           "type": 6
+        },
+        {
+          "id": "5:642319787537174272",
+          "name": "isArchived",
+          "type": 1
         }
       ],
       "relations": [

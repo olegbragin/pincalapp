@@ -30,10 +30,11 @@ extension PPCalendar: ObjectBox.EntityInspectable {
         try entityBuilder.addProperty(name: "name", type: PropertyType.string, id: 2, uid: 2197111896515014400)
         try entityBuilder.addProperty(name: "year", type: PropertyType.long, id: 3, uid: 1936306707119382272)
         try entityBuilder.addProperty(name: "numberOfColumns", type: PropertyType.long, id: 4, uid: 2411535501137855488)
+        try entityBuilder.addProperty(name: "isArchived", type: PropertyType.bool, id: 5, uid: 642319787537174272)
         try entityBuilder.addToManyRelation(id: 3, uid: 1313922441448171264,
                                             targetId: 3, targetUid: 5085436393158582016)
 
-        try entityBuilder.lastProperty(id: 4, uid: 2411535501137855488)
+        try entityBuilder.lastProperty(id: 5, uid: 642319787537174272)
     }
 }
 
@@ -62,6 +63,12 @@ extension PPCalendar {
     ///
     ///     box.query { PPCalendar.numberOfColumns > 1234 }
     internal static var numberOfColumns: Property<PPCalendar, Int, Void> { return Property<PPCalendar, Int, Void>(propertyId: 4, isPrimaryKey: false) }
+    /// Generated entity property information.
+    ///
+    /// You may want to use this in queries to specify fetch conditions, for example:
+    ///
+    ///     box.query { PPCalendar.isArchived == true }
+    internal static var isArchived: Property<PPCalendar, Bool, Void> { return Property<PPCalendar, Bool, Void>(propertyId: 5, isPrimaryKey: false) }
     /// Use `PPCalendar.events` to refer to this ToMany relation property in queries,
     /// like when using `QueryBuilder.and(property:, conditions:)`.
 
@@ -111,6 +118,14 @@ extension ObjectBox.Property where E == PPCalendar {
 
     internal static var numberOfColumns: Property<PPCalendar, Int, Void> { return Property<PPCalendar, Int, Void>(propertyId: 4, isPrimaryKey: false) }
 
+    /// Generated entity property information.
+    ///
+    /// You may want to use this in queries to specify fetch conditions, for example:
+    ///
+    ///     box.query { .isArchived == true }
+
+    internal static var isArchived: Property<PPCalendar, Bool, Void> { return Property<PPCalendar, Bool, Void>(propertyId: 5, isPrimaryKey: false) }
+
     /// Use `.events` to refer to this ToMany relation property in queries, like when using
     /// `QueryBuilder.and(property:, conditions:)`.
 
@@ -148,6 +163,7 @@ internal final class PPCalendarBinding: ObjectBox.EntityBinding, Sendable {
         propertyCollector.collect(id, at: 2 + 2 * 1)
         propertyCollector.collect(entity.year, at: 2 + 2 * 3)
         propertyCollector.collect(entity.numberOfColumns, at: 2 + 2 * 4)
+        propertyCollector.collect(entity.isArchived, at: 2 + 2 * 5)
         propertyCollector.collect(dataOffset: propertyOffset_name, at: 2 + 2 * 2)
     }
 
@@ -180,6 +196,7 @@ internal final class PPCalendarBinding: ObjectBox.EntityBinding, Sendable {
         entity.name = entityReader.read(at: 2 + 2 * 2)
         entity.year = entityReader.read(at: 2 + 2 * 3)
         entity.numberOfColumns = entityReader.read(at: 2 + 2 * 4)
+        entity.isArchived = entityReader.read(at: 2 + 2 * 5)
 
         entity.events = ToMany<PPEvent>.backlink(
             sourceBox: store.box(for: ToMany<PPEvent>.ReferencedType.self),
