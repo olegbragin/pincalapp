@@ -27,6 +27,7 @@ final class SingleCalendarModel {
     
     private(set) var calendarid: Int64
     private(set) var label: String = ""
+    private(set) var isArchived: Bool = false
     
     let daySelectionManager = PCCalendarDaySelectionManager()
     
@@ -95,6 +96,7 @@ final class SingleCalendarModel {
         }
         
         label = calendar.name
+        isArchived = calendar.isArchived
         yearModel.months = dataProvider.months(forYear: calendar.year).map {
             PCCalendarMonthModel(dto: $0, daySelectionManager: daySelectionManager)
         }

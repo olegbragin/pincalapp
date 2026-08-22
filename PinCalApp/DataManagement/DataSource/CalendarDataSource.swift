@@ -10,6 +10,7 @@ struct CalendarDataSource: Identifiable, Hashable {
     var name: String
     var year: Int
     var numberOfColumns: Int
+    var isArchived: Bool
     var events: [EventDataSource]
     var eventBatches: [EventBatchDataSource]
     
@@ -18,6 +19,7 @@ struct CalendarDataSource: Identifiable, Hashable {
         name: String,
         year: Int,
         numberOfColumns: Int,
+        isArchived: Bool = false,
         events: [EventDataSource] = [],
         eventBatches: [EventBatchDataSource] = []
     ) {
@@ -25,6 +27,7 @@ struct CalendarDataSource: Identifiable, Hashable {
         self.name = name
         self.year = year
         self.numberOfColumns = numberOfColumns
+        self.isArchived = isArchived
         self.events = events
         self.eventBatches = eventBatches
     }
@@ -35,6 +38,7 @@ struct CalendarDataSource: Identifiable, Hashable {
         self.name = dto.name
         self.year = dto.year
         self.numberOfColumns = dto.numberOfColumns
+        self.isArchived = dto.isArchived
         self.eventBatches = dto.eventBatches.compactMap {
             EventBatchDataSource($0)
         }
@@ -46,7 +50,7 @@ struct CalendarDataSource: Identifiable, Hashable {
 
 extension CalendarDataSource: Equatable {
     static func == (lhs: CalendarDataSource, rhs: CalendarDataSource) -> Bool {
-        lhs.id == rhs.id && lhs.name == rhs.name && lhs.year == rhs.year && lhs.numberOfColumns == rhs.numberOfColumns
+        lhs.id == rhs.id && lhs.name == rhs.name && lhs.year == rhs.year && lhs.numberOfColumns == rhs.numberOfColumns && lhs.isArchived == rhs.isArchived
     }
 }
 

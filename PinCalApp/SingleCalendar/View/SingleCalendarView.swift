@@ -32,6 +32,7 @@ struct SingleCalendarView: View {
                         }
                     }
                     .onChange(of: viewModel.daySelectionManager.selectedDays) { _, newValue in
+                        guard !viewModel.isArchived else { return }
                         if viewModel.daySelectionManager.selectionMode == .multiple, let selectedDay = newValue.first {
                             if let selectedColor = viewModel.selectedColor {
                                 viewModel.changeEvent(.init(name: "Event1", date: selectedDay, color: selectedColor.colorName))
@@ -105,7 +106,7 @@ struct SingleCalendarView: View {
     
     @ToolbarContentBuilder
     private var toolbarContent: some ToolbarContent {
-        if navigation.path.count == 0 {
+        if navigation.path.count == 0, !viewModel.isArchived {
             ToolbarItem {
                 Button(
                     viewModel.daySelectionManager.selectionMode == .multiple ? "Save" : "Multiselect",

@@ -82,6 +82,36 @@ struct PinCalAppTests {
         #expect(try eventBox.all().isEmpty)
     }
 
+    @Test func getActiveCalendarsReturnsOnlyNonArchived() async throws {
+        let store = try! Store(directoryPath: "memory:archive-\(UUID().uuidString)")
+        defer { store.close() }
+
+        let storage = ObjectBoxCalendarStorage(store: store)
+
+        let cal1 = CalendarDataSource(name: "Active", year: 2026, numberOfColumns: 2)
+        let cal2 = CalendarDataSource(name: "ToArchive", year: 2026, numberOfColumns: 3)
+        let id1 = try await storage.saveCalendar(cal1)
+        let id2 = try await storage.saveCalendar(cal2)
+
+        let active = try await storage.getActiveCalendars()
+        #expect(active.count == 2)
+
+        try await storage.archiveCalendar(id2)
+
+        let afterArchive = try await storage.getActiveCalendars()
+        #expect(afterArchive.count == 1)
+        #expect(afterArchive[0].id == id1)
+
+        let archived = try await storage.getArchivedCalendars()
+        #expect(archived.count == 1)
+        #expect(archived[0].id == id2)
+
+        try await storage.restoreCalendar(id2)
+
+        let afterRestore = try await storage.getActiveCalendars()
+        #expect(afterRestore.count == 2)
+    }
+
     @Test func saveCalendarKeepsEventsWhenAddingNewEvent() async throws {
         let store = try! Store(directoryPath: "memory:add-\(UUID().uuidString)")
         defer { store.close() }

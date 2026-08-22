@@ -36,6 +36,22 @@ struct CalendarManager {
         try await service.getAllCalendars()
     }
     
+    func getActiveCalendars() async throws -> [CalendarDataSource] {
+        try await service.getActiveCalendars()
+    }
+    
+    func getArchivedCalendars() async throws -> [CalendarDataSource] {
+        try await service.getArchivedCalendars()
+    }
+    
+    func archiveCalendar(_ calendarId: Int64) async throws {
+        try await service.archiveCalendar(calendarId)
+    }
+    
+    func restoreCalendar(_ calendarId: Int64) async throws {
+        try await service.restoreCalendar(calendarId)
+    }
+    
     func removeEvents(_ eventIds: [Int64], calendarId: Int64) async throws {
         try await service.removeEvents(eventIds, calendarId: calendarId)
     }

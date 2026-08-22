@@ -33,7 +33,8 @@ class ObjectBoxCalendarStorage: CalendarStorage {
                     id: UInt64(calendar.id),
                     name: calendar.name,
                     year: calendar.year,
-                    numberOfColumns: calendar.numberOfColumns
+                    numberOfColumns: calendar.numberOfColumns,
+                    isArchived: calendar.isArchived
                 )
             )
             guard let ppcalendar = try calendarEntityBox.get(calendarid) else { return -1 }
@@ -111,6 +112,38 @@ class ObjectBoxCalendarStorage: CalendarStorage {
         try calendarEntityBox.all().compactMap {
             CalendarDataSource($0)
         }
+    }
+    
+    func getActiveCalendars() async throws -> [CalendarDataSource] {
+        do {
+            return try calendarEntityBox.query { PPCalendar.isArchived == false }
+                .build().find().compactMap { CalendarDataSource($0) }
+        } catch {
+            print("[ObjectBoxCalendarStorage] getActiveCalendars query failed: \(error). Falling back to getAllCalendars.")
+            return try await getAllCalendars().filter { !$0.isArchived }
+        }
+    }
+    
+    func getArchivedCalendars() async throws -> [CalendarDataSource] {
+        do {
+            return try calendarEntityBox.query { PPCalendar.isArchived == true }
+                .build().find().compactMap { CalendarDataSource($0) }
+        } catch {
+            print("[ObjectBoxCalendarStorage] getArchivedCalendars query failed: \(error). Falling back to getAllCalendars.")
+            return try await getAllCalendars().filter { $0.isArchived }
+        }
+    }
+    
+    func archiveCalendar(_ calendarId: Int64) async throws {
+        guard var cal = try calendarEntityBox.get(calendarId) else { return }
+        cal.isArchived = true
+        try calendarEntityBox.put(cal)
+    }
+    
+    func restoreCalendar(_ calendarId: Int64) async throws {
+        guard var cal = try calendarEntityBox.get(calendarId) else { return }
+        cal.isArchived = false
+        try calendarEntityBox.put(cal)
     }
     
     func close() {

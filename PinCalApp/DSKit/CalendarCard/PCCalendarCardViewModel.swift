@@ -12,6 +12,7 @@ final class PCCalendarCardViewModel {
     var name: String
     var numberOfColumns: Int
     let id: Int64
+    let isArchived: Bool
     let gradient: LinearGradient
 
     private(set) var isEditing: Bool = false
@@ -21,16 +22,19 @@ final class PCCalendarCardViewModel {
     var onEditCommitted: ((Int64, String) -> Void)?
     var onEditCancelled: (() -> Void)?
     var onDelete: (() -> Void)?
+    var onRestore: (() -> Void)?
+    var onPermanentDelete: (() -> Void)?
 
     init(calendar: any PCCalendarCardData) {
         self.id = calendar.id
         self.name = calendar.name
         self.numberOfColumns = calendar.numberOfColumns
+        self.isArchived = calendar.isArchived
         self.gradient = Self.makeGradient(for: calendar.id)
     }
 
     func startEditing() {
-        guard !isEditing else { return }
+        guard !isEditing, !isArchived else { return }
         withAnimation(.easeInOut(duration: 0.2)) {
             isEditing = true
         }

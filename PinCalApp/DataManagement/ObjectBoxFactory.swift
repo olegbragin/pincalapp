@@ -17,9 +17,12 @@ struct ObjectBoxFactory {
             store = Self.seededStoreForUITests()
             return
         }
-        // Инициализация Store, как показано выше
-        store = try! Store(directoryPath: getDatabasePath().path)
+        let dbPath = getDatabasePath().path
+        print("[ObjectBoxFactory] Opening store at: \(dbPath)")
+        store = try! Store(directoryPath: dbPath)
         EventBatchMigration.runIfNeeded(store: store)
+        let count = try? store.box(for: PPCalendar.self).count()
+        print("[ObjectBoxFactory] Store opened. Calendar count: \(count ?? 0)")
     }
 
     static let uiTestSeedArgument = "-UITestSeedData"

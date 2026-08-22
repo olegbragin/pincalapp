@@ -26,14 +26,21 @@ struct PCCalendarCardView: View {
 
             VStack(alignment: .leading, spacing: 0) {
                 HStack {
-                    Image(systemName: "calendar")
+                    Image(systemName: viewModel.isArchived ? "archivebox" : "calendar")
                         .font(.system(size: 18, weight: .semibold))
                     Text(viewModel.name)
                         .font(.system(size: 14, weight: .semibold))
                         .lineLimit(1)
                         .truncationMode(.tail)
                     Spacer()
-                    if viewModel.isEditing {
+                    if viewModel.isArchived {
+                        Text("Archived")
+                            .font(.system(size: 10, weight: .medium))
+                            .foregroundStyle(.white.opacity(0.6))
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(Capsule().fill(.white.opacity(0.15)))
+                    } else if viewModel.isEditing {
                         Button {
                             viewModel.confirmEdit()
                         } label: {
@@ -63,7 +70,38 @@ struct PCCalendarCardView: View {
 
                 Spacer(minLength: 0)
 
-                if viewModel.isEditing {
+                if viewModel.isArchived {
+                    HStack(spacing: 12) {
+                        Spacer()
+                        Button {
+                            viewModel.onRestore?()
+                        } label: {
+                            Image(systemName: "arrow.counterclockwise")
+                                .font(.system(size: 12, weight: .semibold))
+                                .foregroundStyle(.white.opacity(0.6))
+                                .frame(width: 28, height: 28)
+                                .background(
+                                    Circle()
+                                        .fill(.white.opacity(0.15))
+                                )
+                        }
+                        .buttonStyle(.plain)
+                        Button {
+                            viewModel.onPermanentDelete?()
+                        } label: {
+                            Image(systemName: "trash")
+                                .font(.system(size: 12, weight: .semibold))
+                                .foregroundStyle(.white.opacity(0.6))
+                                .frame(width: 28, height: 28)
+                                .background(
+                                    Circle()
+                                        .fill(.white.opacity(0.15))
+                                )
+                        }
+                        .buttonStyle(.plain)
+                    }
+                    .transition(.opacity)
+                } else if viewModel.isEditing {
                     TextField("Calendar name", text: $viewModel.editingName)
                         .font(.system(size: 22, weight: .bold))
                         .foregroundStyle(.white)

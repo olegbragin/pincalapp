@@ -6,13 +6,9 @@ struct RootContentView: View {
     var body: some View {
         switch navigation.selectedCategory {
         case .calendarList, .none:
-            CalendarListView()
+            CalendarListView(mode: .active)
         case .archived:
-            ContentUnavailableView(
-                "Archived calendars",
-                systemImage: "archivebox",
-                description: Text("Coming soon")
-            )
+            CalendarListView(mode: .archived)
         }
     }
 }

@@ -8,12 +8,16 @@
 import SwiftUI
 
 struct CalendarEmptyStateView: View {
+    var isArchived: Bool = false
+    
     var body: some View {
         VStack(spacing: 12) {
-            Image(systemName: "calendar")
+            Image(systemName: isArchived ? "archivebox" : "calendar")
                 .font(.system(size: 40, weight: .light))
                 .foregroundColor(.secondary)
-            Text("Нет календарей. Нажмите «+», чтобы добавить.")
+            Text(isArchived
+                ? "No archived calendars"
+                : "Нет календарей. Нажмите «+», чтобы добавить.")
                 .font(.subheadline)
                 .foregroundColor(.secondary)
                 .multilineTextAlignment(.center)

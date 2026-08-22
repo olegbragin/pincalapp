@@ -8,8 +8,9 @@
 import Observation
 import Foundation
 
-enum PendingChange: Equatable {
-    case removed(CalendarDataSource, originalIndex: Int)
+enum CalendarListMode {
+    case active
+    case archived
 }
 
 enum DisplayMode: String, CaseIterable {
@@ -42,6 +43,7 @@ enum DisplayMode: String, CaseIterable {
 @Observable
 final class CalendarListViewModel {
     private var manager: CalendarManager
+    let mode: CalendarListMode
 
     var calendars: [CalendarDataSource] = []
     var displayMode: DisplayMode = .list
@@ -50,15 +52,13 @@ final class CalendarListViewModel {
     var isAddEditSheetPresented = false
     var isLoading = false
 
-    private(set) var pendingChanges: [PendingChange] = []
-    var hasPendingChanges: Bool { !pendingChanges.isEmpty }
-
     var isAnyCardEditing: Bool {
         cardViewModels.values.contains { $0.isEditing }
     }
 
     @ObservationIgnored private var cardViewModels: [Int64: PCCalendarCardViewModel] = [:]
     @ObservationIgnored private var calendarObserver: AnyObject?
+    @ObservationIgnored private var suppressObserver = false
 
     var appVersion: String {
         let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "?"
@@ -66,11 +66,13 @@ final class CalendarListViewModel {
         return "\(version) (\(build))"
     }
 
-    init(manager: CalendarManager = .init()) {
+    init(mode: CalendarListMode = .active, manager: CalendarManager = .init()) {
+        self.mode = mode
         self.manager = manager
         calendarObserver = manager.subscribeToCalendars { [weak self] in
             guard let self else { return }
             Task { @MainActor in
+                guard !self.suppressObserver else { return }
                 try? await self.fetch()
             }
         }
@@ -78,6 +80,8 @@ final class CalendarListViewModel {
 
     func cardViewModel(for calendar: CalendarDataSource) -> PCCalendarCardViewModel {
         if let existing = cardViewModels[calendar.id] {
+            existing.name = calendar.name
+            existing.numberOfColumns = calendar.numberOfColumns
             return existing
         }
         let vm = PCCalendarCardViewModel(calendar: calendar)
@@ -86,14 +90,26 @@ final class CalendarListViewModel {
         }
         vm.onDelete = { [weak self] in
             guard let self else { return }
-            self.removeCalendarFromList(calendar)
+            self.archiveCalendarInList(calendar)
+        }
+        vm.onRestore = { [weak self] in
+            guard let self else { return }
+            self.restoreCalendarInList(calendar)
+        }
+        vm.onPermanentDelete = { [weak self] in
+            guard let self else { return }
+            self.permanentlyDeleteCalendar(calendar)
         }
         cardViewModels[calendar.id] = vm
         return vm
     }
 
     func fetch() async throws {
-        let fetched = try await manager.getAllCalendars()
+        let fetched: [CalendarDataSource]
+        switch mode {
+        case .active: fetched = try await manager.getActiveCalendars()
+        case .archived: fetched = try await manager.getArchivedCalendars()
+        }
         self.calendars = fetched
         for calendar in calendars {
             cardViewModels[calendar.id]?.numberOfColumns = calendar.numberOfColumns
@@ -112,33 +128,37 @@ final class CalendarListViewModel {
         }
     }
 
-    func removeCalendarFromList(_ calendar: CalendarDataSource) {
+    func archiveCalendarInList(_ calendar: CalendarDataSource) {
         guard let idx = calendars.firstIndex(where: { $0.id == calendar.id }) else { return }
-        let removed = calendars.remove(at: idx)
-        pendingChanges.append(.removed(removed, originalIndex: idx))
-    }
-
-    func undoLastChange() {
-        guard let last = pendingChanges.popLast() else { return }
-        _undoChanges([last])
-    }
-
-    func undoAllChanges() {
-        let changes = pendingChanges
-        pendingChanges.removeAll()
-        _undoChanges(changes)
-    }
-
-    func commitPendingRemovals() {
-        for change in pendingChanges {
-            if case .removed(let cal, _) = change {
-                Task { [weak self] in
-                    guard let self else { return }
-                    try? await self.manager.deleteCalendar(cal.id)
-                }
-            }
+        calendars.remove(at: idx)
+        suppressObserver = true
+        Task { [weak self] in
+            guard let self else { return }
+            try? await self.manager.archiveCalendar(calendar.id)
+            self.suppressObserver = false
         }
-        pendingChanges.removeAll()
+    }
+
+    func restoreCalendarInList(_ calendar: CalendarDataSource) {
+        guard let idx = calendars.firstIndex(where: { $0.id == calendar.id }) else { return }
+        calendars.remove(at: idx)
+        suppressObserver = true
+        Task { [weak self] in
+            guard let self else { return }
+            try? await self.manager.restoreCalendar(calendar.id)
+            self.suppressObserver = false
+        }
+    }
+
+    func permanentlyDeleteCalendar(_ calendar: CalendarDataSource) {
+        guard let idx = calendars.firstIndex(where: { $0.id == calendar.id }) else { return }
+        calendars.remove(at: idx)
+        suppressObserver = true
+        Task { [weak self] in
+            guard let self else { return }
+            try? await self.manager.deleteCalendar(calendar.id)
+            self.suppressObserver = false
+        }
     }
 
     func addItem() {
@@ -153,34 +173,6 @@ final class CalendarListViewModel {
             Task { [weak self] in
                 guard let self else { return }
                 try? await self.manager.updateCalendar(calendarToUpdate)
-            }
-        }
-    }
-
-    private func _undoChanges(_ changes: [PendingChange]) {
-        let removals = changes.compactMap {
-            if case .removed(let cal, let idx) = $0 { return (cal, idx) }
-            return nil
-        }.sorted { $0.1 < $1.1 }
-
-        var result: [CalendarDataSource] = []
-        var i = 0, j = 0
-        while i < calendars.count && j < removals.count {
-            if i < removals[j].1 {
-                result.append(calendars[i]); i += 1
-            } else {
-                result.append(removals[j].0); j += 1
-            }
-        }
-        result.append(contentsOf: calendars[i...])
-        result.append(contentsOf: removals[j...].map(\.0))
-        calendars = result
-
-        for change in changes {
-            if case .removed(let cal, _) = change {
-                if let vm = cardViewModels[cal.id] {
-                    vm.cancelEdit()
-                }
             }
         }
     }

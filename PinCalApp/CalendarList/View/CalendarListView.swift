@@ -1,15 +1,22 @@
 import SwiftUI
 
 struct CalendarListView: View {
-    @State private var viewModel = CalendarListViewModel()
+    @State private var viewModel: CalendarListViewModel
+
+    init(mode: CalendarListMode = .active) {
+        _viewModel = State(initialValue: CalendarListViewModel(mode: mode))
+    }
 
     var body: some View {
         VStack(spacing: 0) {
             CalendarListContent(
                 calendars: viewModel.calendars,
                 displayMode: viewModel.displayMode,
+                isArchived: viewModel.mode == .archived,
                 cardViewModelFactory: { viewModel.cardViewModel(for: $0) },
-                onCalendarDelete: { viewModel.removeCalendarFromList($0) },
+                onCalendarDelete: { viewModel.archiveCalendarInList($0) },
+                onCalendarRestore: { viewModel.restoreCalendarInList($0) },
+                onCalendarPermanentDelete: { viewModel.permanentlyDeleteCalendar($0) },
                 onRefresh: { try await viewModel.fetch() }
             )
 
@@ -22,7 +29,7 @@ struct CalendarListView: View {
         .background(Color(.systemGroupedBackground))
         .ignoresSafeArea(edges: .bottom)
         .overlay(alignment: .bottomTrailing) {
-            if !viewModel.isAnyCardEditing {
+            if !viewModel.isAnyCardEditing, viewModel.mode == .active {
                 Button(action: viewModel.addItem) {
                     Image(systemName: "plus")
                         .font(.system(size: 22, weight: .semibold))
@@ -40,30 +47,8 @@ struct CalendarListView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .principal) {
-                Text("My calendars")
+                Text(viewModel.mode == .active ? "My calendars" : "Archived")
                     .font(.headline)
-            }
-            ToolbarItem(placement: .navigationBarLeading) {
-                if viewModel.hasPendingChanges {
-                    Menu {
-                        Button {
-                            withAnimation(.easeOut(duration: 0.3)) {
-                                viewModel.undoLastChange()
-                            }
-                        } label: {
-                            Label("Undo Last", systemImage: "arrow.uturn.backward")
-                        }
-                        Button(role: .destructive) {
-                            withAnimation(.easeOut(duration: 0.3)) {
-                                viewModel.undoAllChanges()
-                            }
-                        } label: {
-                            Label("Undo All", systemImage: "arrow.uturn.backward.circle")
-                        }
-                    } label: {
-                        Image(systemName: "arrow.uturn.backward")
-                    }
-                }
             }
             ToolbarItem(placement: .navigationBarTrailing) {
                 Button {
