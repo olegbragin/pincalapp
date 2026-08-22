@@ -55,9 +55,5 @@ struct CalendarManager {
     func removeEvents(_ eventIds: [Int64], calendarId: Int64) async throws {
         try await service.removeEvents(eventIds, calendarId: calendarId)
     }
-
-    func subscribeToCalendars(onChange: @escaping () -> Void) -> AnyObject? {
-        service.subscribeToCalendars(onChange: onChange)
-    }
 }
 

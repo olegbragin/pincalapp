@@ -7,6 +7,8 @@
 
 import Observation
 import Foundation
+import Combine
+import SwiftUI
 
 enum CalendarListMode {
     case active
@@ -42,7 +44,7 @@ enum DisplayMode: String, CaseIterable {
 @MainActor
 @Observable
 final class CalendarListViewModel {
-    private var manager: CalendarManager
+    private let cache: CalendarCache
     let mode: CalendarListMode
 
     var calendars: [CalendarDataSource] = []
@@ -57,8 +59,7 @@ final class CalendarListViewModel {
     }
 
     @ObservationIgnored private var cardViewModels: [Int64: PCCalendarCardViewModel] = [:]
-    @ObservationIgnored private var calendarObserver: AnyObject?
-    @ObservationIgnored private var suppressObserver = false
+    @ObservationIgnored private var cancellable: AnyCancellable?
 
     var appVersion: String {
         let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "?"
@@ -66,15 +67,11 @@ final class CalendarListViewModel {
         return "\(version) (\(build))"
     }
 
-    init(mode: CalendarListMode = .active, manager: CalendarManager = .init()) {
+    init(mode: CalendarListMode = .active, cache: CalendarCache = .shared) {
         self.mode = mode
-        self.manager = manager
-        calendarObserver = manager.subscribeToCalendars { [weak self] in
-            guard let self else { return }
-            Task { @MainActor in
-                guard !self.suppressObserver else { return }
-                try? await self.fetch()
-            }
+        self.cache = cache
+        cancellable = cache.changes.sink { [weak self] operation in
+            self?.applyChange(operation)
         }
     }
 
@@ -105,14 +102,9 @@ final class CalendarListViewModel {
     }
 
     func fetch() async throws {
-        let fetched: [CalendarDataSource]
         switch mode {
-        case .active: fetched = try await manager.getActiveCalendars()
-        case .archived: fetched = try await manager.getArchivedCalendars()
-        }
-        self.calendars = fetched
-        for calendar in calendars {
-            cardViewModels[calendar.id]?.numberOfColumns = calendar.numberOfColumns
+        case .active: await cache.loadActive()
+        case .archived: await cache.loadArchived()
         }
     }
 
@@ -120,44 +112,26 @@ final class CalendarListViewModel {
         isLoading = true
         Task { [weak self] in
             guard let self else { return }
-            let newCalendar = try await manager.createCalendar(name: name, year: 2026, numberOfColumns: 3)
-            await MainActor.run {
-                self.calendars.append(newCalendar)
-                self.isLoading = false
-            }
+            _ = try? await cache.createCalendar(name: name, year: 2026, numberOfColumns: 3)
+            await MainActor.run { self.isLoading = false }
         }
     }
 
     func archiveCalendarInList(_ calendar: CalendarDataSource) {
-        guard let idx = calendars.firstIndex(where: { $0.id == calendar.id }) else { return }
-        calendars.remove(at: idx)
-        suppressObserver = true
         Task { [weak self] in
-            guard let self else { return }
-            try? await self.manager.archiveCalendar(calendar.id)
-            self.suppressObserver = false
+            try? await self?.cache.archiveCalendar(calendar)
         }
     }
 
     func restoreCalendarInList(_ calendar: CalendarDataSource) {
-        guard let idx = calendars.firstIndex(where: { $0.id == calendar.id }) else { return }
-        calendars.remove(at: idx)
-        suppressObserver = true
         Task { [weak self] in
-            guard let self else { return }
-            try? await self.manager.restoreCalendar(calendar.id)
-            self.suppressObserver = false
+            try? await self?.cache.restoreCalendar(calendar)
         }
     }
 
     func permanentlyDeleteCalendar(_ calendar: CalendarDataSource) {
-        guard let idx = calendars.firstIndex(where: { $0.id == calendar.id }) else { return }
-        calendars.remove(at: idx)
-        suppressObserver = true
         Task { [weak self] in
-            guard let self else { return }
-            try? await self.manager.deleteCalendar(calendar.id)
-            self.suppressObserver = false
+            try? await self?.cache.permanentlyDeleteCalendar(calendar)
         }
     }
 
@@ -167,12 +141,34 @@ final class CalendarListViewModel {
     }
 
     private func handleEditCommitted(id: Int64, newName: String) {
-        if let calIdx = calendars.firstIndex(where: { $0.id == id }) {
-            calendars[calIdx].name = newName
-            let calendarToUpdate = calendars[calIdx]
-            Task { [weak self] in
-                guard let self else { return }
-                try? await self.manager.updateCalendar(calendarToUpdate)
+        Task { [weak self] in
+            guard let self else { return }
+            if var cal = self.calendars.first(where: { $0.id == id }) {
+                cal.name = newName
+                try? await self.cache.updateCalendar(cal)
+            }
+        }
+    }
+
+    private func applyChange(_ operation: ChangeOperation) {
+        switch operation {
+        case .refresh(let calendars):
+            withAnimation(.spring(response: 0.4, dampingFraction: 0.75)) {
+                self.calendars = calendars
+            }
+        case .add(let item):
+            withAnimation(.spring(response: 0.4, dampingFraction: 0.75)) {
+                calendars.append(item)
+            }
+        case .delete(let item):
+            withAnimation(.spring(response: 0.4, dampingFraction: 0.75)) {
+                calendars.removeAll { $0.id == item.id }
+            }
+        case .change(let item):
+            withAnimation(.spring(response: 0.4, dampingFraction: 0.75)) {
+                if let idx = calendars.firstIndex(where: { $0.id == item.id }) {
+                    calendars[idx] = item
+                }
             }
         }
     }

@@ -352,8 +352,9 @@ struct EventBatchCreationTests {
         try calendarBox.put(calendar)
         
         let manager = CalendarManager(service: ObjectBoxCalendarStorage(store: store))
-        let model = SingleCalendarModel(calendarid: Int64(calendar.id), manager: manager)
-        await model.fetch()
+        let cache = CalendarCache(manager: manager)
+        let model = SingleCalendarModel(calendarid: Int64(calendar.id), cache: cache)
+        await model.fetch(force: true)
         #expect(model.state == .content)
         
         model.selectedColor = .option1
@@ -403,8 +404,9 @@ struct EventBatchCreationTests {
         try calendarBox.put(calendar)
         
         let manager = CalendarManager(service: ObjectBoxCalendarStorage(store: store))
-        let model = SingleCalendarModel(calendarid: Int64(calendar.id), manager: manager)
-        await model.fetch()
+        let cache = CalendarCache(manager: manager)
+        let model = SingleCalendarModel(calendarid: Int64(calendar.id), cache: cache)
+        await model.fetch(force: true)
         
         model.selectedColor = .option1
         model.changeEvent(event(day: 10))
@@ -431,8 +433,9 @@ struct EventBatchCreationTests {
         try calendarBox.put(calendar)
         
         let manager = CalendarManager(service: ObjectBoxCalendarStorage(store: store))
-        let model = SingleCalendarModel(calendarid: Int64(calendar.id), manager: manager)
-        await model.fetch()
+        let cache = CalendarCache(manager: manager)
+        let model = SingleCalendarModel(calendarid: Int64(calendar.id), cache: cache)
+        await model.fetch(force: true)
         
         let day10 = date(year: 2026, month: 6, day: 10)
         model.selectedColor = .option1
@@ -543,8 +546,9 @@ struct EventBatchCreationTests {
         try savedCalendar.eventBatches.applyToDb()
         
         let manager = CalendarManager(service: ObjectBoxCalendarStorage(store: store))
-        let model = SingleCalendarModel(calendarid: Int64(calendar.id), manager: manager)
-        await model.fetch()
+        let cache = CalendarCache(manager: manager)
+        let model = SingleCalendarModel(calendarid: Int64(calendar.id), cache: cache)
+        await model.fetch(force: true)
         #expect(model.state == .content)
         
         model.prepareAddEditBatchListViewModel(with: [day10])
@@ -593,8 +597,9 @@ struct EventBatchCreationTests {
         try calendarBox.put(calendar)
         
         let manager = CalendarManager(service: ObjectBoxCalendarStorage(store: store))
-        let model = SingleCalendarModel(calendarid: Int64(calendar.id), manager: manager)
-        await model.fetch()
+        let cache = CalendarCache(manager: manager)
+        let model = SingleCalendarModel(calendarid: Int64(calendar.id), cache: cache)
+        await model.fetch(force: true)
         #expect(model.state == .content)
         
         model.prepareAddEditEventBatchViewModel(for: date(year: 2026, month: 6, day: 10))

@@ -8,6 +8,7 @@
 import Foundation
 import Observation
 import SwiftUI
+import Combine
 
 @MainActor
 @Observable
@@ -19,8 +20,7 @@ final class SingleCalendarModel {
     }
     
     private let dataProvider = PCCalendarDataProvider()
-    private let manager: CalendarManager
-    private var calendarObserver: AnyObject?
+    private let cache: CalendarCache
     
     private var originalBatches: [EventBatchDataSource] = []
     private var addedEvents: Set<EventDataSource> = []
@@ -38,6 +38,8 @@ final class SingleCalendarModel {
     
     var state: State = .empty
     var isLegendSheetPresented = false
+    
+    @ObservationIgnored private var cancellable: AnyCancellable?
     
     private var originalEvents: Set<EventDataSource> {
         Set(originalBatches.flatMap(\.events))
@@ -60,14 +62,14 @@ final class SingleCalendarModel {
         }
     }
     
-    init(calendarid: Int64, manager: CalendarManager = CalendarManager()) {
+    init(calendarid: Int64, cache: CalendarCache = .shared) {
         self.calendarid = calendarid
-        self.manager = manager
-        if calendarid != 0 {
-            calendarObserver = manager.subscribeToCalendars { [weak self] in
-                guard let self else { return }
-                Task { @MainActor in
-                    await self.fetch()
+        self.cache = cache
+        cancellable = cache.changes.sink { [weak self] operation in
+            guard let self else { return }
+            if case .change(let item) = operation, item.id == calendarid {
+                Task { @MainActor [weak self] in
+                    await self?.fetch(force: true)
                 }
             }
         }
@@ -87,10 +89,10 @@ final class SingleCalendarModel {
         daySelectionManager.selectedDays = []
     }
     
-    func fetch() async {
-        guard state != .content, !Task.isCancelled else { return }
+    func fetch(force: Bool = false) async {
+        guard force || state != .content, !Task.isCancelled else { return }
         
-        guard let calendar = try? await self.manager.getCalendar(id: calendarid) else {
+        guard let calendar = try? await self.cache.getCalendar(id: calendarid) else {
             state = .empty
             return
         }
@@ -111,11 +113,11 @@ final class SingleCalendarModel {
     func save(for calendarId: Int64) {
         Task { [weak self] in
             guard let self else { return }
-            guard var persistedCalendar = try? await self.manager.getCalendar(id: calendarId) else { return }
+            guard var persistedCalendar = try? await self.cache.getCalendar(id: calendarId) else { return }
             persistedCalendar.numberOfColumns = yearModel.internalNumberOfColumns
             persistedCalendar.eventBatches = originalBatches
-            try? await manager.updateCalendar(persistedCalendar)
-            if let refreshedCalendar = try? await self.manager.getCalendar(id: calendarId) {
+            try? await cache.updateCalendar(persistedCalendar)
+            if let refreshedCalendar = try? await self.cache.getCalendar(id: calendarId) {
                 originalBatches = refreshedCalendar.eventBatches
                 updateYearModel(with: originalEvents)
             }

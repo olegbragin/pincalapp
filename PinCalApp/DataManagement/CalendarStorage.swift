@@ -21,6 +21,4 @@ protocol CalendarStorage {
     func restoreCalendar(_ calendarId: Int64) async throws
     
     func removeEvents(_ eventId: [Int64], calendarId: Int64) async throws
-
-    func subscribeToCalendars(onChange: @escaping () -> Void) -> AnyObject?
 }

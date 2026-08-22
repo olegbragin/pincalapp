@@ -24,7 +24,7 @@ struct CalendarDetailView: View {
                 if model.calendarid != calendarId {
                     model = SingleCalendarModel(calendarid: calendarId)
                 }
-                await model.fetch()
+                await model.fetch(force: true)
             }
     }
 }

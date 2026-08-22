@@ -149,12 +149,4 @@ class ObjectBoxCalendarStorage: CalendarStorage {
     func close() {
         store.close()
     }
-
-    func subscribeToCalendars(onChange: @escaping () -> Void) -> AnyObject? {
-        calendarEntityBox.subscribe(
-            dispatchQueue: .main,
-            flags: [.sendInitial],
-            changeHandler: onChange
-        )
-    }
 }
