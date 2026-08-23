@@ -10,7 +10,7 @@ struct CalendarListContent: View {
     var onCalendarDelete: (CalendarDataSource) -> Void
     var onCalendarRestore: (CalendarDataSource) -> Void
     var onCalendarPermanentDelete: (CalendarDataSource) -> Void
-    var onRefresh: () async throws -> Void
+    var onRefresh: () async -> Void
     
     private var columns: [GridItem] {
         switch displayMode {
@@ -91,7 +91,7 @@ struct CalendarListContent: View {
                     .padding(.top, 12)
                 }
                 .refreshable {
-                    try? await onRefresh()
+                    await onRefresh()
                 }
                 .scrollDismissesKeyboard(.interactively)
                 .onChange(of: navigation.selectedRoute) { _, _ in

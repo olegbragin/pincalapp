@@ -62,17 +62,19 @@ final class SingleCalendarModel {
         }
     }
     
-    init(calendarid: Int64, cache: CalendarCache = .shared) {
+    init(calendarid: Int64, cache: CalendarCache) {
         self.calendarid = calendarid
         self.cache = cache
-        cancellable = cache.changes.sink { [weak self] operation in
-            guard let self else { return }
-            if case .change(let item) = operation, item.id == calendarid {
-                Task { @MainActor [weak self] in
-                    await self?.fetch(force: true)
+        cancellable = cache.changes
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] operation in
+                guard let self else { return }
+                if case .change(let item) = operation, item.id == calendarid {
+                    Task { @MainActor [weak self] in
+                        await self?.fetch(force: true)
+                    }
                 }
             }
-        }
     }
     
     var isColorPickerDisabled: Bool {
@@ -111,17 +113,13 @@ final class SingleCalendarModel {
     }
     
     func save(for calendarId: Int64) {
-        Task { [weak self] in
-            guard let self else { return }
-            guard var persistedCalendar = try? await self.cache.getCalendar(id: calendarId) else { return }
-            persistedCalendar.numberOfColumns = yearModel.internalNumberOfColumns
-            persistedCalendar.eventBatches = originalBatches
+        let batches = originalBatches
+        let columns = yearModel.internalNumberOfColumns
+        Task { [cache] in
+            guard var persistedCalendar = try? await cache.getCalendar(id: calendarId) else { return }
+            persistedCalendar.numberOfColumns = columns
+            persistedCalendar.eventBatches = batches
             try? await cache.updateCalendar(persistedCalendar)
-            if let refreshedCalendar = try? await self.cache.getCalendar(id: calendarId) {
-                originalBatches = refreshedCalendar.eventBatches
-                updateYearModel(with: originalEvents)
-            }
-            state = .content
         }
     }
     

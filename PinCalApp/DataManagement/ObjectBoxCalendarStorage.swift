@@ -135,13 +135,13 @@ class ObjectBoxCalendarStorage: CalendarStorage {
     }
     
     func archiveCalendar(_ calendarId: Int64) async throws {
-        guard var cal = try calendarEntityBox.get(calendarId) else { return }
+        guard let cal = try calendarEntityBox.get(calendarId) else { return }
         cal.isArchived = true
         try calendarEntityBox.put(cal)
     }
     
     func restoreCalendar(_ calendarId: Int64) async throws {
-        guard var cal = try calendarEntityBox.get(calendarId) else { return }
+        guard let cal = try calendarEntityBox.get(calendarId) else { return }
         cal.isArchived = false
         try calendarEntityBox.put(cal)
     }

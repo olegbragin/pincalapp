@@ -67,12 +67,14 @@ final class CalendarListViewModel {
         return "\(version) (\(build))"
     }
 
-    init(mode: CalendarListMode = .active, cache: CalendarCache = .shared) {
+    init(mode: CalendarListMode = .active, cache: CalendarCache) {
         self.mode = mode
         self.cache = cache
-        cancellable = cache.changes.sink { [weak self] operation in
-            self?.applyChange(operation)
-        }
+        cancellable = cache.changes
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] operation in
+                self?.applyChange(operation)
+            }
     }
 
     func cardViewModel(for calendar: CalendarDataSource) -> PCCalendarCardViewModel {
@@ -101,7 +103,7 @@ final class CalendarListViewModel {
         return vm
     }
 
-    func fetch() async throws {
+    func fetch() async {
         switch mode {
         case .active: await cache.loadActive()
         case .archived: await cache.loadArchived()
@@ -112,8 +114,8 @@ final class CalendarListViewModel {
         isLoading = true
         Task { [weak self] in
             guard let self else { return }
-            _ = try? await cache.createCalendar(name: name, year: 2026, numberOfColumns: 3)
-            await MainActor.run { self.isLoading = false }
+            _ = try? await self.cache.createCalendar(name: name, year: 2026, numberOfColumns: 3)
+            self.isLoading = false
         }
     }
 

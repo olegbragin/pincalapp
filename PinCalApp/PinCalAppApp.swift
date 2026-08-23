@@ -9,6 +9,8 @@ import SwiftUI
 
 @main
 struct PinCalAppApp: App {
+    @State private var cache = CalendarCache(manager: CalendarManager())
+
     init() {
         UITableView.appearance().backgroundColor = .clear
         UITableViewCell.appearance().backgroundColor = .clear
@@ -16,7 +18,7 @@ struct PinCalAppApp: App {
 
     var body: some Scene {
         WindowGroup {
-            RootView()
+            RootView(cache: cache)
         }
     }
 }

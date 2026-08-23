@@ -172,7 +172,7 @@ private struct SingleCalendarViewPreview: View {
         savedCalendar.eventBatches.append(batch)
         try! savedCalendar.eventBatches.applyToDb()
         
-        let loadedModel = SingleCalendarModel(calendarid: Int64(calendar.id))
+        let loadedModel = SingleCalendarModel(calendarid: Int64(calendar.id), cache: CalendarCache(manager: CalendarManager(service: ObjectBoxCalendarStorage(store: store))))
         await loadedModel.fetch(force: true)
         model = loadedModel
     }

@@ -1,13 +1,14 @@
 import SwiftUI
 
 struct RootView: View {
+    let cache: CalendarCache
     @State private var navigation = RootNavigation()
 
     var body: some View {
         NavigationSplitView {
             sidebarColumn
         } content: {
-            RootContentView()
+            RootContentView(cache: cache)
         } detail: {
             detailColumn
         }
@@ -34,7 +35,7 @@ struct RootView: View {
         return NavigationStack(path: $bindableNavigation.path) {
             Group {
                 if case .calendarDetail(let id) = navigation.selectedRoute {
-                    CalendarDetailView(calendarId: id)
+                    CalendarDetailView(calendarId: id, cache: cache)
                 } else {
                     ContentUnavailableView(
                         "Select a calendar",

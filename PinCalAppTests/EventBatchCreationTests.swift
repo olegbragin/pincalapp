@@ -257,7 +257,7 @@ struct EventBatchCreationTests {
     // MARK: - SingleCalendarModel
     
     @Test func colorPickerDisabledInMultipleModeWithColorAndEvents() {
-        let model = SingleCalendarModel(calendarid: 0)
+        let model = SingleCalendarModel(calendarid: 0, cache: CalendarCache(manager: CalendarManager()))
         model.selectedColor = .option1
         model.daySelectionManager.selectionMode = .multiple
         model.changeEvent(event(day: 3))
@@ -266,7 +266,7 @@ struct EventBatchCreationTests {
     }
     
     @Test func colorPickerEnabledWhenNoColorSelected() {
-        let model = SingleCalendarModel(calendarid: 0)
+        let model = SingleCalendarModel(calendarid: 0, cache: CalendarCache(manager: CalendarManager()))
         model.selectedColor = nil
         model.daySelectionManager.selectionMode = .multiple
         model.changeEvent(event(day: 3))
@@ -275,7 +275,7 @@ struct EventBatchCreationTests {
     }
     
     @Test func colorPickerEnabledWhenNoEventsAddedYet() {
-        let model = SingleCalendarModel(calendarid: 0)
+        let model = SingleCalendarModel(calendarid: 0, cache: CalendarCache(manager: CalendarManager()))
         model.selectedColor = .option1
         model.daySelectionManager.selectionMode = .multiple
         
@@ -283,7 +283,7 @@ struct EventBatchCreationTests {
     }
     
     @Test func colorPickerEnabledInSingleMode() {
-        let model = SingleCalendarModel(calendarid: 0)
+        let model = SingleCalendarModel(calendarid: 0, cache: CalendarCache(manager: CalendarManager()))
         model.selectedColor = .option1
         model.daySelectionManager.selectionMode = .single
         model.changeEvent(event(day: 3))
@@ -292,7 +292,7 @@ struct EventBatchCreationTests {
     }
     
     @Test func prepareAddEditEventBatchViewModelPopulatesEditorFromAddedEvents() {
-        let model = SingleCalendarModel(calendarid: 0)
+        let model = SingleCalendarModel(calendarid: 0, cache: CalendarCache(manager: CalendarManager()))
         model.selectedColor = .option1
         model.changeEvent(event(day: 3))
         model.changeEvent(event(day: 5))
@@ -309,7 +309,7 @@ struct EventBatchCreationTests {
     }
     
     @Test func prepareAddEditEventBatchViewModelDoesNothingWithoutEvents() {
-        let model = SingleCalendarModel(calendarid: 0)
+        let model = SingleCalendarModel(calendarid: 0, cache: CalendarCache(manager: CalendarManager()))
         model.daySelectionManager.selectionMode = .multiple
         
         model.prepareAddEditEventBatchViewModel()
@@ -318,7 +318,7 @@ struct EventBatchCreationTests {
     }
     
     @Test func cancelMultipleChangesExitsModeAndClearsState() {
-        let model = SingleCalendarModel(calendarid: 0)
+        let model = SingleCalendarModel(calendarid: 0, cache: CalendarCache(manager: CalendarManager()))
         model.selectedColor = .option1
         model.daySelectionManager.selectionMode = .multiple
         model.changeEvent(event(day: 3))
@@ -331,7 +331,7 @@ struct EventBatchCreationTests {
     }
     
     @Test func resetSelectedDaysExitsMultipleModeWhenSheetDismissed() {
-        let model = SingleCalendarModel(calendarid: 0)
+        let model = SingleCalendarModel(calendarid: 0, cache: CalendarCache(manager: CalendarManager()))
         model.selectedColor = .option1
         model.daySelectionManager.selectionMode = .multiple
         model.changeEvent(event(day: 3))
@@ -637,7 +637,7 @@ struct EventBatchCreationTests {
     }
     
     @Test func prepareAddEditEventBatchViewModelForDatePreadsSelectedDayAndEvent() {
-        let model = SingleCalendarModel(calendarid: 0)
+        let model = SingleCalendarModel(calendarid: 0, cache: CalendarCache(manager: CalendarManager()))
         let day10 = date(year: 2026, month: 6, day: 10)
         
         model.prepareAddEditEventBatchViewModel(for: day10)

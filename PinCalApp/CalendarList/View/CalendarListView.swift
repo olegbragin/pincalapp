@@ -3,8 +3,8 @@ import SwiftUI
 struct CalendarListView: View {
     @State private var viewModel: CalendarListViewModel
 
-    init(mode: CalendarListMode = .active) {
-        _viewModel = State(initialValue: CalendarListViewModel(mode: mode))
+    init(mode: CalendarListMode = .active, cache: CalendarCache) {
+        _viewModel = State(initialValue: CalendarListViewModel(mode: mode, cache: cache))
     }
 
     var body: some View {
@@ -17,7 +17,7 @@ struct CalendarListView: View {
                 onCalendarDelete: { viewModel.archiveCalendarInList($0) },
                 onCalendarRestore: { viewModel.restoreCalendarInList($0) },
                 onCalendarPermanentDelete: { viewModel.permanentlyDeleteCalendar($0) },
-                onRefresh: { try await viewModel.fetch() }
+                onRefresh: { await viewModel.fetch() }
             )
 
             Text(viewModel.appVersion)
@@ -61,7 +61,7 @@ struct CalendarListView: View {
             }
         }
         .task {
-            try? await viewModel.fetch()
+            await viewModel.fetch()
         }
         .onChange(of: viewModel.addEditCalendarViewModel.calendar) {
             if $0 != $1, let calendar = $1 {
