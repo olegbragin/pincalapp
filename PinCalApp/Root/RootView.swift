@@ -35,7 +35,10 @@ struct RootView: View {
     private var detailColumn: some View {
         @Bindable var bindableNavigation = navigation
         return NavigationStack(path: $bindableNavigation.path) {
-            Group {
+            ZStack {
+                Rectangle()
+                    .fill(.colorBackgroundMain)
+                    .ignoresSafeArea()
                 if case .calendarDetail(let id) = navigation.selectedRoute {
                     CalendarDetailView(calendarId: id, cache: cache)
                 } else {

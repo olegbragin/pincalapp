@@ -62,10 +62,9 @@ struct CalendarListContent: View {
                                         )
                                 )
                                 .shadow(color: isSelected ? Color.accentColor.opacity(0.4) : .clear, radius: isSelected ? 8 : 0)
+                                .animation(.easeOut(duration: 0.2), value: isSelected)
                                 .onTapGesture {
-                                    withAnimation(.easeOut(duration: 0.2)) {
-                                        navigation.selectedRoute = .calendarDetail(calendar.id)
-                                    }
+                                    navigation.selectedRoute = .calendarDetail(calendar.id)
                                 }
                                 .contextMenu {
                                     if calendar.isArchived {
