@@ -25,7 +25,7 @@ final class PinCalAppUITests: XCTestCase {
         app.launch()
 
         // Navigate: sidebar → Calendars → calendar
-        app.cells.element(boundBy: 0).tap()
+        openCalendarsList(app)
         app.staticTexts["UI Test Calendar"].firstMatch.tap()
 
         let day10 = dayIdentifier(day: 10)
@@ -48,12 +48,29 @@ final class PinCalAppUITests: XCTestCase {
 
         // Save the edited batch.
         editorSave.tap()
-        XCTAssertFalse(app.staticTexts["Women Cycle"].waitForExistence(timeout: 2), "Batch list sheet should not reopen while saving")
+        // Wait for the editor sheet to fully dismiss before checking the batch list doesn't reappear.
+        _ = !editorSave.waitForExistence(timeout: 3)
+
+        // The editor dismisses back to the batch list. Pop back to the calendar.
+        let back = app.buttons["Back"].exists ? app.buttons["Back"] : app.buttons["BackButton"]
+        if back.waitForExistence(timeout: 3) {
+            back.tap()
+        }
+
+        XCTAssertFalse(app.staticTexts["Women Cycle"].waitForExistence(timeout: 3), "Batch list sheet should not reopen while saving")
 
         // Back on the single calendar, tapping the day must NOT show the batch list again.
-        app.descendants(matching: .any).matching(identifier: day10).firstMatch.tap()
+        let day10Again = app.descendants(matching: .any).matching(identifier: day10).firstMatch
+        XCTAssertTrue(day10Again.waitForExistence(timeout: 5), "Calendar day should be visible after navigating back")
+        day10Again.tap()
         XCTAssertTrue(app.buttons["Save"].waitForExistence(timeout: 5), "Tapping an empty day should open the batch editor directly")
         XCTAssertFalse(app.staticTexts["Women Cycle"].waitForExistence(timeout: 2), "Removed events must not reopen the batch list")
+    }
+
+    private func openCalendarsList(_ app: XCUIApplication) {
+        if app.buttons["sidebar-calendars"].waitForExistence(timeout: 2) {
+            app.buttons["sidebar-calendars"].tap()
+        }
     }
 
     private func dayIdentifier(day: Int) -> String {
@@ -78,7 +95,7 @@ final class PinCalAppUITests: XCTestCase {
         app.launch()
 
         // Navigate to the calendar list via sidebar.
-        app.cells.element(boundBy: 0).tap()
+        openCalendarsList(app)
 
         let calendarName = app.staticTexts["UI Test Calendar"]
         XCTAssertTrue(calendarName.waitForExistence(timeout: 5), "Calendar list should show the seeded calendar")
@@ -88,10 +105,11 @@ final class PinCalAppUITests: XCTestCase {
         let multiselectButton = app.buttons["Multiselect"]
         XCTAssertTrue(multiselectButton.waitForExistence(timeout: 5), "Detail view should appear after tapping a calendar")
 
-        guard app.buttons["Back"].waitForExistence(timeout: 3) else {
+        let backButton = app.buttons["Back"].exists ? app.buttons["Back"] : app.buttons["BackButton"]
+        guard backButton.waitForExistence(timeout: 3) else {
             return
         }
-        app.buttons["Back"].tap()
+        backButton.tap()
 
         // On compact, Back goes to the content column (calendar list).
         XCTAssertTrue(calendarName.waitForExistence(timeout: 5), "Calendar list should be visible after popping")
@@ -106,8 +124,8 @@ final class PinCalAppUITests: XCTestCase {
         app.launchArguments = ["-UITestSeedData"]
         app.launch()
 
-        // Navigate to the calendar list via sidebar.
-        app.cells.element(boundBy: 0).tap()
+        // Navigate to the calendar list via sidebar (iPad shows sidebar; iPhone skips to content).
+        openCalendarsList(app)
 
         let firstCalendar = app.staticTexts["UI Test Calendar"].firstMatch
         let secondCalendar = app.staticTexts["Second Calendar"].firstMatch
@@ -121,7 +139,8 @@ final class PinCalAppUITests: XCTestCase {
         guard detail1.waitForExistence(timeout: 5) else { return }
 
         if !secondCalendar.exists {
-            app.buttons["Back"].tap()
+            let back = app.buttons["Back"].exists ? app.buttons["Back"] : app.buttons["BackButton"]
+            back.tap()
             _ = firstCalendar.waitForExistence(timeout: 3)
         }
 
@@ -131,7 +150,8 @@ final class PinCalAppUITests: XCTestCase {
         XCTAssertFalse(detail1.waitForExistence(timeout: 2), "First calendar detail should no longer be visible")
 
         if !firstCalendar.exists {
-            app.buttons["Back"].tap()
+            let back = app.buttons["Back"].exists ? app.buttons["Back"] : app.buttons["BackButton"]
+            back.tap()
             _ = secondCalendar.waitForExistence(timeout: 3)
         }
 
@@ -145,5 +165,56 @@ final class PinCalAppUITests: XCTestCase {
         measure(metrics: [XCTApplicationLaunchMetric()]) {
             XCUIApplication().launch()
         }
+    }
+
+    @MainActor
+    func testCalendarNameEditingKeyboardScroll() throws {
+        let app = XCUIApplication()
+        app.launchArguments = ["-UITestSeedData"]
+        app.launch()
+
+        // Navigate to the calendar list via sidebar.
+        openCalendarsList(app)
+
+        let thirdCalendar = app.staticTexts["Third Calendar"].firstMatch
+        guard thirdCalendar.waitForExistence(timeout: 5) else {
+            XCTFail("Third Calendar should exist in seeded data")
+            return
+        }
+
+        // Scroll down to make sure the third card is visible (it may be off-screen).
+        app.swipeUp()
+
+        // The third calendar's edit button should be visible.
+        let editButton = app.buttons["card-edit-3"]
+        guard editButton.waitForExistence(timeout: 5) else {
+            XCTFail("Edit button on third calendar should exist")
+            return
+        }
+        if !editButton.isHittable {
+            app.swipeUp()
+        }
+        editButton.tap()
+
+        // The text field should appear and be tappable (not hidden behind keyboard).
+        let nameField = app.textFields["card-name-field-3"]
+        XCTAssertTrue(nameField.waitForExistence(timeout: 3), "Name text field should appear after tapping edit")
+
+        // Type a new name. The scroll-view should keep the field visible.
+        let currentValue = (nameField.value as? String) ?? ""
+        for _ in 0..<currentValue.count {
+            app.keys["delete"].tap()
+        }
+        nameField.typeText("Renamed")
+        XCTAssertTrue(nameField.exists, "Text field must remain visible while typing (keyboard should not cover it)")
+
+        // Confirm the edit — find the confirm button that appeared.
+        let confirmButton = app.buttons["card-confirm-edit-3"]
+        XCTAssertTrue(confirmButton.waitForExistence(timeout: 3), "Confirm button should appear")
+        confirmButton.tap()
+
+        // The renamed calendar should be visible.
+        let renamed = app.staticTexts["Renamed"].firstMatch
+        XCTAssertTrue(renamed.waitForExistence(timeout: 5), "Calendar should show the new name after saving")
     }
 }

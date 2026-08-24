@@ -69,7 +69,8 @@ struct SingleCalendarView: View {
                     )
                 case .batchEditor:
                     AddEditEventBatchScreen(
-                        viewModel: viewModel.addEditBatchListViewModel.addEditEventBatchModel
+                        viewModel: viewModel.addEditBatchListViewModel.addEditEventBatchModel,
+                        onCommit: { viewModel.commitPendingBatch() }
                     )
                 }
             }

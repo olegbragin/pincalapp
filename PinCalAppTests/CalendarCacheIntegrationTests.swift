@@ -334,6 +334,63 @@ struct CalendarCacheIntegrationTests {
         #expect(persisted.title == "Renamed")
     }
 
+    @Test func savingInEditorCommitsWithoutReachingNavigationRoot() async throws {
+        let store = makeStore()
+        defer { store.close() }
+
+        let ppCalendar = makeCalendar(in: store)
+        let day10 = date(year: 2026, month: 6, day: 10)
+        let day15 = date(year: 2026, month: 6, day: 15)
+
+        let batch = PPEventBatch(title: "Original Name", color: "eventColorOption1")
+        let batchBox = store.box(for: PPEventBatch.self)
+        try batchBox.put(batch)
+        let events = [
+            PPEvent(name: "Event1", color: "eventColorOption1", date: day10)
+        ]
+        let eventBox = store.box(for: PPEvent.self)
+        try eventBox.put(events)
+        batch.events.replace(events)
+        try batch.events.applyToDb()
+        let savedCalendar = try store.box(for: PPCalendar.self).get(ppCalendar.id)!
+        savedCalendar.eventBatches.append(batch)
+        try savedCalendar.eventBatches.applyToDb()
+
+        let (cache, _) = makeCache(store: store)
+        let model = SingleCalendarModel(calendarid: Int64(ppCalendar.id), cache: cache)
+        await model.fetch(force: true)
+        #expect(!model.hasEvents(on: day15))
+
+        // STR: tap day -> batch list -> tap batch -> editor
+        model.prepareAddEditBatchListViewModel(with: [day10])
+        let batchList = model.addEditBatchListViewModel
+        batchList.prepareAddEditBatchViewModel(with: batchList.eventBatches[0])
+
+        // Select an additional event and press Save (commit happens on save,
+        // not when the navigation stack reaches its root).
+        let addEdit = batchList.addEditEventBatchModel
+        addEdit.toggleEvent(on: day15)
+        #expect(addEdit.save())
+        model.commitPendingBatch()
+
+        // Path A: UI shows the new day immediately after Save + Back.
+        #expect(model.hasEvents(on: day15))
+        #expect(model.hasEvents(on: day10))
+        #expect(batchList.eventBatches[0].events.count == 2)
+
+        // Path B: exactly one batch with two events is persisted (no duplicates).
+        #expect(try await waitForBatchCount(1, in: store))
+        try await Task.sleep(for: .milliseconds(300))
+        #expect(try batchBox.all().count == 1)
+        #expect(try eventBox.all().count == 2)
+
+        // Idempotency: later pop to root (resetSelectedDays) must not duplicate.
+        model.resetSelectedDays()
+        try await Task.sleep(for: .milliseconds(300))
+        #expect(try batchBox.all().count == 1)
+        #expect(try eventBox.all().count == 2)
+    }
+
     @Test func deleteBatchPersistsViaModelAndVerifiableInStorage() async throws {
         let store = makeStore()
         defer { store.close() }

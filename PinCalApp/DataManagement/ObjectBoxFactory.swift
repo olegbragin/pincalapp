@@ -21,6 +21,7 @@ struct ObjectBoxFactory {
         print("[ObjectBoxFactory] Opening store at: \(dbPath)")
         store = try! Store(directoryPath: dbPath)
         EventBatchMigration.runIfNeeded(store: store)
+        CalendarPropertyMigration.runIfNeeded(store: store)
         let count = try? store.box(for: PPCalendar.self).count()
         print("[ObjectBoxFactory] Store opened. Calendar count: \(count ?? 0)")
     }
@@ -64,6 +65,9 @@ struct ObjectBoxFactory {
 
         let calendar2 = PPCalendar(name: "Second Calendar", year: currentYear, numberOfColumns: 3)
         try? calendarBox.put(calendar2)
+
+        let calendar3 = PPCalendar(name: "Third Calendar", year: currentYear, numberOfColumns: 4)
+        try? calendarBox.put(calendar3)
     }
 
     private static var currentYear: Int {

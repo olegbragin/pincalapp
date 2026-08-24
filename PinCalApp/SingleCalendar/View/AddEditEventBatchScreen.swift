@@ -9,6 +9,7 @@ import SwiftUI
 
 struct AddEditEventBatchScreen: View {
     @Bindable var viewModel: AddEditEventBatchViewModel
+    var onCommit: (() -> Void)? = nil
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
@@ -39,6 +40,7 @@ struct AddEditEventBatchScreen: View {
 
     private func save() {
         if viewModel.save() {
+            onCommit?()
             dismiss()
         }
     }
@@ -50,4 +52,5 @@ struct AddEditEventBatchScreen: View {
             viewModel: .init(events: [.init(name: "1", date: Date(), color: "eventColorOption1")])
         )
     }
+    .environment(PCKeyboardState())
 }

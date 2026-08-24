@@ -52,7 +52,7 @@ final class CalendarListViewModel {
 
     var addEditCalendarViewModel = AddEditCalendarViewModel()
     var isAddEditSheetPresented = false
-    var isLoading = false
+    var isLoading = true
 
     var isAnyCardEditing: Bool {
         cardViewModels.values.contains { $0.isEditing }
@@ -104,6 +104,8 @@ final class CalendarListViewModel {
     }
 
     func fetch() async {
+        isLoading = true
+        defer { isLoading = false }
         switch mode {
         case .active: await cache.loadActive()
         case .archived: await cache.loadArchived()

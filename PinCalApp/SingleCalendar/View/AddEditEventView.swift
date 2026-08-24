@@ -27,8 +27,7 @@ struct AddEditEventView: View {
                     .font(.headline)
                     .fontWeight(.medium)
                 
-                PCTextField(title: "Введите имя", text: $viewModel.eventName)
-                    .ignoresSafeArea(.keyboard)
+                PCTextField(title: "Введите имя", text: $viewModel.eventName, identifier: "event-name-field")
             }
             
             // Выбор цвета
@@ -42,6 +41,7 @@ struct AddEditEventView: View {
             Spacer()
         }
         .padding()
+        .keyboardAvoidable()
         .toolbarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .title) {

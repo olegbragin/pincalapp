@@ -2,7 +2,9 @@ import SwiftUI
 
 struct CalendarListContent: View {
     @Environment(RootNavigation.self) var navigation
-    
+
+    @State private var focusedCardID: Int64?
+
     var calendars: [CalendarDataSource]
     var displayMode: DisplayMode
     var isArchived: Bool
@@ -25,21 +27,27 @@ struct CalendarListContent: View {
             CalendarEmptyStateView(isArchived: isArchived)
         } else {
             ZStack {
-                List(selection: $bindableRouter.selectedRoute) {
-                    ForEach(calendars) { calendar in
-                        EmptyView()
-                            .tag(AppRoute.calendarDetail(calendar.id))
-                    }
-                }
-                .hidden()
-                
-                ScrollView {
-                    LazyVGrid(columns: columns, spacing: 12) {
+                    List(selection: $bindableRouter.selectedRoute) {
                         ForEach(calendars) { calendar in
-                            let viewModel = cardViewModelFactory(calendar)
-                            let isSelected = navigation.selectedRoute == .calendarDetail(calendar.id)
-                            
-                            PCCalendarCardView(viewModel: viewModel)
+                            EmptyView()
+                                .tag(AppRoute.calendarDetail(calendar.id))
+                        }
+                    }
+                    .hidden()
+
+                    ScrollView {
+                        LazyVGrid(columns: columns, spacing: 12) {
+                            ForEach(calendars) { calendar in
+                                let viewModel = cardViewModelFactory(calendar)
+                                let isSelected = navigation.selectedRoute == .calendarDetail(calendar.id)
+
+                                PCCalendarCardView(
+                                    viewModel: viewModel,
+                                    onNameFieldFocusedChanged: { id, focused in
+                                        focusedCardID = focused ? id : nil
+                                    }
+                                )
+                                .id(calendar.id)
                                 .transition(
                                     .asymmetric(
                                         insertion: .move(edge: .bottom).combined(with: .opacity),
@@ -94,6 +102,7 @@ struct CalendarListContent: View {
                     await onRefresh()
                 }
                 .scrollDismissesKeyboard(.interactively)
+                .keyboardAvoidable(focusedItem: $focusedCardID)
                 .onChange(of: navigation.selectedRoute) { _, _ in
                     // navigation.path = NavigationPath()
                 }
@@ -116,6 +125,7 @@ struct CalendarListContent: View {
         onCalendarPermanentDelete: { _ in },
         onRefresh: {}
     )
+    .environment(PCKeyboardState())
 }
 
 #Preview("Empty") {
@@ -129,4 +139,5 @@ struct CalendarListContent: View {
         onCalendarPermanentDelete: { _ in },
         onRefresh: {}
     )
+    .environment(PCKeyboardState())
 }

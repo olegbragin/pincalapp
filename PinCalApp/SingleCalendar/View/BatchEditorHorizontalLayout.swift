@@ -29,4 +29,5 @@ struct BatchEditorHorizontalLayout: View {
         viewModel: .init(events: [.init(name: "1", date: Date(), color: "eventColorOption1")]),
         onSave: {}
     )
+    .environment(PCKeyboardState())
 }

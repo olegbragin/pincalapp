@@ -9,16 +9,22 @@ struct CalendarListView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            CalendarListContent(
-                calendars: viewModel.calendars,
-                displayMode: viewModel.displayMode,
-                isArchived: viewModel.mode == .archived,
-                cardViewModelFactory: { viewModel.cardViewModel(for: $0) },
-                onCalendarDelete: { viewModel.archiveCalendarInList($0) },
-                onCalendarRestore: { viewModel.restoreCalendarInList($0) },
-                onCalendarPermanentDelete: { viewModel.permanentlyDeleteCalendar($0) },
-                onRefresh: { await viewModel.fetch() }
-            )
+            if viewModel.isLoading, viewModel.calendars.isEmpty {
+                Spacer()
+                PCProgressView(label: "Loading")
+                Spacer()
+            } else {
+                CalendarListContent(
+                    calendars: viewModel.calendars,
+                    displayMode: viewModel.displayMode,
+                    isArchived: viewModel.mode == .archived,
+                    cardViewModelFactory: { viewModel.cardViewModel(for: $0) },
+                    onCalendarDelete: { viewModel.archiveCalendarInList($0) },
+                    onCalendarRestore: { viewModel.restoreCalendarInList($0) },
+                    onCalendarPermanentDelete: { viewModel.permanentlyDeleteCalendar($0) },
+                    onRefresh: { await viewModel.fetch() }
+                )
+            }
 
             Text(viewModel.appVersion)
                 .font(.footnote)
@@ -32,8 +38,9 @@ struct CalendarListView: View {
             if !viewModel.isAnyCardEditing, viewModel.mode == .active {
                 Button(action: viewModel.addItem) {
                     Image(systemName: "plus")
-                        .font(.system(size: 22, weight: .semibold))
+                        .font(.system(size: 24, weight: .bold))
                         .foregroundStyle(.white)
+                        .shadow(color: .black.opacity(0.5), radius: 2, y: 1)
                         .frame(width: 56, height: 56)
                 }
                 .pcGlass(cornerRadius: 28)

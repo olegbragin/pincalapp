@@ -9,6 +9,9 @@ import SwiftUI
 
 struct PCCalendarCardView: View {
     @Bindable var viewModel: PCCalendarCardViewModel
+    var onNameFieldFocusedChanged: ((Int64, Bool) -> Void)?
+
+    @FocusState private var nameFieldFocused: Bool
 
     var body: some View {
         ZStack {
@@ -28,10 +31,32 @@ struct PCCalendarCardView: View {
                 HStack {
                     Image(systemName: viewModel.isArchived ? "archivebox" : "calendar")
                         .font(.system(size: 18, weight: .semibold))
-                    Text(viewModel.name)
-                        .font(.system(size: 14, weight: .semibold))
-                        .lineLimit(1)
-                        .truncationMode(.tail)
+                    if viewModel.isEditing {
+                        TextField("Calendar name", text: $viewModel.editingName)
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundStyle(.white)
+                            .tint(.white)
+                            .padding(.horizontal, 4)
+                            .padding(.vertical, 2)
+                            .background(
+                                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                                    .fill(.white.opacity(0.15))
+                            )
+                            .focused($nameFieldFocused)
+                            .submitLabel(.done)
+                            .onAppear {
+                                nameFieldFocused = true
+                            }
+                            .onSubmit {
+                                viewModel.confirmEdit()
+                            }
+                            .accessibilityIdentifier("card-name-field-\(viewModel.id)")
+                    } else {
+                        Text(viewModel.name)
+                            .font(.system(size: 14, weight: .semibold))
+                            .lineLimit(1)
+                            .truncationMode(.tail)
+                    }
                     Spacer()
                     if viewModel.isArchived {
                         Text("Archived")
@@ -47,7 +72,13 @@ struct PCCalendarCardView: View {
                             Image(systemName: "checkmark")
                                 .font(.system(size: 13, weight: .semibold))
                                 .foregroundStyle(.white.opacity(0.7))
+                                .frame(width: 28, height: 28)
+                                .background(
+                                    Circle()
+                                        .fill(.white.opacity(0.15))
+                                )
                         }
+                        .accessibilityIdentifier("card-confirm-edit-\(viewModel.id)")
                         .buttonStyle(.plain)
                         .transition(.opacity)
                     } else {
@@ -57,7 +88,13 @@ struct PCCalendarCardView: View {
                             Image(systemName: "pencil")
                                 .font(.system(size: 13, weight: .semibold))
                                 .foregroundStyle(.white.opacity(0.7))
+                                .frame(width: 28, height: 28)
+                                .background(
+                                    Circle()
+                                        .fill(.white.opacity(0.15))
+                                )
                         }
+                        .accessibilityIdentifier("card-edit-\(viewModel.id)")
                         .buttonStyle(.plain)
                         .transition(.opacity)
                     }
@@ -101,18 +138,6 @@ struct PCCalendarCardView: View {
                         .buttonStyle(.plain)
                     }
                     .transition(.opacity)
-                } else if viewModel.isEditing {
-                    TextField("Calendar name", text: $viewModel.editingName)
-                        .font(.system(size: 22, weight: .bold))
-                        .foregroundStyle(.white)
-                        .tint(.white)
-                        .padding(.horizontal, 4)
-                        .padding(.vertical, 8)
-                        .background(
-                            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                                .fill(.white.opacity(0.15))
-                        )
-                        .transition(.opacity)
                 } else {
                     HStack {
                         Spacer()
@@ -147,5 +172,12 @@ struct PCCalendarCardView: View {
         .frame(height: 200)
         .contentShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
         .animation(.spring(response: 0.35, dampingFraction: 0.85), value: viewModel.isEditing)
+        .onChange(of: nameFieldFocused) { _, isFocused in
+            if isFocused {
+                onNameFieldFocusedChanged?(viewModel.id, true)
+            } else if viewModel.isEditing {
+                viewModel.confirmEdit()
+            }
+        }
     }
 }

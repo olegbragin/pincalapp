@@ -64,6 +64,7 @@ struct AddEditCalendarView: View {
                 }
                 .padding()
             }
+            .scrollDismissesKeyboard(.interactively)
         }
         .presentationDetents([.medium, .large])
         .presentationDragIndicator(.visible)

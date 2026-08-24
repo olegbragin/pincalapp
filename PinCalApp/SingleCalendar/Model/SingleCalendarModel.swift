@@ -159,6 +159,7 @@ final class SingleCalendarModel {
     
     func commitPendingBatch() {
         guard let eventBatch = addEditBatchListViewModel.addEditEventBatchModel.eventBatch else { return }
+        addEditBatchListViewModel.addEditEventBatchModel.eventBatch = nil
         if eventBatch.id == 0 {
             originalBatches.append(eventBatch)
         } else if let index = originalBatches.firstIndex(where: { key(for: $0) == key(for: eventBatch) }) {
@@ -166,6 +167,12 @@ final class SingleCalendarModel {
         }
         updateYearModel(with: originalEvents)
         save(for: calendarid)
+        refreshBatchListIfVisible()
+    }
+
+    private func refreshBatchListIfVisible() {
+        guard let selectedDay = addEditBatchListViewModel.selectedDay else { return }
+        prepareAddEditBatchListViewModel(with: [selectedDay])
     }
     
     func cancelMultipleChanges() {

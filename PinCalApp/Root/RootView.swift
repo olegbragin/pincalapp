@@ -3,6 +3,7 @@ import SwiftUI
 struct RootView: View {
     let cache: CalendarCache
     @State private var navigation = RootNavigation()
+    @State private var keyboardState = PCKeyboardState()
 
     var body: some View {
         NavigationSplitView {
@@ -13,6 +14,7 @@ struct RootView: View {
             detailColumn
         }
         .environment(navigation)
+        .environment(keyboardState)
     }
 
     private var sidebarColumn: some View {
