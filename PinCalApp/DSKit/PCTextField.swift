@@ -4,10 +4,13 @@ struct PCTextField: View {
     let title: String
     @Binding var text: String
     var identifier: String? = nil
+    var submitLabel: SubmitLabel = .done
 
     var body: some View {
         TextField(title, text: $text)
             .textFieldStyle(.roundedBorder)
+            .tint(.blue)
+            .submitLabel(submitLabel)
             .accessibilityIdentifierIfPresent(identifier)
     }
 }

@@ -38,6 +38,7 @@ struct AddEditListView: View {
             }
         }
         .scrollContentBackground(.hidden)
+        .scrollDismissesKeyboard(.interactively)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .navigationDestination(item: $viewModel.editingEvent) { _ in
             AddEditEventView(viewModel: viewModel.addEditEventModel)
