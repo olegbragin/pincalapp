@@ -36,7 +36,7 @@ final class AddEditEventBatchListViewModel {
     
     func prepareAddEditBatchViewModel(with eventBatch: EventBatchDataSource?) {
         addEditEventBatchModel.eventBatchId = eventBatch?.id ?? 0
-        addEditEventBatchModel.eventBatchName = eventBatch?.name ?? "1"
+        addEditEventBatchModel.eventBatchName = eventBatch?.name ?? ""
         addEditEventBatchModel.selectedColor = PCColorOption(eventBatch?.colorName ?? "") ?? .option1
         addEditEventBatchModel.date = eventBatch?.date ?? (eventBatch == nil ? selectedDay : nil)
         addEditEventBatchModel.selectedDays = selectedDay.map { [$0] } ?? []
@@ -70,5 +70,12 @@ extension EventBatchDataSource {
         let colorNameToUse = colorName.isEmpty ? events.first?.color : colorName
         guard let colorNameToUse, !colorNameToUse.isEmpty else { return .clear }
         return Color(colorNameToUse)
+    }
+
+    func eventsForDay(_ day: Date?) -> [EventDataSource] {
+        guard let day else { return events.sorted { $0.date < $1.date } }
+        return events
+            .filter { Calendar.autoupdatingCurrent.isDate($0.date, inSameDayAs: day) }
+            .sorted { $0.date < $1.date }
     }
 }

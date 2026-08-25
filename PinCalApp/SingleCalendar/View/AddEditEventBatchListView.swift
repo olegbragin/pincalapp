@@ -22,7 +22,11 @@ struct AddEditEventBatchListView: View {
                         },
                         label: {
                             HStack(spacing: 12) {
-                                Text(eventBatch.name)
+                                VStack(alignment: .leading, spacing: 2) {
+                                    ForEach(eventBatch.eventsForDay(viewModel.selectedDay), id: \.self) { event in
+                                        Text("at \(event.date.formatted(date: .omitted, time: .shortened))")
+                                    }
+                                }
                                 Spacer()
                                 Image(systemName: "chevron.right")
                             }

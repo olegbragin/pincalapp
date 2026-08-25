@@ -69,7 +69,7 @@ final class SingleCalendarModel {
 
         if daySelectionManager.selectionMode == .multiple {
             if let selectedColor {
-                changeEvent(EventDataSource(name: "Event1", date: day, color: selectedColor.colorName))
+                changeEvent(EventDataSource(name: "", date: day, color: selectedColor.colorName))
             }
             return nil
         }
@@ -160,13 +160,13 @@ final class SingleCalendarModel {
     func prepareAddEditEventBatchViewModel(for date: Date) {
         let addEditModel = addEditBatchListViewModel.addEditEventBatchModel
         addEditModel.eventBatchId = 0
-        addEditModel.eventBatchName = "Event1"
+        addEditModel.eventBatchName = ""
         addEditModel.selectedColor = .option1
         addEditModel.date = date
         addEditModel.selectedDays = [date]
         addEditModel.timestamp = UUID()
         addEditModel.prepare(with: [
-            EventDataSource(name: "Event1", date: date, color: PCColorOption.option1.colorName)
+            EventDataSource(name: "", date: date, color: PCColorOption.option1.colorName)
         ])
     }
     

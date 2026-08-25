@@ -12,7 +12,7 @@ import Observation
 @Observable
 final class AddEditEventBatchViewModel {
     var eventBatchId: Int64 = 0
-    var eventBatchName: String = "1"
+    var eventBatchName: String = ""
     var selectedColor: PCColorOption?
     var addEditListViewModel: AddEditListViewModel
     var date: Date?
