@@ -22,90 +22,76 @@ struct CalendarListContent: View {
     }
     
     var body: some View {
-        @Bindable var bindableRouter = navigation
         if calendars.isEmpty {
             CalendarEmptyStateView(isArchived: isArchived)
         } else {
-            ZStack {
-                    List(selection: $bindableRouter.selectedRoute) {
-                        ForEach(calendars) { calendar in
-                            EmptyView()
-                                .tag(AppRoute.calendarDetail(calendar.id))
+            ScrollView {
+                LazyVGrid(columns: columns, spacing: 12) {
+                    ForEach(calendars) { calendar in
+                        let viewModel = cardViewModelFactory(calendar)
+                        let isSelected = navigation.detailSelection == .calendar(calendar.id)
+
+                        PCCalendarCardView(
+                            viewModel: viewModel,
+                            onNameFieldFocusedChanged: { id, focused in
+                                focusedCardID = focused ? id : nil
+                            }
+                        )
+                        .id(calendar.id)
+                        .transition(
+                            .asymmetric(
+                                insertion: .move(edge: .bottom).combined(with: .opacity),
+                                removal: .scale(scale: 0.8).combined(with: .opacity)
+                            )
+                        )
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 20, style: .continuous)
+                                .strokeBorder(
+                                    isSelected ? Color.accentColor : Color.clear,
+                                    lineWidth: isSelected ? 2.5 : 0
+                                )
+                        )
+                        .shadow(color: isSelected ? Color.accentColor.opacity(0.4) : .clear, radius: isSelected ? 8 : 0)
+                        .animation(.easeOut(duration: 0.2), value: isSelected)
+                        .onTapGesture {
+                            navigation.open(.calendar(calendar.id))
+                        }
+                        .contextMenu {
+                            if calendar.isArchived {
+                                Button {
+                                    withAnimation(.spring(response: 0.4, dampingFraction: 0.75)) {
+                                        onCalendarRestore(calendar)
+                                    }
+                                } label: {
+                                    Label("Restore", systemImage: "arrow.counterclockwise")
+                                }
+                                Button(role: .destructive) {
+                                    withAnimation(.spring(response: 0.4, dampingFraction: 0.75)) {
+                                        onCalendarPermanentDelete(calendar)
+                                    }
+                                } label: {
+                                    Label("Delete Permanently", systemImage: "trash")
+                                }
+                            } else {
+                                Button(role: .destructive) {
+                                    withAnimation(.spring(response: 0.4, dampingFraction: 0.75)) {
+                                        onCalendarDelete(calendar)
+                                    }
+                                } label: {
+                                    Label("Archive", systemImage: "archivebox")
+                                }
+                            }
                         }
                     }
-                    .hidden()
-
-                    ScrollView {
-                        LazyVGrid(columns: columns, spacing: 12) {
-                            ForEach(calendars) { calendar in
-                                let viewModel = cardViewModelFactory(calendar)
-                                let isSelected = navigation.selectedRoute == .calendarDetail(calendar.id)
-
-                                PCCalendarCardView(
-                                    viewModel: viewModel,
-                                    onNameFieldFocusedChanged: { id, focused in
-                                        focusedCardID = focused ? id : nil
-                                    }
-                                )
-                                .id(calendar.id)
-                                .transition(
-                                    .asymmetric(
-                                        insertion: .move(edge: .bottom).combined(with: .opacity),
-                                        removal: .scale(scale: 0.8).combined(with: .opacity)
-                                    )
-                                )
-                                .overlay(
-                                    RoundedRectangle(cornerRadius: 20, style: .continuous)
-                                        .strokeBorder(
-                                            isSelected ? Color.accentColor : Color.clear,
-                                            lineWidth: isSelected ? 2.5 : 0
-                                        )
-                                )
-                                .shadow(color: isSelected ? Color.accentColor.opacity(0.4) : .clear, radius: isSelected ? 8 : 0)
-                                .animation(.easeOut(duration: 0.2), value: isSelected)
-                                .onTapGesture {
-                                    navigation.selectedRoute = .calendarDetail(calendar.id)
-                                }
-                                .contextMenu {
-                                    if calendar.isArchived {
-                                        Button {
-                                            withAnimation(.spring(response: 0.4, dampingFraction: 0.75)) {
-                                                onCalendarRestore(calendar)
-                                            }
-                                        } label: {
-                                            Label("Restore", systemImage: "arrow.counterclockwise")
-                                        }
-                                        Button(role: .destructive) {
-                                            withAnimation(.spring(response: 0.4, dampingFraction: 0.75)) {
-                                                onCalendarPermanentDelete(calendar)
-                                            }
-                                        } label: {
-                                            Label("Delete Permanently", systemImage: "trash")
-                                        }
-                                    } else {
-                                        Button(role: .destructive) {
-                                            withAnimation(.spring(response: 0.4, dampingFraction: 0.75)) {
-                                                onCalendarDelete(calendar)
-                                            }
-                                        } label: {
-                                            Label("Archive", systemImage: "archivebox")
-                                        }
-                                    }
-                                }
-                        }
-                    }
-                    .padding(.horizontal, 16)
-                    .padding(.top, 12)
-                }
-                .refreshable {
-                    await onRefresh()
-                }
-                .scrollDismissesKeyboard(.interactively)
-                .keyboardAvoidable(focusedItem: $focusedCardID)
-                .onChange(of: navigation.selectedRoute) { _, _ in
-                    // navigation.path = NavigationPath()
                 }
             }
+            .padding(.horizontal, 16)
+            .padding(.top, 12)
+            .refreshable {
+                await onRefresh()
+            }
+            .scrollDismissesKeyboard(.interactively)
+            .keyboardAvoidable(focusedItem: $focusedCardID)
         }
     }
 }

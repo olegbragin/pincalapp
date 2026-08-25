@@ -32,20 +32,8 @@ struct SingleCalendarView: View {
                         }
                     }
                     .onChange(of: viewModel.daySelectionManager.selectedDays) { _, newValue in
-                        guard !viewModel.isArchived else { return }
-                        if viewModel.daySelectionManager.selectionMode == .multiple, let selectedDay = newValue.first {
-                            if let selectedColor = viewModel.selectedColor {
-                                viewModel.changeEvent(.init(name: "Event1", date: selectedDay, color: selectedColor.colorName))
-                            }
-                        } else if let selectedDay = newValue.first {
-                            if viewModel.hasEvents(on: selectedDay) {
-                                viewModel.prepareAddEditBatchListViewModel(with: newValue)
-                                navigation.push(.batchList)
-                            } else {
-                                viewModel.prepareAddEditEventBatchViewModel(for: selectedDay)
-                                navigation.push(.batchEditor)
-                            }
-                        }
+                        guard let route = viewModel.route(for: newValue) else { return }
+                        navigation.push(route)
                     }
                     .onChange(of: viewModel.addEditBatchListViewModel.eventBatchesToDelete) {
                         if $0 != $1 {
@@ -62,9 +50,7 @@ struct SingleCalendarView: View {
             .id(viewModel.calendarid)
             .navigationDestination(for: AppRoute.self) { route in
                 switch route {
-                case .calendarDetail:
-                    EmptyView()
-                case .batchList:
+                case .dayBatches:
                     AddEditEventBatchListView(
                         viewModel: viewModel.addEditBatchListViewModel
                     )
@@ -83,8 +69,8 @@ struct SingleCalendarView: View {
         .onDisappear {
             flushColumnCountSave()
         }
-        .onChange(of: navigation.path.count) { _, newCount in
-            if newCount == 0 {
+        .onChange(of: navigation.isAtRoot) { _, isAtRoot in
+            if isAtRoot {
                 viewModel.resetSelectedDays()
             }
         }
@@ -108,7 +94,7 @@ struct SingleCalendarView: View {
     
     @ToolbarContentBuilder
     private var toolbarContent: some ToolbarContent {
-        if navigation.path.count == 0, !viewModel.isArchived {
+        if navigation.isAtRoot, !viewModel.isArchived {
             ToolbarItem {
                 Button(
                     viewModel.daySelectionManager.selectionMode == .multiple ? "Save" : "Multiselect",

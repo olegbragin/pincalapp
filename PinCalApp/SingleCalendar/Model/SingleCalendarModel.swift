@@ -37,7 +37,6 @@ final class SingleCalendarModel {
     private(set) var addEditBatchListViewModel = AddEditEventBatchListViewModel()
     
     var state: State = .empty
-    var isLegendSheetPresented = false
     
     @ObservationIgnored private var cancellable: AnyCancellable?
     
@@ -59,6 +58,28 @@ final class SingleCalendarModel {
             batch.events.contains { event in
                 isSameDay(event.date, date)
             } || (batch.date.map { isSameDay($0, date) } ?? false)
+        }
+    }
+
+    /// Decides where navigation should go for a day-selection change and
+    /// prepares the corresponding editor state. Returns `nil` when no
+    /// navigation is needed.
+    func route(for selectedDays: Set<Date>) -> AppRoute? {
+        guard !isArchived, let day = selectedDays.first else { return nil }
+
+        if daySelectionManager.selectionMode == .multiple {
+            if let selectedColor {
+                changeEvent(EventDataSource(name: "Event1", date: day, color: selectedColor.colorName))
+            }
+            return nil
+        }
+
+        if hasEvents(on: day) {
+            prepareAddEditBatchListViewModel(with: selectedDays)
+            return .dayBatches(day)
+        } else {
+            prepareAddEditEventBatchViewModel(for: day)
+            return .batchEditor(.newDay(day))
         }
     }
     
@@ -212,7 +233,6 @@ final class SingleCalendarModel {
     func reset() {
         label = ""
         state = .empty
-        isLegendSheetPresented = false
         addEditBatchListViewModel.reset()
     }
     

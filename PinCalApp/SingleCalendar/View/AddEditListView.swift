@@ -39,7 +39,7 @@ struct AddEditListView: View {
         }
         .scrollContentBackground(.hidden)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .navigationDestination(isPresented: $viewModel.addEditEventModel.isPresented) {
+        .navigationDestination(item: $viewModel.editingEvent) { _ in
             AddEditEventView(viewModel: viewModel.addEditEventModel)
         }
         .onChange(of: viewModel.addEditEventModel.event) {
@@ -47,8 +47,8 @@ struct AddEditListView: View {
                 viewModel.apply(with: eventToCommit)
             }
         }
-        .onChange(of: viewModel.addEditEventModel.isPresented) {
-            if $0 != $1, !$1 {
+        .onChange(of: viewModel.editingEvent) { _, newValue in
+            if newValue == nil {
                 viewModel.addEditEventModel.reset()
             }
         }

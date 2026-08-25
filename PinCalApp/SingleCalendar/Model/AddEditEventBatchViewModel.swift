@@ -11,8 +11,6 @@ import Observation
 @MainActor
 @Observable
 final class AddEditEventBatchViewModel {
-    var isPresented: Bool = false
-    
     var eventBatchId: Int64 = 0
     var eventBatchName: String = "1"
     var selectedColor: PCColorOption?
@@ -170,8 +168,6 @@ final class AddEditEventBatchViewModel {
     }
     
     func reset() {
-        isPresented = false
-        
         eventBatchId = 0
         eventBatchName = ""
         selectedColor = nil

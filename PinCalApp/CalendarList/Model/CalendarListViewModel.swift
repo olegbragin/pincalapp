@@ -51,7 +51,6 @@ final class CalendarListViewModel {
     var displayMode: DisplayMode = .list
 
     var addEditCalendarViewModel = AddEditCalendarViewModel()
-    var isAddEditSheetPresented = false
     var isLoading = true
 
     var isAnyCardEditing: Bool {
@@ -141,7 +140,6 @@ final class CalendarListViewModel {
 
     func addItem() {
         addEditCalendarViewModel.reset()
-        isAddEditSheetPresented = true
     }
 
     private func handleEditCommitted(id: Int64, newName: String) {

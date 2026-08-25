@@ -2,12 +2,14 @@ import SwiftUI
 
 struct CalendarListView: View {
     @State private var viewModel: CalendarListViewModel
+    @Environment(RootNavigation.self) private var navigation
 
     init(mode: CalendarListMode = .active, cache: CalendarCache) {
         _viewModel = State(initialValue: CalendarListViewModel(mode: mode, cache: cache))
     }
 
     var body: some View {
+        @Bindable var navigation = navigation
         VStack(spacing: 0) {
             if viewModel.isLoading, viewModel.calendars.isEmpty {
                 Spacer()
@@ -36,7 +38,10 @@ struct CalendarListView: View {
         .ignoresSafeArea(edges: .bottom)
         .overlay(alignment: .bottomTrailing) {
             if !viewModel.isAnyCardEditing, viewModel.mode == .active {
-                Button(action: viewModel.addItem) {
+                Button {
+                    viewModel.addItem()
+                    navigation.present(.addCalendar)
+                } label: {
                     Image(systemName: "plus")
                         .font(.system(size: 24, weight: .bold))
                         .foregroundStyle(.white)
@@ -75,8 +80,11 @@ struct CalendarListView: View {
                 viewModel.addCalendar(with: calendar.name)
             }
         }
-        .sheet(isPresented: $viewModel.isAddEditSheetPresented) {
-            AddEditCalendarView(viewModel: viewModel.addEditCalendarViewModel)
+        .sheet(item: $navigation.presentedSheet) { sheet in
+            switch sheet {
+            case .addCalendar:
+                AddEditCalendarView(viewModel: viewModel.addEditCalendarViewModel)
+            }
         }
     }
 }

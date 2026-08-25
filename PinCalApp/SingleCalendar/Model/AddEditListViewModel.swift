@@ -15,8 +15,10 @@ final class AddEditListViewModel {
     private(set) var selectedDay: Date?
     
     var onEventsChanged: (() -> Void)?
-    
+
     var addEditEventModel = AddEditEventViewModel()
+    /// The event currently being edited; non-nil pushes the event editor.
+    var editingEvent: EventDataSource?
     
     init(events: [EventDataSource] = [EventDataSource]()) {
         self.events = events
@@ -37,7 +39,7 @@ final class AddEditListViewModel {
         addEditEventModel.selectedColor = PCColorOption(event.color)
         addEditEventModel.selectedDate = event.date
         addEditEventModel.timestamp = event.timestamp
-        addEditEventModel.isPresented = true
+        editingEvent = event
     }
     
     func apply(with event: EventDataSource) {
@@ -75,6 +77,7 @@ final class AddEditListViewModel {
     func reset() {
         events = []
         selectedDay = nil
+        editingEvent = nil
         addEditEventModel.reset()
     }
 }

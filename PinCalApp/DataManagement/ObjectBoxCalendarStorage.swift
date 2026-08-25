@@ -40,7 +40,7 @@ class ObjectBoxCalendarStorage: CalendarStorage {
             guard let ppcalendar = try calendarEntityBox.get(calendarid) else { return -1 }
             
             let batchEntityBox = store.box(for: PPEventBatch.self)
-            
+
             let desiredBatchIDs = Set(calendar.eventBatches.map(\.id))
             let orphanedBatches = ppcalendar.eventBatches.filter { !desiredBatchIDs.contains(Int64($0.id)) }
             for oldBatch in orphanedBatches {

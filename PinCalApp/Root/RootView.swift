@@ -6,7 +6,8 @@ struct RootView: View {
     @State private var keyboardState = PCKeyboardState()
 
     var body: some View {
-        NavigationSplitView {
+        @Bindable var bindableNavigation = navigation
+        return NavigationSplitView(preferredCompactColumn: $bindableNavigation.preferredCompactColumn) {
             sidebarColumn
         } content: {
             RootContentView(cache: cache)
@@ -39,7 +40,7 @@ struct RootView: View {
                 Rectangle()
                     .fill(.colorBackgroundMain)
                     .ignoresSafeArea()
-                if case .calendarDetail(let id) = navigation.selectedRoute {
+                if case .calendar(let id) = navigation.detailSelection {
                     CalendarDetailView(calendarId: id, cache: cache)
                 } else {
                     ContentUnavailableView(
