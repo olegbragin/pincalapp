@@ -4,10 +4,15 @@ struct RootView: View {
     let cache: CalendarCache
     @State private var navigation = RootNavigation()
     @State private var keyboardState = PCKeyboardState()
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
     var body: some View {
         @Bindable var bindableNavigation = navigation
-        return NavigationSplitView(preferredCompactColumn: $bindableNavigation.preferredCompactColumn) {
+        let compactBinding = Binding<NavigationSplitViewColumn>(
+            get: { horizontalSizeClass == .compact ? navigation.preferredCompactColumn : .sidebar },
+            set: { navigation.preferredCompactColumn = $0 }
+        )
+        return NavigationSplitView(preferredCompactColumn: compactBinding) {
             sidebarColumn
         } content: {
             RootContentView(cache: cache)
