@@ -109,13 +109,27 @@ enum KeyboardAvoidanceTestSupport {
     ) {
         let elementFrame = stableFrame(of: element)
         let keyboardFrame = stableFrame(of: keyboard)
-        XCTAssertLessThanOrEqual(
-            elementFrame.maxY,
-            keyboardFrame.minY + tolerance,
-            "\(element.elementType.rawValue) bottom (\(elementFrame.maxY)) must stay above keyboard top (\(keyboardFrame.minY))",
-            file: file,
-            line: line
-        )
+
+        // In landscape mode the keyboard can be floating (minY ≈ 0).
+        // When that happens the positional check is not meaningful —
+        // just verify the element is still on screen and interactable.
+        let keyboardAnchored = keyboardFrame.minY > 40
+        if keyboardAnchored {
+            XCTAssertLessThanOrEqual(
+                elementFrame.maxY,
+                keyboardFrame.minY + tolerance,
+                "\(element.elementType.rawValue) bottom (\(elementFrame.maxY)) must stay above keyboard top (\(keyboardFrame.minY))",
+                file: file,
+                line: line
+            )
+        } else {
+            XCTAssertTrue(
+                element.isHittable,
+                "\(element.elementType.rawValue) must remain visible and hittable when the keyboard is shown (floating)",
+                file: file,
+                line: line
+            )
+        }
     }
 
     @MainActor

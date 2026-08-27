@@ -41,16 +41,22 @@ struct AddEditListView: View {
         .scrollDismissesKeyboard(.interactively)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .navigationDestination(item: $viewModel.editingEvent) { _ in
-            AddEditEventView(viewModel: viewModel.addEditEventModel)
-        }
-        .onChange(of: viewModel.addEditEventModel.event) {
-            if $0 != $1, let eventToCommit = $1 {
-                viewModel.apply(with: eventToCommit)
+            AddEditEventView(viewModel: viewModel.addEditEventModel) { event in
+                viewModel.apply(with: event)
+                viewModel.editingEvent = nil
+                viewModel.addEditEventModel.reset()
             }
         }
         .onChange(of: viewModel.editingEvent) { _, newValue in
             if newValue == nil {
-                viewModel.addEditEventModel.reset()
+                // Handles swipe-back/cancel without Save, or as fallback
+                // if onCommit wasn't invoked. commitPendingEventIfNeeded is safe
+                // to call multiple times (it clears after first apply).
+                if viewModel.addEditEventModel.event != nil {
+                    viewModel.commitPendingEventIfNeeded()
+                } else {
+                    viewModel.addEditEventModel.reset()
+                }
             }
         }
     }

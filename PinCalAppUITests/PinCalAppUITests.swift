@@ -198,13 +198,13 @@ final class PinCalAppUITests: XCTestCase {
 
         // The text field should appear and be tappable (not hidden behind keyboard).
         let nameField = app.textFields["card-name-field-3"]
-        XCTAssertTrue(nameField.waitForExistence(timeout: 3), "Name text field should appear after tapping edit")
+        XCTAssertTrue(nameField.waitForExistence(timeout: 3), "Text text field should appear after tapping edit")
 
-        // Type a new name. The scroll-view should keep the field visible.
-        let currentValue = (nameField.value as? String) ?? ""
-        for _ in 0..<currentValue.count {
-            app.keys["delete"].tap()
-        }
+        // Select all existing text and replace with a new name.
+        // Using triple-tap avoids relying on the delete key which may not be
+        // reachable on some keyboard layouts (e.g. iOS 26.5).
+        nameField.tap(withNumberOfTaps: 3, numberOfTouches: 1)
+        Thread.sleep(forTimeInterval: 0.3)
         nameField.typeText("Renamed")
         XCTAssertTrue(nameField.exists, "Text field must remain visible while typing (keyboard should not cover it)")
 

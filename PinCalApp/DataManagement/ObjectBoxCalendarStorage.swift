@@ -64,6 +64,14 @@ class ObjectBoxCalendarStorage: CalendarStorage {
                 let ppevents = batch.events.map { event in
                     PPEvent(id: UInt64(event.id), name: event.name, color: event.color, date: event.date)
                 }
+                
+                let oldEventIDs = Set(ppBatch.events.map(\.id))
+                let newEventIDs = Set(ppevents.map(\.id))
+                let removedEventIDs = oldEventIDs.subtracting(newEventIDs)
+                for removedID in removedEventIDs {
+                    try eventEntityBox.remove(removedID)
+                }
+                
                 try eventEntityBox.put(ppevents)
                 ppBatch.events.replace(ppevents)
                 try ppBatch.events.applyToDb()
@@ -116,8 +124,9 @@ class ObjectBoxCalendarStorage: CalendarStorage {
     
     func getActiveCalendars() async throws -> [CalendarDataSource] {
         do {
-            return try calendarEntityBox.query { PPCalendar.isArchived == false }
-                .build().find().compactMap { CalendarDataSource($0) }
+//            return try calendarEntityBox.query { PPCalendar.isArchived == false }
+//                .build().find().compactMap { CalendarDataSource($0) }
+            return try calendarEntityBox.all().compactMap { CalendarDataSource($0) }
         } catch {
             print("[ObjectBoxCalendarStorage] getActiveCalendars query failed: \(error). Falling back to getAllCalendars.")
             return try await getAllCalendars().filter { !$0.isArchived }

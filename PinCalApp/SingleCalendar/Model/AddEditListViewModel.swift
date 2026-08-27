@@ -52,6 +52,18 @@ final class AddEditListViewModel {
         }
         onEventsChanged?()
     }
+
+    /// Commits any pending edited event that was saved in the child editor
+    /// but not yet applied (e.g. if `editingEvent` hasn't cleared yet).
+    /// Returns true if a pending event was committed.
+    @discardableResult
+    func commitPendingEventIfNeeded() -> Bool {
+        guard let pending = addEditEventModel.event else { return false }
+        apply(with: pending)
+        addEditEventModel.reset()
+        editingEvent = nil
+        return true
+    }
     
     func addEvent(_ event: EventDataSource) {
         events.append(event.withTimestamp(UUID()))

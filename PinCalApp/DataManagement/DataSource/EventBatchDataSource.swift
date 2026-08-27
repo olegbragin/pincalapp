@@ -46,6 +46,11 @@ struct EventBatchDataSource: Identifiable, Hashable {
 
 extension EventBatchDataSource: Equatable {
     static func == (lhs: EventBatchDataSource, rhs: EventBatchDataSource) -> Bool {
-        lhs.id == rhs.id && lhs.name == rhs.name
+        lhs.id == rhs.id &&
+        lhs.name == rhs.name &&
+        lhs.colorName == rhs.colorName &&
+        lhs.events == rhs.events &&
+        lhs.date == rhs.date &&
+        lhs.timestamp == rhs.timestamp
     }
 }

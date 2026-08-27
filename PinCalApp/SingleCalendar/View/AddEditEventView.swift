@@ -9,6 +9,7 @@ import SwiftUI
 
 struct AddEditEventView: View {
     @Bindable var viewModel: AddEditEventViewModel
+    var onCommit: ((EventDataSource) -> Void)? = nil
     
     @Environment(\.dismiss) private var dismiss
     
@@ -52,8 +53,12 @@ struct AddEditEventView: View {
             ToolbarItem(placement: .topBarTrailing) {
                 Button {
                     Task {
-                        if viewModel.save() {
-                            dismiss()
+                        if viewModel.save(), let event = viewModel.event {
+                            if let onCommit {
+                                onCommit(event)
+                            } else {
+                                dismiss()
+                            }
                         }
                     }
                 } label: {

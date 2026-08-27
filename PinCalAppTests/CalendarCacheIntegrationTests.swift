@@ -61,6 +61,19 @@ struct CalendarCacheIntegrationTests {
         }
     }
 
+    private func waitForStoreCondition(
+        _ store: Store,
+        timeout: TimeInterval = 3,
+        _ check: @escaping () throws -> Bool
+    ) async throws -> Bool {
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            if try check() { return true }
+            try await Task.sleep(for: .milliseconds(50))
+        }
+        return false
+    }
+
     // MARK: - Calendar CRUD via CalendarCache + direct ObjectBox verification
 
     @Test func createCalendarPersistsViaCache() async throws {
@@ -194,9 +207,9 @@ struct CalendarCacheIntegrationTests {
 
         let cal1 = try await cache.createCalendar(name: "Active1", year: 2026, numberOfColumns: 2)
         let cal2 = try await cache.createCalendar(name: "Active2", year: 2026, numberOfColumns: 3)
-        _ = try await cache.createCalendar(name: "Archived", year: 2026, numberOfColumns: 4)
+        let cal3 = try await cache.createCalendar(name: "Archived", year: 2026, numberOfColumns: 4)
 
-        try await cache.archiveCalendar(try await cache.getCalendar(id: cal2.id) ?? cal1)
+        try await cache.archiveCalendar(try await cache.getCalendar(id: cal3.id) ?? cal1)
 
         // Path A: verify via cache
         await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
@@ -213,8 +226,10 @@ struct CalendarCacheIntegrationTests {
         // Path B: verify via direct ObjectBox
         let calendarBox = store.box(for: PPCalendar.self)
         let active = try calendarBox.query { PPCalendar.isArchived == false }.build().find()
-        #expect(active.count == 1)
-        #expect(active[0].name == "Active1")
+        #expect(active.count == 2)
+        let names = Set(active.map(\.name))
+        #expect(names.contains("Active1"))
+        #expect(names.contains("Active2"))
     }
 
     @Test func loadArchivedReturnsOnlyArchivedViaCache() async throws {
@@ -324,7 +339,10 @@ struct CalendarCacheIntegrationTests {
         #expect(addEdit.save())
         model.resetSelectedDays()
 
-        #expect(try await waitForBatchCount(1, in: store))
+        // Wait for async save to persist the renamed batch
+        #expect(try await waitForStoreCondition(store) {
+            try batchBox.all().first?.title == "Renamed"
+        })
 
         // Path A: verify via model
         #expect(model.hasEvents(on: day10))
@@ -425,7 +443,10 @@ struct CalendarCacheIntegrationTests {
         )
         model.deleteBatches([batchDataSource], for: Int64(ppCalendar.id))
 
-        #expect(try batchBox.all().isEmpty)
+        // Wait for async save to persist the deletion
+        #expect(try await waitForStoreCondition(store) {
+            try batchBox.all().isEmpty
+        })
 
         // Path A: verify via model
         #expect(!model.hasEvents(on: day10))
@@ -513,6 +534,11 @@ struct CalendarCacheIntegrationTests {
         #expect(addEdit.save())
         model.resetSelectedDays()
 
+        // Wait for async save to persist the event removal
+        #expect(try await waitForStoreCondition(store) {
+            try eventBox.all().count == 1
+        })
+
         // Path A: verify via model
         #expect(model.hasEvents(on: day10))
         #expect(!model.hasEvents(on: day12))
@@ -558,7 +584,10 @@ struct CalendarCacheIntegrationTests {
         #expect(addEdit.save())
         model.resetSelectedDays()
 
-        #expect(try await waitForBatchCount(1, in: store))
+        // Wait for async save to persist the color change
+        #expect(try await waitForStoreCondition(store) {
+            try batchBox.all().first?.color == "eventColorOption3"
+        })
 
         // Path A: verify via model
         #expect(model.hasEvents(on: day10))
@@ -733,13 +762,17 @@ struct CalendarCacheIntegrationTests {
         #expect(addEdit.save())
         model.resetSelectedDays()
 
-        #expect(try await waitForBatchCount(1, in: store))
+        let eventBox = store.box(for: PPEvent.self)
+
+        // Wait for async save to persist the event color change
+        #expect(try await waitForStoreCondition(store) {
+            try eventBox.all().first?.color == "eventColorOption2"
+        })
 
         // Path A: verify via model
         #expect(model.hasEvents(on: day10))
 
         // Path B: verify via direct ObjectBox
-        let eventBox = store.box(for: PPEvent.self)
         let events = try eventBox.all()
         #expect(events.count == 1)
         #expect(events[0].color == "eventColorOption2")
@@ -778,6 +811,11 @@ struct CalendarCacheIntegrationTests {
         addEdit.toggleEvent(on: day10) // Remove all events
         #expect(addEdit.save())
         model.resetSelectedDays()
+
+        // Wait for async save to persist the deletion
+        #expect(try await waitForStoreCondition(store) {
+            try batchBox.all().isEmpty
+        })
 
         // Path A: verify via model
         #expect(!model.hasEvents(on: day10))
@@ -1004,7 +1042,10 @@ struct CalendarCacheIntegrationTests {
         #expect(addEdit.save())
         model.resetSelectedDays()
 
-        #expect(try await waitForBatchCount(1, in: store))
+        // Wait for async save to persist the edited batch
+        #expect(try await waitForStoreCondition(store) {
+            try batchBox.all().first?.title == "Edited"
+        })
 
         // Verify via cache
         let fromCache = try await cache.getCalendar(id: Int64(ppCalendar.id))

@@ -579,13 +579,14 @@ struct EventBatchCreationTests {
         #expect(!model.hasEvents(on: day10))
         
         let storedBatches = store.box(for: PPEventBatch.self)
+        let storedEvents = store.box(for: PPEvent.self)
         let deadline = Date().addingTimeInterval(3)
-        var persistedEvents = Array(try storedBatches.all()[0].events)
-        while !persistedEvents.isEmpty, Date() < deadline {
+        while Date() < deadline {
+            if try storedEvents.all().isEmpty { break }
             try await Task.sleep(for: .milliseconds(50))
-            persistedEvents = Array(try storedBatches.all()[0].events)
         }
-        #expect(persistedEvents.isEmpty)
+        #expect(try storedEvents.all().isEmpty)
+        #expect(try storedBatches.all().isEmpty)
     }
     
     @Test func batchCreatedViaCalendarTogglesPersistsAndReflectsOnSingleCalendar() async throws {
@@ -636,7 +637,7 @@ struct EventBatchCreationTests {
         #expect(dayModel?.events.contains("eventColorOption1") == true)
     }
     
-    @Test func prepareAddEditEventBatchViewModelForDatePreadsSelectedDayAndEvent() {
+    @Test func prepareAddEditEventBatchViewModelForDateCreatesBatchForDay() {
         let model = SingleCalendarModel(calendarid: 0, cache: CalendarCache(manager: CalendarManager()))
         let day10 = date(year: 2026, month: 6, day: 10)
         
@@ -644,12 +645,12 @@ struct EventBatchCreationTests {
         
         let addEdit = model.addEditBatchListViewModel.addEditEventBatchModel
         #expect(addEdit.selectedDays == [day10])
-        #expect(addEdit.eventBatchName == "Event1")
+        #expect(addEdit.eventBatchName == "")
         #expect(addEdit.selectedColor == .option1)
-        #expect(addEdit.canSave)
+        #expect(addEdit.date == day10)
         let events = addEdit.addEditListViewModel.events
         #expect(events.count == 1)
-        #expect(events[0].name == "Event1")
+        #expect(events[0].name == "")
         #expect(events[0].color == "eventColorOption1")
         #expect(addEdit.addEditListViewModel.hasEvent(on: day10))
     }

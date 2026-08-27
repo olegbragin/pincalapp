@@ -181,7 +181,9 @@ final class SingleCalendarModel {
     func commitPendingBatch() {
         guard let eventBatch = addEditBatchListViewModel.addEditEventBatchModel.eventBatch else { return }
         addEditBatchListViewModel.addEditEventBatchModel.eventBatch = nil
-        if eventBatch.id == 0 {
+        if eventBatch.events.isEmpty {
+            originalBatches.removeAll(where: { key(for: $0) == key(for: eventBatch) })
+        } else if eventBatch.id == 0 {
             originalBatches.append(eventBatch)
         } else if let index = originalBatches.firstIndex(where: { key(for: $0) == key(for: eventBatch) }) {
             originalBatches[index] = eventBatch

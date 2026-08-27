@@ -38,6 +38,7 @@ struct PCColorOptionSheet: View {
                         }
                     }
                 }
+                .accessibilityIdentifier("color-option-\(colorOption.colorName)")
             }
             .navigationTitle("Выберите цвет")
             .navigationBarTitleDisplayMode(.inline)

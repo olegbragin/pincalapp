@@ -29,6 +29,8 @@ struct PCCompactColorPicker: View {
         .opacity(isEnabled ? 1 : 0.4)
         .allowsHitTesting(isEnabled)
         .accessibilityLabel("Выберите цвет")
+        .accessibilityIdentifier("color-picker-compact")
+        .accessibilityValue(selectedColor?.colorName ?? defaultColor?.colorName ?? "")
         .sheet(isPresented: $isColorOptionsPresented) {
             PCColorOptionSheet(selectedColor: $selectedColor, defaultColor: defaultColor)
         }
