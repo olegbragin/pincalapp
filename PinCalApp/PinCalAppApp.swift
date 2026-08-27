@@ -1,15 +1,9 @@
-//
-//  PinCalAppApp.swift
-//  PinCalApp
-//
-//  Created by Oleg Bragin on 04.05.2026.
-//
-
 import SwiftUI
+import CorePersistence
 
 @main
 struct PinCalAppApp: App {
-    @State private var cache = CalendarCache(manager: CalendarManager())
+    @State private var cache = CalendarCache(repository: ObjectBoxCalendarStorage())
 
     init() {
         UITableView.appearance().backgroundColor = .clear

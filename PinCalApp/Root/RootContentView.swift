@@ -1,4 +1,6 @@
 import SwiftUI
+import CorePersistence
+import CalendarListFeature
 
 struct RootContentView: View {
     @Environment(RootNavigation.self) var navigation

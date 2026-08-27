@@ -1,0 +1,15 @@
+{
+  "originHash" : "ece1631849ffc2ba259ac623683f431e6b83a3eb3a474ef5bd5eda2fbd264df4",
+  "pins" : [
+    {
+      "identity" : "objectbox-swift-spm",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/objectbox/objectbox-swift-spm",
+      "state" : {
+        "revision" : "eb4238dad6e07ca4f7d99e47ff2936fb837c0c39",
+        "version" : "5.3.0"
+      }
+    }
+  ],
+  "version" : 3
+}

@@ -1,0 +1,128 @@
+{
+  "_note1": "KEEP THIS FILE! Check it into a version control system (VCS) like git.",
+  "_note2": "ObjectBox manages crucial IDs for your object model. See docs for details.",
+  "_note3": "If you have VCS merge conflicts, you must resolve them according to ObjectBox docs.",
+  "entities": [
+    {
+      "id": "1:3491056530251621120",
+      "lastPropertyId": "5:4652584966665274368",
+      "name": "PPCalendar",
+      "properties": [
+        {
+          "id": "1:4828515876702905088",
+          "name": "id",
+          "type": 6,
+          "flags": 1
+        },
+        {
+          "id": "2:7355884322689823744",
+          "name": "name",
+          "type": 9
+        },
+        {
+          "id": "3:887243505735923456",
+          "name": "year",
+          "type": 6
+        },
+        {
+          "id": "4:7190884173125997824",
+          "name": "numberOfColumns",
+          "type": 6
+        },
+        {
+          "id": "5:4652584966665274368",
+          "name": "isArchived",
+          "type": 1
+        }
+      ],
+      "relations": [
+        {
+          "id": "1:1636971379025742080",
+          "name": "eventBatches",
+          "targetId": "3:136324746163352832"
+        }
+      ]
+    },
+    {
+      "id": "2:8058827426655555584",
+      "lastPropertyId": "4:4374847681055198208",
+      "name": "PPEvent",
+      "properties": [
+        {
+          "id": "1:9062990121228035328",
+          "name": "id",
+          "type": 6,
+          "flags": 1
+        },
+        {
+          "id": "2:5548351470660405760",
+          "name": "name",
+          "type": 9
+        },
+        {
+          "id": "3:8910166868811950848",
+          "name": "color",
+          "type": 9
+        },
+        {
+          "id": "4:4374847681055198208",
+          "name": "date",
+          "type": 10
+        }
+      ],
+      "relations": [
+        {
+          "id": "2:3890301771308793088",
+          "name": "calendars",
+          "targetId": "1:3491056530251621120"
+        }
+      ]
+    },
+    {
+      "id": "3:136324746163352832",
+      "lastPropertyId": "4:4223894164449532416",
+      "name": "PPEventBatch",
+      "properties": [
+        {
+          "id": "1:860377129616946432",
+          "name": "id",
+          "type": 6,
+          "flags": 1
+        },
+        {
+          "id": "2:8201800304997960960",
+          "name": "title",
+          "type": 9
+        },
+        {
+          "id": "3:7520960007329838848",
+          "name": "color",
+          "type": 9
+        },
+        {
+          "id": "4:4223894164449532416",
+          "name": "date",
+          "type": 10
+        }
+      ],
+      "relations": [
+        {
+          "id": "3:4712630713181074176",
+          "name": "events",
+          "targetId": "2:8058827426655555584"
+        }
+      ]
+    }
+  ],
+  "lastEntityId": "3:136324746163352832",
+  "lastIndexId": "0:0",
+  "lastRelationId": "3:4712630713181074176",
+  "lastSequenceId": "0:0",
+  "modelVersion": 5,
+  "modelVersionParserMinimum": 4,
+  "retiredEntityUids": [],
+  "retiredIndexUids": [],
+  "retiredPropertyUids": [],
+  "retiredRelationUids": [],
+  "version": 1
+}

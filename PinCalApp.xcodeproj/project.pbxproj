@@ -7,6 +7,12 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		D7A6472E3040DCD7009034E4 /* SingleCalendarFeature in Frameworks */ = {isa = PBXBuildFile; productRef = D7A6472D3040DCD7009034E4 /* SingleCalendarFeature */; };
+		D7A647313040DD1F009034E4 /* DSKit in Frameworks */ = {isa = PBXBuildFile; productRef = D7A647303040DD1F009034E4 /* DSKit */; };
+		D7A647343040DD2A009034E4 /* CorePersistence in Frameworks */ = {isa = PBXBuildFile; productRef = D7A647333040DD2A009034E4 /* CorePersistence */; };
+		D7A647373040DD35009034E4 /* CoreDomain in Frameworks */ = {isa = PBXBuildFile; productRef = D7A647363040DD35009034E4 /* CoreDomain */; };
+		D7A6473A3040DD40009034E4 /* CalendarListFeature in Frameworks */ = {isa = PBXBuildFile; productRef = D7A647393040DD40009034E4 /* CalendarListFeature */; };
+		D7A6473D3040DD4C009034E4 /* AppNavigation in Frameworks */ = {isa = PBXBuildFile; productRef = D7A6473C3040DD4C009034E4 /* AppNavigation */; };
 		D7B936742FA911CF00E5A62D /* Collections in Frameworks */ = {isa = PBXBuildFile; productRef = D7B936732FA911CF00E5A62D /* Collections */; };
 		D7B936762FA911CF00E5A62D /* OrderedCollections in Frameworks */ = {isa = PBXBuildFile; productRef = D7B936752FA911CF00E5A62D /* OrderedCollections */; };
 		D7B936782FA911CF00E5A62D /* SortedCollections in Frameworks */ = {isa = PBXBuildFile; productRef = D7B936772FA911CF00E5A62D /* SortedCollections */; };
@@ -52,11 +58,6 @@
 			path = PinCalAppUITests;
 			sourceTree = "<group>";
 		};
-		D7B937072FA9141B00E5A62D /* generated */ = {
-			isa = PBXFileSystemSynchronizedRootGroup;
-			path = generated;
-			sourceTree = "<group>";
-		};
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -64,8 +65,14 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				D7A647313040DD1F009034E4 /* DSKit in Frameworks */,
+				D7A647343040DD2A009034E4 /* CorePersistence in Frameworks */,
+				D7A6473D3040DD4C009034E4 /* AppNavigation in Frameworks */,
 				D7B9368E2FA9128100E5A62D /* ObjectBox.xcframework in Frameworks */,
+				D7A647373040DD35009034E4 /* CoreDomain in Frameworks */,
 				D7B936762FA911CF00E5A62D /* OrderedCollections in Frameworks */,
+				D7A6473A3040DD40009034E4 /* CalendarListFeature in Frameworks */,
+				D7A6472E3040DCD7009034E4 /* SingleCalendarFeature in Frameworks */,
 				D7B936782FA911CF00E5A62D /* SortedCollections in Frameworks */,
 				D7B936742FA911CF00E5A62D /* Collections in Frameworks */,
 			);
@@ -91,7 +98,6 @@
 		D7B935702FA90E7A00E5A62D = {
 			isa = PBXGroup;
 			children = (
-				D7B937072FA9141B00E5A62D /* generated */,
 				D7B9357B2FA90E7A00E5A62D /* PinCalApp */,
 				D7B935892FA90E7C00E5A62D /* PinCalAppTests */,
 				D7B935932FA90E7C00E5A62D /* PinCalAppUITests */,
@@ -126,7 +132,6 @@
 			);
 			fileSystemSynchronizedGroups = (
 				D7B9357B2FA90E7A00E5A62D /* PinCalApp */,
-				D7B937072FA9141B00E5A62D /* generated */,
 			);
 			name = PinCalApp;
 			packageProductDependencies = (
@@ -134,6 +139,12 @@
 				D7B936752FA911CF00E5A62D /* OrderedCollections */,
 				D7B936772FA911CF00E5A62D /* SortedCollections */,
 				D7B9368D2FA9128100E5A62D /* ObjectBox.xcframework */,
+				D7A6472D3040DCD7009034E4 /* SingleCalendarFeature */,
+				D7A647303040DD1F009034E4 /* DSKit */,
+				D7A647333040DD2A009034E4 /* CorePersistence */,
+				D7A647363040DD35009034E4 /* CoreDomain */,
+				D7A647393040DD40009034E4 /* CalendarListFeature */,
+				D7A6473C3040DD4C009034E4 /* AppNavigation */,
 			);
 			productName = PinCalApp;
 			productReference = D7B935792FA90E7A00E5A62D /* PinCalApp.app */;
@@ -220,6 +231,12 @@
 			packageReferences = (
 				D7B936722FA911CF00E5A62D /* XCRemoteSwiftPackageReference "swift-collections" */,
 				D7B9368C2FA9128100E5A62D /* XCRemoteSwiftPackageReference "objectbox-swift-spm" */,
+				D7A6472C3040DCD7009034E4 /* XCLocalSwiftPackageReference "Packages/SingleCalendarFeature" */,
+				D7A6472F3040DD1F009034E4 /* XCLocalSwiftPackageReference "Packages/DSKit" */,
+				D7A647323040DD2A009034E4 /* XCLocalSwiftPackageReference "Packages/CorePersistence" */,
+				D7A647353040DD35009034E4 /* XCLocalSwiftPackageReference "Packages/CoreDomain" */,
+				D7A647383040DD40009034E4 /* XCLocalSwiftPackageReference "Packages/CalendarListFeature" */,
+				D7A6473B3040DD4C009034E4 /* XCLocalSwiftPackageReference "Packages/AppNavigation" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = D7B9357A2FA90E7A00E5A62D /* Products */;
@@ -656,6 +673,33 @@
 		};
 /* End XCConfigurationList section */
 
+/* Begin XCLocalSwiftPackageReference section */
+		D7A6472C3040DCD7009034E4 /* XCLocalSwiftPackageReference "Packages/SingleCalendarFeature" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = Packages/SingleCalendarFeature;
+		};
+		D7A6472F3040DD1F009034E4 /* XCLocalSwiftPackageReference "Packages/DSKit" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = Packages/DSKit;
+		};
+		D7A647323040DD2A009034E4 /* XCLocalSwiftPackageReference "Packages/CorePersistence" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = Packages/CorePersistence;
+		};
+		D7A647353040DD35009034E4 /* XCLocalSwiftPackageReference "Packages/CoreDomain" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = Packages/CoreDomain;
+		};
+		D7A647383040DD40009034E4 /* XCLocalSwiftPackageReference "Packages/CalendarListFeature" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = Packages/CalendarListFeature;
+		};
+		D7A6473B3040DD4C009034E4 /* XCLocalSwiftPackageReference "Packages/AppNavigation" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = Packages/AppNavigation;
+		};
+/* End XCLocalSwiftPackageReference section */
+
 /* Begin XCRemoteSwiftPackageReference section */
 		D7B936722FA911CF00E5A62D /* XCRemoteSwiftPackageReference "swift-collections" */ = {
 			isa = XCRemoteSwiftPackageReference;
@@ -676,6 +720,30 @@
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
+		D7A6472D3040DCD7009034E4 /* SingleCalendarFeature */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = SingleCalendarFeature;
+		};
+		D7A647303040DD1F009034E4 /* DSKit */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = DSKit;
+		};
+		D7A647333040DD2A009034E4 /* CorePersistence */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = CorePersistence;
+		};
+		D7A647363040DD35009034E4 /* CoreDomain */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = CoreDomain;
+		};
+		D7A647393040DD40009034E4 /* CalendarListFeature */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = CalendarListFeature;
+		};
+		D7A6473C3040DD4C009034E4 /* AppNavigation */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = AppNavigation;
+		};
 		D7B936732FA911CF00E5A62D /* Collections */ = {
 			isa = XCSwiftPackageProductDependency;
 			package = D7B936722FA911CF00E5A62D /* XCRemoteSwiftPackageReference "swift-collections" */;

@@ -6,6 +6,10 @@
 //
 
 import SwiftUI
+import CoreDomain
+import SingleCalendarFeature
+import CorePersistence
+import DSKit
 
 struct CalendarDetailView: View {
     let calendarId: Int64
