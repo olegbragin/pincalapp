@@ -24,7 +24,10 @@ let package = Package(
                 "AppNavigation",
                 .product(name: "ObjectBox.xcframework", package: "objectbox-swift-spm")
             ],
-            path: "Sources/SingleCalendarFeature"
+            path: "Sources/SingleCalendarFeature",
+            resources: [
+                .process("Resources")
+            ]
         ),
         .testTarget(name: "SingleCalendarFeatureTests", dependencies: ["SingleCalendarFeature"], path: "Tests/SingleCalendarFeatureTests")
     ]

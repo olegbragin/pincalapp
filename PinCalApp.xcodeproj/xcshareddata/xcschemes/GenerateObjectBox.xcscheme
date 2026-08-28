@@ -9,8 +9,8 @@
          <ExecutionAction
             ActionType = "Xcode.IDEStandardExecutionActionsCore.ExecutionActionType.ShellScriptAction">
             <ActionContent
-               title = "GenerateLocalizations"
-               scriptText = "/usr/bin/env -i HOME=&quot;$HOME&quot; PATH=&quot;/usr/bin:/bin:/usr/sbin:/sbin&quot; /usr/bin/swift &quot;$SRCROOT/Packages/SingleCalendarFeature/Sources/GenerateLocalization/main.swift&quot; &quot;$SRCROOT/Packages/SingleCalendarFeature/Sources/SingleCalendarFeature/Resources/pcScfLocalisation.xcstrings&quot;"
+               title = "Generate ObjectBox"
+               scriptText = "/usr/bin/env -i HOME=&quot;$HOME&quot; PATH=&quot;/usr/bin:/bin:/usr/sbin:/sbin&quot; /usr/bin/swift &quot;$SRCROOT/Packages/CorePersistence/Sources/GenerateObjectBox/main.swift&quot;"
                shellToInvoke = "/bin/bash">
                <EnvironmentBuildable>
                   <BuildableReference
@@ -26,11 +26,11 @@
       </PreActions>
       <BuildActionEntries>
          <BuildActionEntry
-            buildForTesting = "YES"
-            buildForRunning = "YES"
-            buildForProfiling = "YES"
-            buildForArchiving = "YES"
-            buildForAnalyzing = "YES">
+            buildForTesting = "NO"
+            buildForRunning = "NO"
+            buildForProfiling = "NO"
+            buildForArchiving = "NO"
+            buildForAnalyzing = "NO">
             <BuildableReference
                BuildableIdentifier = "primary"
                BlueprintIdentifier = "D7B935782FA90E7A00E5A62D"
@@ -47,29 +47,6 @@
       selectedLauncherIdentifier = "Xcode.DebuggerFoundation.Launcher.LLDB"
       shouldUseLaunchSchemeArgsEnv = "YES"
       shouldAutocreateTestPlan = "YES">
-      <Testables>
-         <TestableReference
-            skipped = "NO"
-            parallelizable = "NO">
-            <BuildableReference
-               BuildableIdentifier = "primary"
-               BlueprintIdentifier = "D7B935852FA90E7C00E5A62D"
-               BuildableName = "PinCalAppTests.xctest"
-               BlueprintName = "PinCalAppTests"
-               ReferencedContainer = "container:PinCalApp.xcodeproj">
-            </BuildableReference>
-         </TestableReference>
-         <TestableReference
-            skipped = "NO">
-            <BuildableReference
-               BuildableIdentifier = "primary"
-               BlueprintIdentifier = "D7B9358F2FA90E7C00E5A62D"
-               BuildableName = "PinCalAppUITests.xctest"
-               BlueprintName = "PinCalAppUITests"
-               ReferencedContainer = "container:PinCalApp.xcodeproj">
-            </BuildableReference>
-         </TestableReference>
-      </Testables>
    </TestAction>
    <LaunchAction
       buildConfiguration = "Debug"
@@ -81,16 +58,6 @@
       debugDocumentVersioning = "YES"
       debugServiceExtension = "internal"
       allowLocationSimulation = "YES">
-      <BuildableProductRunnable
-         runnableDebuggingMode = "0">
-         <BuildableReference
-            BuildableIdentifier = "primary"
-            BlueprintIdentifier = "D7B935782FA90E7A00E5A62D"
-            BuildableName = "PinCalApp.app"
-            BlueprintName = "PinCalApp"
-            ReferencedContainer = "container:PinCalApp.xcodeproj">
-         </BuildableReference>
-      </BuildableProductRunnable>
    </LaunchAction>
    <ProfileAction
       buildConfiguration = "Release"
@@ -98,16 +65,6 @@
       savedToolIdentifier = ""
       useCustomWorkingDirectory = "NO"
       debugDocumentVersioning = "YES">
-      <BuildableProductRunnable
-         runnableDebuggingMode = "0">
-         <BuildableReference
-            BuildableIdentifier = "primary"
-            BlueprintIdentifier = "D7B935782FA90E7A00E5A62D"
-            BuildableName = "PinCalApp.app"
-            BlueprintName = "PinCalApp"
-            ReferencedContainer = "container:PinCalApp.xcodeproj">
-         </BuildableReference>
-      </BuildableProductRunnable>
    </ProfileAction>
    <AnalyzeAction
       buildConfiguration = "Debug">

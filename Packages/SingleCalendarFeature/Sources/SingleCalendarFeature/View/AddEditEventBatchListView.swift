@@ -54,15 +54,15 @@ public struct AddEditEventBatchListView: View {
         }
         .listStyle(.plain)
         .scrollContentBackground(.hidden)
-        .background(Color.init("colorBackgroundMain"))
+        .background(Color.dsKit.colorBackgroundMain)
         .environment(\.editMode, .constant(.active))
-        .toolbarBackground(Color("colorBackgroundMain", bundle: .main), for: .navigationBar)
+        .toolbarBackground(Color.dsKit.colorBackgroundMain, for: .navigationBar)
         .toolbar {
             ToolbarItem(placement: .title) {
                 Text(viewModel.selectedDay ?? Date(), style: .date)
             }
         }
-        .background(Color.init("colorBackgroundMain"))
+        .background(Color.dsKit.colorBackgroundMain)
     }
 
     private func deleteItems(offsets: IndexSet) {

@@ -17,8 +17,7 @@ let package = Package(
             dependencies: [.product(name: "OrderedCollections", package: "swift-collections"), "CoreDomain"],
             path: "Sources/DSKit",
             resources: [
-                // Colors.xcassets is kept in main app for now — DSKit uses Color("...") which resolves via main bundle.
-                // When fully isolated, move Colors.xcassets here and use Bundle.module.
+                .process("Resources")
             ]
         ),
         .testTarget(name: "DSKitTests", dependencies: ["DSKit"], path: "Tests/DSKitTests")

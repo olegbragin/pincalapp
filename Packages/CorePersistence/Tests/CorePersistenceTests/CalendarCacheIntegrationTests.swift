@@ -9,6 +9,7 @@ import Testing
 import Foundation
 import ObjectBox
 import Combine
+import CorePersistence
 @testable import PinCalApp
 
 @MainActor
@@ -28,14 +29,15 @@ struct CalendarCacheIntegrationTests {
         .init(name: name, date: date(year: 2026, month: 6, day: day), color: color, timestamp: timestamp)
     }
 
-    private func makeStore() -> Store {
-        try! Store(directoryPath: "memory:cache-integration-\(UUID().uuidString)")
+    private func makeStore() throws -> Store {
+        let model = try CorePersistence.makeModel()
+        return try Store(directory: "memory:cache-integration-\(UUID().uuidString)", model: model)
     }
 
-    private func makeCache(store: Store) -> (CalendarCache, CalendarManager) {
-        let manager = CalendarManager(service: ObjectBoxCalendarStorage(store: store))
-        let cache = CalendarCache(manager: manager)
-        return (cache, manager)
+    private func makeCache(store: Store) -> CalendarCache {
+        let storage = ObjectBoxCalendarStorage(store: store)
+        let cache = CalendarCache(repository: storage)
+        return cache
     }
 
     private func makeCalendar(in store: Store) -> PPCalendar {
@@ -80,7 +82,7 @@ struct CalendarCacheIntegrationTests {
         let store = makeStore()
         defer { store.close() }
 
-        let (cache, _) = makeCache(store: store)
+        let cache = makeCache(store: store)
         let calendarBox = store.box(for: PPCalendar.self)
 
         let newCalendar = try await cache.createCalendar(name: "My Calendar", year: 2026, numberOfColumns: 3)
@@ -103,7 +105,7 @@ struct CalendarCacheIntegrationTests {
         let store = makeStore()
         defer { store.close() }
 
-        let (cache, _) = makeCache(store: store)
+        let cache = makeCache(store: store)
         let calendarBox = store.box(for: PPCalendar.self)
 
         let created = try await cache.createCalendar(name: "Original", year: 2026, numberOfColumns: 2)
@@ -124,7 +126,7 @@ struct CalendarCacheIntegrationTests {
         let store = makeStore()
         defer { store.close() }
 
-        let (cache, _) = makeCache(store: store)
+        let cache = makeCache(store: store)
         let calendarBox = store.box(for: PPCalendar.self)
 
         let created = try await cache.createCalendar(name: "Cols", year: 2026, numberOfColumns: 2)
@@ -145,7 +147,7 @@ struct CalendarCacheIntegrationTests {
         let store = makeStore()
         defer { store.close() }
 
-        let (cache, _) = makeCache(store: store)
+        let cache = makeCache(store: store)
         let calendarBox = store.box(for: PPCalendar.self)
 
         let created = try await cache.createCalendar(name: "To Archive", year: 2026, numberOfColumns: 3)
@@ -164,7 +166,7 @@ struct CalendarCacheIntegrationTests {
         let store = makeStore()
         defer { store.close() }
 
-        let (cache, _) = makeCache(store: store)
+        let cache = makeCache(store: store)
         let calendarBox = store.box(for: PPCalendar.self)
 
         let created = try await cache.createCalendar(name: "To Restore", year: 2026, numberOfColumns: 3)
@@ -184,7 +186,7 @@ struct CalendarCacheIntegrationTests {
         let store = makeStore()
         defer { store.close() }
 
-        let (cache, _) = makeCache(store: store)
+        let cache = makeCache(store: store)
         let calendarBox = store.box(for: PPCalendar.self)
 
         let created = try await cache.createCalendar(name: "To Delete", year: 2026, numberOfColumns: 3)
@@ -203,7 +205,7 @@ struct CalendarCacheIntegrationTests {
         let store = makeStore()
         defer { store.close() }
 
-        let (cache, _) = makeCache(store: store)
+        let cache = makeCache(store: store)
 
         let cal1 = try await cache.createCalendar(name: "Active1", year: 2026, numberOfColumns: 2)
         let cal2 = try await cache.createCalendar(name: "Active2", year: 2026, numberOfColumns: 3)
@@ -236,7 +238,7 @@ struct CalendarCacheIntegrationTests {
         let store = makeStore()
         defer { store.close() }
 
-        let (cache, _) = makeCache(store: store)
+        let cache = makeCache(store: store)
 
         _ = try await cache.createCalendar(name: "Active", year: 2026, numberOfColumns: 2)
         let archived = try await cache.createCalendar(name: "Archived", year: 2026, numberOfColumns: 3)
@@ -268,7 +270,7 @@ struct CalendarCacheIntegrationTests {
         defer { store.close() }
 
         let ppCalendar = makeCalendar(in: store)
-        let (cache, _) = makeCache(store: store)
+        let cache = makeCache(store: store)
         let model = SingleCalendarModel(calendarid: Int64(ppCalendar.id), cache: cache)
         await model.fetch(force: true)
         #expect(model.state == .content)
@@ -326,7 +328,7 @@ struct CalendarCacheIntegrationTests {
         savedCalendar.eventBatches.append(batch)
         try savedCalendar.eventBatches.applyToDb()
 
-        let (cache, _) = makeCache(store: store)
+        let cache = makeCache(store: store)
         let model = SingleCalendarModel(calendarid: Int64(ppCalendar.id), cache: cache)
         await model.fetch(force: true)
 
@@ -374,7 +376,7 @@ struct CalendarCacheIntegrationTests {
         savedCalendar.eventBatches.append(batch)
         try savedCalendar.eventBatches.applyToDb()
 
-        let (cache, _) = makeCache(store: store)
+        let cache = makeCache(store: store)
         let model = SingleCalendarModel(calendarid: Int64(ppCalendar.id), cache: cache)
         await model.fetch(force: true)
         #expect(!model.hasEvents(on: day15))
@@ -430,7 +432,7 @@ struct CalendarCacheIntegrationTests {
         savedCalendar.eventBatches.append(batch)
         try savedCalendar.eventBatches.applyToDb()
 
-        let (cache, _) = makeCache(store: store)
+        let cache = makeCache(store: store)
         let model = SingleCalendarModel(calendarid: Int64(ppCalendar.id), cache: cache)
         await model.fetch(force: true)
 
@@ -463,7 +465,7 @@ struct CalendarCacheIntegrationTests {
         defer { store.close() }
 
         let ppCalendar = makeCalendar(in: store)
-        let (cache, _) = makeCache(store: store)
+        let cache = makeCache(store: store)
         let model = SingleCalendarModel(calendarid: Int64(ppCalendar.id), cache: cache)
         await model.fetch(force: true)
 
@@ -521,7 +523,7 @@ struct CalendarCacheIntegrationTests {
         savedCalendar.eventBatches.append(batch)
         try savedCalendar.eventBatches.applyToDb()
 
-        let (cache, _) = makeCache(store: store)
+        let cache = makeCache(store: store)
         let model = SingleCalendarModel(calendarid: Int64(ppCalendar.id), cache: cache)
         await model.fetch(force: true)
 
@@ -570,7 +572,7 @@ struct CalendarCacheIntegrationTests {
         savedCalendar.eventBatches.append(batch)
         try savedCalendar.eventBatches.applyToDb()
 
-        let (cache, _) = makeCache(store: store)
+        let cache = makeCache(store: store)
         let model = SingleCalendarModel(calendarid: Int64(ppCalendar.id), cache: cache)
         await model.fetch(force: true)
 
@@ -605,7 +607,7 @@ struct CalendarCacheIntegrationTests {
         defer { store.close() }
 
         let ppCalendar = makeCalendar(in: store)
-        let (cache, _) = makeCache(store: store)
+        let cache = makeCache(store: store)
         let model = SingleCalendarModel(calendarid: Int64(ppCalendar.id), cache: cache)
         await model.fetch(force: true)
 
@@ -655,7 +657,7 @@ struct CalendarCacheIntegrationTests {
         defer { store.close() }
 
         let ppCalendar = makeCalendar(in: store)
-        let (cache, _) = makeCache(store: store)
+        let cache = makeCache(store: store)
         let model = SingleCalendarModel(calendarid: Int64(ppCalendar.id), cache: cache)
         await model.fetch(force: true)
 
@@ -697,7 +699,7 @@ struct CalendarCacheIntegrationTests {
         defer { store.close() }
 
         let ppCalendar = makeCalendar(in: store)
-        let (cache, _) = makeCache(store: store)
+        let cache = makeCache(store: store)
         let model = SingleCalendarModel(calendarid: Int64(ppCalendar.id), cache: cache)
         await model.fetch(force: true)
 
@@ -745,7 +747,7 @@ struct CalendarCacheIntegrationTests {
         savedCalendar.eventBatches.append(batch)
         try savedCalendar.eventBatches.applyToDb()
 
-        let (cache, _) = makeCache(store: store)
+        let cache = makeCache(store: store)
         let model = SingleCalendarModel(calendarid: Int64(ppCalendar.id), cache: cache)
         await model.fetch(force: true)
 
@@ -799,7 +801,7 @@ struct CalendarCacheIntegrationTests {
         savedCalendar.eventBatches.append(batch)
         try savedCalendar.eventBatches.applyToDb()
 
-        let (cache, _) = makeCache(store: store)
+        let cache = makeCache(store: store)
         let model = SingleCalendarModel(calendarid: Int64(ppCalendar.id), cache: cache)
         await model.fetch(force: true)
 
@@ -832,7 +834,7 @@ struct CalendarCacheIntegrationTests {
         defer { store.close() }
 
         let ppCalendar = makeCalendar(in: store)
-        let (cache, _) = makeCache(store: store)
+        let cache = makeCache(store: store)
         let model = SingleCalendarModel(calendarid: Int64(ppCalendar.id), cache: cache)
         await model.fetch(force: true)
 
@@ -897,7 +899,7 @@ struct CalendarCacheIntegrationTests {
         let store = makeStore()
         defer { store.close() }
 
-        let (cache, _) = makeCache(store: store)
+        let cache = makeCache(store: store)
 
         var receivedOperations: [ChangeOperation] = []
         let cancellable = cache.changes.sink { operation in
@@ -920,7 +922,7 @@ struct CalendarCacheIntegrationTests {
         let store = makeStore()
         defer { store.close() }
 
-        let (cache, _) = makeCache(store: store)
+        let cache = makeCache(store: store)
         let created = try await cache.createCalendar(name: "Original", year: 2026, numberOfColumns: 3)
 
         var receivedOperations: [ChangeOperation] = []
@@ -945,7 +947,7 @@ struct CalendarCacheIntegrationTests {
         let store = makeStore()
         defer { store.close() }
 
-        let (cache, _) = makeCache(store: store)
+        let cache = makeCache(store: store)
         let created = try await cache.createCalendar(name: "To Archive Signal", year: 2026, numberOfColumns: 3)
 
         var receivedOperations: [ChangeOperation] = []
@@ -971,7 +973,7 @@ struct CalendarCacheIntegrationTests {
         defer { store.close() }
 
         let ppCalendar = makeCalendar(in: store)
-        let (cache, _) = makeCache(store: store)
+        let cache = makeCache(store: store)
         let model = SingleCalendarModel(calendarid: Int64(ppCalendar.id), cache: cache)
         await model.fetch(force: true)
 
@@ -990,7 +992,10 @@ struct CalendarCacheIntegrationTests {
         #expect(try await waitForBatchCount(1, in: store))
 
         // Re-fetch from cache to verify round-trip
-        let freshCache = CalendarCache(manager: CalendarManager(service: ObjectBoxCalendarStorage(store: store)))
+        let freshCache = {
+            let storage = ObjectBoxCalendarStorage(store: store)
+            return CalendarCache(repository: storage)
+        }()
         let calendar = try await freshCache.getCalendar(id: Int64(ppCalendar.id))
         #expect(calendar?.eventBatches.count == 1)
         #expect(calendar?.eventBatches.first?.name == "Round Trip")
@@ -1027,7 +1032,7 @@ struct CalendarCacheIntegrationTests {
         savedCalendar.eventBatches.append(batch)
         try savedCalendar.eventBatches.applyToDb()
 
-        let (cache, _) = makeCache(store: store)
+        let cache = makeCache(store: store)
         let model = SingleCalendarModel(calendarid: Int64(ppCalendar.id), cache: cache)
         await model.fetch(force: true)
 
@@ -1059,5 +1064,129 @@ struct CalendarCacheIntegrationTests {
         #expect(Array(persistedBatch.events).count == 1)
         let persistedEvent = Array(persistedBatch.events)[0]
         #expect(Calendar.current.isDate(persistedEvent.date, inSameDayAs: day10))
+    }
+    
+    @Test func saveCalendarKeepsEventsWhenAddingNewEvent() async throws {
+        let store = try makeStore()
+        defer { store.close() }
+
+        let calendarBox = store.box(for: PPCalendar.self)
+        let batchBox = store.box(for: PPEventBatch.self)
+        let eventBox = store.box(for: PPEvent.self)
+
+        let calendar = PPCalendar(name: "Test", year: 2026, numberOfColumns: 3)
+        try calendarBox.put(calendar)
+        let e1 = PPEvent(name: "A", color: "eventColorOption1", date: Date())
+        try eventBox.put(e1)
+        let batch = PPEventBatch(title: "A", color: "eventColorOption1")
+        try batchBox.put(batch)
+        batch.events.replace([e1])
+        try batch.events.applyToDb()
+        calendar.eventBatches.append(batch)
+        try calendar.eventBatches.applyToDb()
+        _ = try calendarBox.put(calendar)
+
+        let storage = ObjectBoxCalendarStorage(store: store)
+        var dto = try calendarBox.get(calendar.id).map { CalendarDataSource($0) }!
+        dto.eventBatches[0].events.append(.init(name: "New", date: Date().addingTimeInterval(172800), color: "eventColorOption1"))
+        _ = try await storage.saveCalendar(dto)
+
+        let readBack = try calendarBox.get(calendar.id).map { CalendarDataSource($0) }!
+        #expect(readBack.eventBatches[0].events.count == 2)
+        #expect(readBack.eventBatches[0].events.contains(where: { $0.name == "New" }))
+        #expect(try eventBox.all().count == 2)
+    }
+    
+    @Test func getActiveCalendarsReturnsOnlyNonArchived() async throws {
+        let store = try makeStore()
+        defer { store.close() }
+
+        let storage = ObjectBoxCalendarStorage(store: store)
+
+        let cal1 = CalendarDataSource(name: "Active", year: 2026, numberOfColumns: 2)
+        let cal2 = CalendarDataSource(name: "ToArchive", year: 2026, numberOfColumns: 3)
+        let id1 = try await storage.saveCalendar(cal1)
+        let id2 = try await storage.saveCalendar(cal2)
+
+        let active = try await storage.getActiveCalendars()
+        #expect(active.count == 2)
+
+        try await storage.archiveCalendar(id2)
+
+        let afterArchive = try await storage.getActiveCalendars()
+        #expect(afterArchive.count == 1)
+        #expect(afterArchive[0].id == id1)
+
+        let archived = try await storage.getArchivedCalendars()
+        #expect(archived.count == 1)
+        #expect(archived[0].id == id2)
+
+        try await storage.restoreCalendar(id2)
+
+        let afterRestore = try await storage.getActiveCalendars()
+        #expect(afterRestore.count == 2)
+    }
+    
+    @Test func saveCalendarDeletesOrphanedBatchAndItsEvents() async throws {
+        let store = try makeStore()
+        defer { store.close() }
+
+        let calendarBox = store.box(for: PPCalendar.self)
+        let batchBox = store.box(for: PPEventBatch.self)
+        let eventBox = store.box(for: PPEvent.self)
+
+        let calendar = PPCalendar(name: "Test", year: 2026, numberOfColumns: 3)
+        try calendarBox.put(calendar)
+        let e1 = PPEvent(name: "A", color: "eventColorOption1", date: Date())
+        try eventBox.put(e1)
+        let batch = PPEventBatch(title: "A", color: "eventColorOption1")
+        try batchBox.put(batch)
+        batch.events.replace([e1])
+        try batch.events.applyToDb()
+        calendar.eventBatches.append(batch)
+        try calendar.eventBatches.applyToDb()
+        _ = try calendarBox.put(calendar)
+
+        let storage = ObjectBoxCalendarStorage(store: store)
+        let empty = CalendarDataSource(id: Int64(calendar.id), name: "Test", year: 2026, numberOfColumns: 3, eventBatches: [])
+        _ = try await storage.saveCalendar(empty)
+
+        let readBack = try calendarBox.get(calendar.id).map { CalendarDataSource($0) }!
+        #expect(readBack.eventBatches.isEmpty)
+        #expect(try batchBox.all().isEmpty)
+        #expect(try eventBox.all().isEmpty)
+    }
+    
+    @Test func saveCalendarKeepsBatchEventsWhenRenaming() async throws {
+        let store = try makeStore()
+        defer { store.close() }
+        
+        let calendarBox = store.box(for: PPCalendar.self)
+        let batchBox = store.box(for: PPEventBatch.self)
+        let eventBox = store.box(for: PPEvent.self)
+        
+        let calendar = PPCalendar(name: "Test", year: 2026, numberOfColumns: 3)
+        try calendarBox.put(calendar)
+        let e1 = PPEvent(name: "A", color: "eventColorOption1", date: Date())
+        let e2 = PPEvent(name: "B", color: "eventColorOption1", date: Date().addingTimeInterval(86400))
+        try eventBox.put([e1, e2])
+        let batch = PPEventBatch(title: "A", color: "eventColorOption1")
+        try batchBox.put(batch)
+        batch.events.replace([e1, e2])
+        try batch.events.applyToDb()
+        calendar.eventBatches.append(batch)
+        try calendar.eventBatches.applyToDb()
+        _ = try calendarBox.put(calendar)
+        
+        let storage = ObjectBoxCalendarStorage(store: store)
+        var dto = try calendarBox.get(calendar.id).map { CalendarDataSource($0) }!
+        dto.eventBatches[0].name = "Renamed"
+        _ = try await storage.saveCalendar(dto)
+        
+        let readBack = try calendarBox.get(calendar.id).map { CalendarDataSource($0) }!
+        #expect(readBack.eventBatches.count == 1)
+        #expect(readBack.eventBatches[0].name == "Renamed")
+        #expect(readBack.eventBatches[0].events.count == 2)
+        #expect(try eventBox.all().count == 2)
     }
 }

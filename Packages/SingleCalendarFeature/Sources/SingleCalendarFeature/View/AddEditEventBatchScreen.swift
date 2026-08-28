@@ -35,9 +35,9 @@ public struct AddEditEventBatchScreen: View {
                 )
             }
         }
-        .toolbarBackground(Color("colorBackgroundMain", bundle: .main), for: .navigationBar)
+        .toolbarBackground(Color.dsKit.colorBackgroundMain, for: .navigationBar)
         .ignoresSafeArea(edges: .bottom)
-        .background(Color("colorBackgroundMain", bundle: .main))
+        .background(Color.dsKit.colorBackgroundMain)
         .onChange(of: viewModel.daySelectionManager.selectedDays) { _, newValue in
             if let selectedDay = newValue.first {
                 viewModel.toggleEvent(on: selectedDay)

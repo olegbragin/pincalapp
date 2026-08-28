@@ -52,7 +52,7 @@ public struct SingleCalendarView: View {
             .padding(6)
             .navigationTitle(viewModel.label)
             .navigationBarTitleDisplayMode(.inline)
-            .toolbarBackground(Color("colorBackgroundMain", bundle: .main), for: .navigationBar)
+            .toolbarBackground(Color.dsKit.colorBackgroundMain, for: .navigationBar)
             .toolbar { toolbarContent }
             .id(viewModel.calendarid)
             .navigationDestination(for: AppRoute.self) { route in

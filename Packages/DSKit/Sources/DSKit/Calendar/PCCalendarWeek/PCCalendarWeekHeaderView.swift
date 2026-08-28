@@ -21,7 +21,7 @@ public struct PCCalendarWeekHeaderView: View {
                     
                     Text(symbol.name)
                         .font(.footnote)
-                        .foregroundColor(Color("colorForegroundDisabled"))
+                        .foregroundColor(Color("colorForegroundDisabled", bundle: .module))
                         .background(.clear)
                 }
                 .frame(width: cellSize, height: cellSize)

@@ -15,10 +15,10 @@ public enum PCColorOption: CaseIterable {
     
     public var color: Color {
         switch self {
-        case .option1: return Color("eventColorOption1")
-        case .option2: return Color("eventColorOption2")
-        case .option3: return Color("eventColorOption3")
-        case .option4: return Color("eventColorOption4")
+        case .option1: return Color("eventColorOption1", bundle: .module)
+        case .option2: return Color("eventColorOption2", bundle: .module)
+        case .option3: return Color("eventColorOption3", bundle: .module)
+        case .option4: return Color("eventColorOption4", bundle: .module)
         }
     }
     

@@ -1,7 +1,6 @@
 import SwiftUI
 import CorePersistence
 import DSKit
-import DSKit
 
 public struct CalendarListView: View {
     @State private var viewModel: CalendarListViewModel

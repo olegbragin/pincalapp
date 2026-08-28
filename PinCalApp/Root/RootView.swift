@@ -3,6 +3,7 @@ import CoreDomain
 import CorePersistence
 import DSKit
 import CalendarListFeature
+import AppNavigation
 
 struct RootView: View {
     let cache: CalendarCache
@@ -47,7 +48,7 @@ struct RootView: View {
         return NavigationStack(path: $bindableNavigation.path) {
             ZStack {
                 Rectangle()
-                    .fill(.colorBackgroundMain)
+                    .fill(Color.dsKit.colorBackgroundMain)
                     .ignoresSafeArea()
                 if case .calendar(let id) = navigation.detailSelection {
                     CalendarDetailView(calendarId: id, cache: cache)
@@ -60,6 +61,6 @@ struct RootView: View {
                 }
             }
         }
-        .background(.colorBackgroundMain)
+        .background(Color.dsKit.colorBackgroundMain)
     }
 }

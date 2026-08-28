@@ -586,7 +586,7 @@ extension ObjectBox.Store {
     /// A store with a fully configured model. Created by the code generator with your model's metadata in place.
     ///
     /// # In-memory database
-    /// To use a file-less in-memory database, instead of a directory path pass `memory:` 
+    /// To use a file-less in-memory database, instead of a directory path pass `memory:`
     /// together with an identifier string:
     /// ```swift
     /// let inMemoryStore = try Store(directoryPath: "memory:test-db")

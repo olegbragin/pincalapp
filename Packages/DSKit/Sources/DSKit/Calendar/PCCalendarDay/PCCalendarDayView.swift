@@ -76,11 +76,11 @@ public struct PCCalendarDayView: View {
     private var textColor: Color {
         switch (model.isToday, model.isInCurrentMonth) {
         case (true, true), (true, false):
-            return Color("colorForeground")
+            return Color("colorForeground", bundle: .module)
         case (false, true):
-            return Color("colorForeground")
+            return model.events.isEmpty ? Color("colorForeground", bundle: .module) : Color("colorForegroundEvent", bundle: .module)
         case (false, false):
-            return Color("colorForegroundDisabled")
+            return Color("colorForegroundDisabled", bundle: .module)
         }
     }
     
@@ -109,11 +109,11 @@ public struct PCCalendarDayView: View {
     private var backgroundColor: Color {
         switch (model.isToday, model.isInCurrentMonth) {
         case (true, true), (true, false):
-            return Color("colorBackground")
+            return Color("colorBackground", bundle: .module)
         case (false, true):
-            return Color("colorBackground")
+            return Color("colorBackground", bundle: .module)
         case (false, false):
-            return Color("colorBackgroundDisabled")
+            return Color("colorBackgroundDisabled", bundle: .module)
         }
     }
     
