@@ -50,6 +50,7 @@ public struct AddEditEventView: View {
             }
             .padding()
         }
+        .keyboardAvoidable()
         .scrollDismissesKeyboard(.interactively)
         .toolbarTitleDisplayMode(.inline)
         .toolbar {
