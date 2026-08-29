@@ -30,14 +30,19 @@ struct RootView: View {
 
     private var sidebarColumn: some View {
         @Bindable var bindableNavigation = navigation
-        return List(selection: $bindableNavigation.selectedCategory) {
+        return List(selection: $bindableNavigation.selectedSidebarCategory) {
             Section("Menu") {
                 Label("Calendars", systemImage: "calendar")
-                    .tag(RootSelection.calendarList)
+                    .tag(SidebarCategory.calendarList)
                     .accessibilityIdentifier("sidebar-calendars")
                 Label("Archived", systemImage: "archivebox")
-                    .tag(RootSelection.archived)
+                    .tag(SidebarCategory.archived)
                     .accessibilityIdentifier("sidebar-archived")
+            }
+        }
+        .onChange(of: bindableNavigation.selectedSidebarCategory) { _, newCategory in
+            if let category = newCategory {
+                navigation.goTo(.sidebar(category))
             }
         }
         .navigationTitle("PinCal")
@@ -50,7 +55,7 @@ struct RootView: View {
                 Rectangle()
                     .fill(Color.dsKit.colorBackgroundMain)
                     .ignoresSafeArea()
-                if case .calendar(let id) = navigation.detailSelection {
+                if let id = navigation.detailCalendarID {
                     CalendarDetailView(calendarId: id, cache: cache)
                 } else {
                     ContentUnavailableView(

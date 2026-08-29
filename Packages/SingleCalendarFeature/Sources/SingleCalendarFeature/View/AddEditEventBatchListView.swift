@@ -24,7 +24,7 @@ public struct AddEditEventBatchListView: View {
                     Button(
                         action: {
                             viewModel.prepareAddEditBatchViewModel(with: eventBatch)
-                            navigation.push(.batchEditor(.existingBatch(eventBatch)))
+                            navigation.goTo(AppRoute.batchEditor(.existingBatch(eventBatch.id)))
                         },
                         label: {
                             HStack(spacing: 12) {

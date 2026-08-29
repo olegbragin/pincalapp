@@ -9,7 +9,6 @@ import SwiftUI
 import CorePersistence
 import AppNavigation
 import DSKit
-import ObjectBox
 
 public struct SingleCalendarView: View {
     @Bindable public var viewModel: SingleCalendarModel
@@ -40,7 +39,7 @@ public struct SingleCalendarView: View {
                     }
                     .onChange(of: viewModel.daySelectionManager.selectedDays) { _, newValue in
                         guard let route = viewModel.route(for: newValue) else { return }
-                        navigation.push(route)
+                        navigation.goTo(route)
                     }
                     .onChange(of: viewModel.addEditBatchListViewModel.eventBatchesToDelete) {
                         if $0 != $1 {
@@ -61,11 +60,17 @@ public struct SingleCalendarView: View {
                     AddEditEventBatchListView(
                         viewModel: viewModel.addEditBatchListViewModel
                     )
-                case .batchEditor:
+                case .batchEditor(let source):
                     AddEditEventBatchScreen(
                         viewModel: viewModel.addEditBatchListViewModel.addEditEventBatchModel,
                         onCommit: { viewModel.commitPendingBatch() }
                     )
+                case .calendar:
+                    EmptyView() // Not pushed, handled by split view
+                case .addCalendar:
+                    EmptyView() // Not pushed, presented as sheet
+                case .sidebar:
+                    EmptyView() // Not pushed, handled by split view sidebar
                 }
             }
         }

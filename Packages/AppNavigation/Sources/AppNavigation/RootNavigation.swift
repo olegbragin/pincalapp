@@ -1,7 +1,7 @@
 //
-//  RootNavigation.swift
-//  PinCalApp
-//
+ //  RootNavigation.swift
+ //  PinCalApp
+ //
 
 import Observation
 import SwiftUI
@@ -9,9 +9,7 @@ import SwiftUI
 @Observable
 public class RootNavigation {
     public init() {}
-    public var selectedCategory: RootSelection? = .calendarList
-    public var detailSelection: DetailSelection?
-    public var presentedSheet: AppSheet?
+    public var selectedSidebarCategory: SidebarCategory? = .calendarList
     public var path = NavigationPath()
 
     /// Which column is shown when the split view collapses on iPhone.
@@ -21,16 +19,48 @@ public class RootNavigation {
 
     public var isAtRoot: Bool { path.isEmpty }
 
-    public func open(_ selection: DetailSelection) {
-        detailSelection = selection
-        preferredCompactColumn = .detail
-    }
+    /// Current detail column selection (for split-view "open" navigation)
+    public private(set) var detailCalendarID: Int64?
+    
+    /// Currently presented sheet
+    public private(set) var presentedSheet: AppRoute?
 
-    public func push(_ route: AppRoute) {
-        path.append(route)
+    /// Unified navigation — single entry point for all routes.
+    /// The route itself (via AppRoute.navigationStyle) defines how to navigate.
+    public func goTo(_ route: AppRoute) {
+        switch route {
+        // MARK: - Sidebar category selection (changes content column)
+        case .sidebar(let category):
+            selectedSidebarCategory = category
+            if category == .archived {
+                detailCalendarID = nil
+            }
+            
+        // MARK: - Open (split-view detail column replacement)
+        case .calendar(let id):
+            detailCalendarID = id
+            preferredCompactColumn = .detail
+            presentedSheet = nil
+            
+        // MARK: - Push (navigation stack)
+        case .dayBatches(let date):
+            path.append(route)
+        case .batchEditor(let source):
+            path.append(route)
+            
+        // MARK: - Present (sheet)
+        case .addCalendar:
+            presentedSheet = route
+        }
     }
-
-    public func present(_ sheet: AppSheet) {
-        presentedSheet = sheet
+    
+    /// Dismiss presented sheet
+    public func dismissSheet() {
+        presentedSheet = nil
+    }
+    
+    /// Clear navigation stack (pop to root)
+    public func popToRoot() {
+        path = NavigationPath()
     }
 }

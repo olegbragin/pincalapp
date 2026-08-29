@@ -5,14 +5,26 @@ let package = Package(
     name: "SingleCalendarFeature",
     platforms: [.iOS(.v17), .macOS(.v14)],
     products: [
-        .library(name: "SingleCalendarFeature", targets: ["SingleCalendarFeature"])
+        .library(
+            name: "SingleCalendarFeature",
+            targets: [
+                "SingleCalendarFeature"
+            ]
+        )
     ],
     dependencies: [
-        .package(path: "../CorePersistence"),
-        .package(path: "../DSKit"),
-        .package(path: "../CoreDomain"),
-        .package(path: "../AppNavigation"),
-        .package(url: "https://github.com/objectbox/objectbox-swift-spm", from: "5.3.0")
+        .package(
+            path: "../CorePersistence"
+        ),
+        .package(
+            path: "../DSKit"
+        ),
+        .package(
+            path: "../CoreDomain"
+        ),
+        .package(
+            path: "../AppNavigation"
+        )
     ],
     targets: [
         .target(
@@ -21,14 +33,17 @@ let package = Package(
                 "CorePersistence",
                 "DSKit",
                 "CoreDomain",
-                "AppNavigation",
-                .product(name: "ObjectBox.xcframework", package: "objectbox-swift-spm")
+                "AppNavigation"
             ],
             path: "Sources/SingleCalendarFeature",
             resources: [
                 .process("Resources")
             ]
         ),
-        .testTarget(name: "SingleCalendarFeatureTests", dependencies: ["SingleCalendarFeature"], path: "Tests/SingleCalendarFeatureTests")
+        .testTarget(
+            name: "SingleCalendarFeatureTests",
+            dependencies: ["SingleCalendarFeature"],
+            path: "Tests/SingleCalendarFeatureTests"
+        )
     ]
 )

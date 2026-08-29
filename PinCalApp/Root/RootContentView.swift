@@ -8,21 +8,18 @@ struct RootContentView: View {
     let cache: CalendarCache
 
     var selectedCalendarID: Int64? {
-        if case .calendar(let id) = navigation.detailSelection {
-            return id
-        }
-        return nil
+        navigation.detailCalendarID
     }
 
     var body: some View {
-        switch navigation.selectedCategory {
+        switch navigation.selectedSidebarCategory {
         case .calendarList, .none:
             CalendarListView(
                 mode: .active,
                 cache: cache,
                 selectedCalendarID: selectedCalendarID,
                 onSelectCalendar: { id in
-                    navigation.open(.calendar(id))
+                    navigation.goTo(.calendar(id))
                 }
             )
         case .archived:
@@ -31,7 +28,7 @@ struct RootContentView: View {
                 cache: cache,
                 selectedCalendarID: selectedCalendarID,
                 onSelectCalendar: { id in
-                    navigation.open(.calendar(id))
+                    navigation.goTo(.calendar(id))
                 }
             )
         }

@@ -5,7 +5,10 @@ let package = Package(
     name: "CalendarListFeature",
     platforms: [.iOS(.v17), .macOS(.v14)],
     products: [
-        .library(name: "CalendarListFeature", targets: ["CalendarListFeature"])
+        .library(
+            name: "CalendarListFeature",
+            targets: ["CalendarListFeature"]
+        )
     ],
     dependencies: [
         .package(path: "../CorePersistence"),
@@ -16,9 +19,20 @@ let package = Package(
     targets: [
         .target(
             name: "CalendarListFeature",
-            dependencies: ["CorePersistence", "DSKit", "CoreDomain", "AppNavigation"],
+            dependencies: [
+                "CorePersistence",
+                "DSKit",
+                "CoreDomain",
+                "AppNavigation"
+            ],
             path: "Sources/CalendarListFeature"
         ),
-        .testTarget(name: "CalendarListFeatureTests", dependencies: ["CalendarListFeature"], path: "Tests/CalendarListFeatureTests")
+        .testTarget(
+            name: "CalendarListFeatureTests",
+            dependencies: [
+                "CalendarListFeature"
+            ],
+            path: "Tests/CalendarListFeatureTests"
+        )
     ]
 )
