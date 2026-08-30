@@ -36,7 +36,7 @@ public struct AddEditListView: View {
                     .padding()
                     .background(
                         RoundedRectangle(cornerRadius: 16, style: .continuous)
-                            .fill(Color(event.color))
+                            .fill(Color.dsKit.eventColor(named: event.color))
                     )
                 }
                 .listRowBackground(Color.clear)

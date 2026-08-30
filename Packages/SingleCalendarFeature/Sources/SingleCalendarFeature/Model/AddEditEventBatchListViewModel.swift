@@ -71,7 +71,7 @@ extension EventBatchDataSource {
     var color: Color {
         let colorNameToUse = colorName.isEmpty ? events.first?.color : colorName
         guard let colorNameToUse, !colorNameToUse.isEmpty else { return .clear }
-        return Color(colorNameToUse)
+        return Color.dsKit.eventColor(named: colorNameToUse)
     }
 
     func eventsForDay(_ day: Date?) -> [EventDataSource] {

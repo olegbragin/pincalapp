@@ -12,5 +12,9 @@ public extension Color {
         public static let colorEventOption2 = Color("eventColorOption2", bundle: .module)
         public static let colorEventOption3 = Color("eventColorOption3", bundle: .module)
         public static let colorEventOption4 = Color("eventColorOption4", bundle: .module)
+
+        public static func eventColor(named colorName: String) -> Color {
+            PCColorOption(colorName)?.color ?? .clear
+        }
     }
 }

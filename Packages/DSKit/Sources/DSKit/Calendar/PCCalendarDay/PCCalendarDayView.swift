@@ -54,12 +54,8 @@ public struct PCCalendarDayView: View {
         return "\(model.text), \(model.events.count) events"
     }
     
-    private static let eventColorsByOption: [String: Color] = Dictionary(
-        uniqueKeysWithValues: PCColorOption.allCases.map { ($0.colorName, $0.color) }
-    )
-    
     private static func eventColor(for name: String) -> Color {
-        eventColorsByOption[name] ?? Color(name)
+        Color.dsKit.eventColor(named: name)
     }
     
     private static var eventColorsCache: [[String]: [Color]] = [:]
