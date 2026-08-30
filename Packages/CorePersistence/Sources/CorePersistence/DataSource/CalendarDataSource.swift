@@ -5,7 +5,7 @@
 //  Created by Oleg Bragin on 15.02.2026.
 //
 
-public struct CalendarDataSource: Identifiable, Hashable {
+public struct CalendarDataSource: Identifiable, Hashable, Sendable {
     public var id: Int64
     public var name: String
     public var year: Int

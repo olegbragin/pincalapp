@@ -8,7 +8,7 @@
 import Foundation
 import ObjectBox
 
-public struct ObjectBoxFactory {
+public struct ObjectBoxFactory: @unchecked Sendable {
     public static let shared = ObjectBoxFactory()
     public private(set) var store: Store!
 
@@ -49,11 +49,11 @@ public struct ObjectBoxFactory {
     private static func seedForUITests(store: Store) {
         let calendarBox = store.box(for: PPCalendar.self)
         let calendar = PPCalendar(name: "UI Test Calendar", year: currentYear, numberOfColumns: 2)
-        try? calendarBox.put(calendar)
+        _ = try? calendarBox.put(calendar)
 
         let batch = PPEventBatch(title: "Women Cycle", color: "eventColorOption1")
         let batchBox = store.box(for: PPEventBatch.self)
-        try? batchBox.put(batch)
+        _ = try? batchBox.put(batch)
 
         let events = [
             PPEvent(name: "Event1", color: "eventColorOption1", date: uiTestDate(day: 10)),
@@ -69,10 +69,10 @@ public struct ObjectBoxFactory {
         try? savedCalendar.eventBatches.applyToDb()
 
         let calendar2 = PPCalendar(name: "Second Calendar", year: currentYear, numberOfColumns: 3)
-        try? calendarBox.put(calendar2)
+        _ = try? calendarBox.put(calendar2)
 
         let calendar3 = PPCalendar(name: "Third Calendar", year: currentYear, numberOfColumns: 4)
-        try? calendarBox.put(calendar3)
+        _ = try? calendarBox.put(calendar3)
     }
 
     private static var currentYear: Int {

@@ -20,6 +20,7 @@ public final class PCKeyboardState {
 
     public var isVisible: Bool { keyboardHeight > 0 }
 
+    @ObservationIgnored
     private nonisolated(unsafe) var notificationTokens: [NSObjectProtocol] = []
 
     public init() {

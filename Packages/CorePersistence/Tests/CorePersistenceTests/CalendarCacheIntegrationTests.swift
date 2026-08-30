@@ -1,6 +1,6 @@
 //
 //  CalendarCacheIntegrationTests.swift
-//  PinCalAppTests
+//  CorePersistenceTests
 //
 //  Created by Oleg Bragin on 23.08.2026.
 //
@@ -9,77 +9,26 @@ import Testing
 import Foundation
 import ObjectBox
 import Combine
-import CorePersistence
-@testable import PinCalApp
+@testable import CorePersistence
 
 @MainActor
 struct CalendarCacheIntegrationTests {
 
     // MARK: - Helpers
 
-    private func date(year: Int, month: Int, day: Int) -> Date {
-        var components = DateComponents()
-        components.year = year
-        components.month = month
-        components.day = day
-        return Calendar.current.date(from: components)!
-    }
-
-    private func event(_ name: String = "Event1", day: Int, color: String = "eventColorOption1", timestamp: UUID? = nil) -> EventDataSource {
-        .init(name: name, date: date(year: 2026, month: 6, day: day), color: color, timestamp: timestamp)
-    }
-
     private func makeStore() throws -> Store {
-        let model = try CorePersistence.makeModel()
-        return try Store(directory: "memory:cache-integration-\(UUID().uuidString)", model: model)
+        try ObjectBoxFactory.inMemoryStore(named: "cache-integration-\(UUID().uuidString)")
     }
 
     private func makeCache(store: Store) -> CalendarCache {
         let storage = ObjectBoxCalendarStorage(store: store)
-        let cache = CalendarCache(repository: storage)
-        return cache
-    }
-
-    private func makeCalendar(in store: Store) -> PPCalendar {
-        let calendar = PPCalendar(name: "Test", year: 2026, numberOfColumns: 3)
-        try! store.box(for: PPCalendar.self).put(calendar)
-        return calendar
-    }
-
-    private func waitForBatchCount(_ expected: Int, in store: Store, timeout: TimeInterval = 3) async throws -> Bool {
-        let batchBox = store.box(for: PPEventBatch.self)
-        let deadline = Date().addingTimeInterval(timeout)
-        while Date() < deadline {
-            if try batchBox.all().count >= expected { return true }
-            try await Task.sleep(for: .milliseconds(50))
-        }
-        return try batchBox.all().count >= expected
-    }
-
-    private func waitForCondition(_ check: () -> Bool, timeout: TimeInterval = 3) async {
-        let deadline = Date().addingTimeInterval(timeout)
-        while !check(), Date() < deadline {
-            try? await Task.sleep(for: .milliseconds(50))
-        }
-    }
-
-    private func waitForStoreCondition(
-        _ store: Store,
-        timeout: TimeInterval = 3,
-        _ check: @escaping () throws -> Bool
-    ) async throws -> Bool {
-        let deadline = Date().addingTimeInterval(timeout)
-        while Date() < deadline {
-            if try check() { return true }
-            try await Task.sleep(for: .milliseconds(50))
-        }
-        return false
+        return CalendarCache(repository: storage)
     }
 
     // MARK: - Calendar CRUD via CalendarCache + direct ObjectBox verification
 
     @Test func createCalendarPersistsViaCache() async throws {
-        let store = makeStore()
+        let store = try makeStore()
         defer { store.close() }
 
         let cache = makeCache(store: store)
@@ -102,7 +51,7 @@ struct CalendarCacheIntegrationTests {
     }
 
     @Test func updateCalendarNamePersistsViaCache() async throws {
-        let store = makeStore()
+        let store = try makeStore()
         defer { store.close() }
 
         let cache = makeCache(store: store)
@@ -123,7 +72,7 @@ struct CalendarCacheIntegrationTests {
     }
 
     @Test func updateCalendarColumnsPersistsViaCache() async throws {
-        let store = makeStore()
+        let store = try makeStore()
         defer { store.close() }
 
         let cache = makeCache(store: store)
@@ -144,7 +93,7 @@ struct CalendarCacheIntegrationTests {
     }
 
     @Test func archiveCalendarPersistsViaCache() async throws {
-        let store = makeStore()
+        let store = try makeStore()
         defer { store.close() }
 
         let cache = makeCache(store: store)
@@ -163,7 +112,7 @@ struct CalendarCacheIntegrationTests {
     }
 
     @Test func restoreCalendarPersistsViaCache() async throws {
-        let store = makeStore()
+        let store = try makeStore()
         defer { store.close() }
 
         let cache = makeCache(store: store)
@@ -183,7 +132,7 @@ struct CalendarCacheIntegrationTests {
     }
 
     @Test func deleteCalendarPersistsViaCache() async throws {
-        let store = makeStore()
+        let store = try makeStore()
         defer { store.close() }
 
         let cache = makeCache(store: store)
@@ -202,13 +151,13 @@ struct CalendarCacheIntegrationTests {
     }
 
     @Test func loadActiveReturnsOnlyNonArchivedViaCache() async throws {
-        let store = makeStore()
+        let store = try makeStore()
         defer { store.close() }
 
         let cache = makeCache(store: store)
 
         let cal1 = try await cache.createCalendar(name: "Active1", year: 2026, numberOfColumns: 2)
-        let cal2 = try await cache.createCalendar(name: "Active2", year: 2026, numberOfColumns: 3)
+        _ = try await cache.createCalendar(name: "Active2", year: 2026, numberOfColumns: 3)
         let cal3 = try await cache.createCalendar(name: "Archived", year: 2026, numberOfColumns: 4)
 
         try await cache.archiveCalendar(try await cache.getCalendar(id: cal3.id) ?? cal1)
@@ -235,7 +184,7 @@ struct CalendarCacheIntegrationTests {
     }
 
     @Test func loadArchivedReturnsOnlyArchivedViaCache() async throws {
-        let store = makeStore()
+        let store = try makeStore()
         defer { store.close() }
 
         let cache = makeCache(store: store)
@@ -263,640 +212,10 @@ struct CalendarCacheIntegrationTests {
         #expect(archivedCals[0].name == "Archived")
     }
 
-    // MARK: - Event Batch persistence via SingleCalendarModel + direct ObjectBox verification
-
-    @Test func commitBatchPersistsViaModelAndVerifiableInStorage() async throws {
-        let store = makeStore()
-        defer { store.close() }
-
-        let ppCalendar = makeCalendar(in: store)
-        let cache = makeCache(store: store)
-        let model = SingleCalendarModel(calendarid: Int64(ppCalendar.id), cache: cache)
-        await model.fetch(force: true)
-        #expect(model.state == .content)
-
-        model.selectedColor = .option1
-        model.changeEvent(event(day: 10))
-        model.changeEvent(event(day: 11))
-        model.daySelectionManager.selectionMode = .multiple
-
-        model.prepareAddEditEventBatchViewModel()
-        let addEdit = model.addEditBatchListViewModel.addEditEventBatchModel
-        addEdit.eventBatchName = "Women Cycle"
-        addEdit.selectedColor = .option1
-        addEdit.recolorAllEvents()
-
-        #expect(addEdit.save())
-        model.resetSelectedDays()
-
-        #expect(try await waitForBatchCount(1, in: store))
-
-        // Path A: verify via model
-        #expect(model.hasEvents(on: date(year: 2026, month: 6, day: 10)))
-        #expect(model.hasEvents(on: date(year: 2026, month: 6, day: 11)))
-
-        // Path B: verify via direct ObjectBox
-        let batchBox = store.box(for: PPEventBatch.self)
-        let eventBox = store.box(for: PPEvent.self)
-        let batches = try batchBox.all()
-        #expect(batches.count == 1)
-        #expect(batches[0].title == "Women Cycle")
-        #expect(batches[0].color == "eventColorOption1")
-        let events = try eventBox.all()
-        #expect(events.count == 2)
-        #expect(events.contains(where: { $0.name == "Event1" }))
-    }
-
-    @Test func editBatchNamePersistsViaModelAndVerifiableInStorage() async throws {
-        let store = makeStore()
-        defer { store.close() }
-
-        let ppCalendar = makeCalendar(in: store)
-        let day10 = date(year: 2026, month: 6, day: 10)
-
-        let batch = PPEventBatch(title: "Original Name", color: "eventColorOption1")
-        let batchBox = store.box(for: PPEventBatch.self)
-        try batchBox.put(batch)
-        let events = [
-            PPEvent(name: "Event1", color: "eventColorOption1", date: day10)
-        ]
-        let eventBox = store.box(for: PPEvent.self)
-        try eventBox.put(events)
-        batch.events.replace(events)
-        try batch.events.applyToDb()
-        let savedCalendar = try store.box(for: PPCalendar.self).get(ppCalendar.id)!
-        savedCalendar.eventBatches.append(batch)
-        try savedCalendar.eventBatches.applyToDb()
-
-        let cache = makeCache(store: store)
-        let model = SingleCalendarModel(calendarid: Int64(ppCalendar.id), cache: cache)
-        await model.fetch(force: true)
-
-        model.prepareAddEditBatchListViewModel(with: [day10])
-        let batchList = model.addEditBatchListViewModel
-        batchList.prepareAddEditBatchViewModel(with: batchList.eventBatches[0])
-
-        let addEdit = batchList.addEditEventBatchModel
-        addEdit.eventBatchName = "Renamed"
-        #expect(addEdit.save())
-        model.resetSelectedDays()
-
-        // Wait for async save to persist the renamed batch
-        #expect(try await waitForStoreCondition(store) {
-            try batchBox.all().first?.title == "Renamed"
-        })
-
-        // Path A: verify via model
-        #expect(model.hasEvents(on: day10))
-
-        // Path B: verify via direct ObjectBox
-        let persisted = try batchBox.all()[0]
-        #expect(persisted.title == "Renamed")
-    }
-
-    @Test func savingInEditorCommitsWithoutReachingNavigationRoot() async throws {
-        let store = makeStore()
-        defer { store.close() }
-
-        let ppCalendar = makeCalendar(in: store)
-        let day10 = date(year: 2026, month: 6, day: 10)
-        let day15 = date(year: 2026, month: 6, day: 15)
-
-        let batch = PPEventBatch(title: "Original Name", color: "eventColorOption1")
-        let batchBox = store.box(for: PPEventBatch.self)
-        try batchBox.put(batch)
-        let events = [
-            PPEvent(name: "Event1", color: "eventColorOption1", date: day10)
-        ]
-        let eventBox = store.box(for: PPEvent.self)
-        try eventBox.put(events)
-        batch.events.replace(events)
-        try batch.events.applyToDb()
-        let savedCalendar = try store.box(for: PPCalendar.self).get(ppCalendar.id)!
-        savedCalendar.eventBatches.append(batch)
-        try savedCalendar.eventBatches.applyToDb()
-
-        let cache = makeCache(store: store)
-        let model = SingleCalendarModel(calendarid: Int64(ppCalendar.id), cache: cache)
-        await model.fetch(force: true)
-        #expect(!model.hasEvents(on: day15))
-
-        // STR: tap day -> batch list -> tap batch -> editor
-        model.prepareAddEditBatchListViewModel(with: [day10])
-        let batchList = model.addEditBatchListViewModel
-        batchList.prepareAddEditBatchViewModel(with: batchList.eventBatches[0])
-
-        // Select an additional event and press Save (commit happens on save,
-        // not when the navigation stack reaches its root).
-        let addEdit = batchList.addEditEventBatchModel
-        addEdit.toggleEvent(on: day15)
-        #expect(addEdit.save())
-        model.commitPendingBatch()
-
-        // Path A: UI shows the new day immediately after Save + Back.
-        #expect(model.hasEvents(on: day15))
-        #expect(model.hasEvents(on: day10))
-        #expect(batchList.eventBatches[0].events.count == 2)
-
-        // Path B: exactly one batch with two events is persisted (no duplicates).
-        #expect(try await waitForBatchCount(1, in: store))
-        try await Task.sleep(for: .milliseconds(300))
-        #expect(try batchBox.all().count == 1)
-        #expect(try eventBox.all().count == 2)
-
-        // Idempotency: later pop to root (resetSelectedDays) must not duplicate.
-        model.resetSelectedDays()
-        try await Task.sleep(for: .milliseconds(300))
-        #expect(try batchBox.all().count == 1)
-        #expect(try eventBox.all().count == 2)
-    }
-
-    @Test func deleteBatchPersistsViaModelAndVerifiableInStorage() async throws {
-        let store = makeStore()
-        defer { store.close() }
-
-        let ppCalendar = makeCalendar(in: store)
-        let day10 = date(year: 2026, month: 6, day: 10)
-
-        let batch = PPEventBatch(title: "To Delete", color: "eventColorOption1")
-        let batchBox = store.box(for: PPEventBatch.self)
-        try batchBox.put(batch)
-        let events = [
-            PPEvent(name: "Event1", color: "eventColorOption1", date: day10)
-        ]
-        let eventBox = store.box(for: PPEvent.self)
-        try eventBox.put(events)
-        batch.events.replace(events)
-        try batch.events.applyToDb()
-        let savedCalendar = try store.box(for: PPCalendar.self).get(ppCalendar.id)!
-        savedCalendar.eventBatches.append(batch)
-        try savedCalendar.eventBatches.applyToDb()
-
-        let cache = makeCache(store: store)
-        let model = SingleCalendarModel(calendarid: Int64(ppCalendar.id), cache: cache)
-        await model.fetch(force: true)
-
-        let batchDataSource = EventBatchDataSource(
-            id: Int64(batch.id),
-            name: "To Delete",
-            colorName: "eventColorOption1",
-            events: [],
-            date: day10
-        )
-        model.deleteBatches([batchDataSource], for: Int64(ppCalendar.id))
-
-        // Wait for async save to persist the deletion
-        #expect(try await waitForStoreCondition(store) {
-            try batchBox.all().isEmpty
-        })
-
-        // Path A: verify via model
-        #expect(!model.hasEvents(on: day10))
-
-        // Path B: verify via direct ObjectBox
-        let persisted = try batchBox.all()
-        #expect(persisted.isEmpty)
-        let persistedEvents = try eventBox.all()
-        #expect(persistedEvents.isEmpty)
-    }
-
-    @Test func addEventToBatchPersistsViaModelAndVerifiableInStorage() async throws {
-        let store = makeStore()
-        defer { store.close() }
-
-        let ppCalendar = makeCalendar(in: store)
-        let cache = makeCache(store: store)
-        let model = SingleCalendarModel(calendarid: Int64(ppCalendar.id), cache: cache)
-        await model.fetch(force: true)
-
-        model.selectedColor = .option1
-        model.changeEvent(event(day: 10))
-        model.changeEvent(event(day: 11))
-        model.changeEvent(event(day: 12))
-        model.daySelectionManager.selectionMode = .multiple
-
-        model.prepareAddEditEventBatchViewModel()
-        let addEdit = model.addEditBatchListViewModel.addEditEventBatchModel
-        addEdit.eventBatchName = "Three Events"
-        addEdit.selectedColor = .option1
-        addEdit.recolorAllEvents()
-        #expect(addEdit.save())
-        model.resetSelectedDays()
-
-        #expect(try await waitForBatchCount(1, in: store))
-
-        // Path A: verify via model
-        #expect(model.hasEvents(on: date(year: 2026, month: 6, day: 10)))
-        #expect(model.hasEvents(on: date(year: 2026, month: 6, day: 11)))
-        #expect(model.hasEvents(on: date(year: 2026, month: 6, day: 12)))
-
-        // Path B: verify via direct ObjectBox
-        let eventBox = store.box(for: PPEvent.self)
-        let events = try eventBox.all()
-        #expect(events.count == 3)
-        let sortedEvents = events.sorted { $0.date < $1.date }
-        #expect(sortedEvents[0].name == "Event1")
-        #expect(sortedEvents[0].color == "eventColorOption1")
-        #expect(Calendar.current.isDate(sortedEvents[0].date, inSameDayAs: date(year: 2026, month: 6, day: 10)))
-    }
-
-    @Test func removeEventsFromBatchPersistsViaModelAndVerifiableInStorage() async throws {
-        let store = makeStore()
-        defer { store.close() }
-
-        let ppCalendar = makeCalendar(in: store)
-        let day10 = date(year: 2026, month: 6, day: 10)
-        let day12 = date(year: 2026, month: 6, day: 12)
-
-        let batch = PPEventBatch(title: "Cycle", color: "eventColorOption1")
-        let batchBox = store.box(for: PPEventBatch.self)
-        try batchBox.put(batch)
-        let ppEvents = [
-            PPEvent(name: "Event1", color: "eventColorOption1", date: day10),
-            PPEvent(name: "Event1", color: "eventColorOption1", date: day12)
-        ]
-        let eventBox = store.box(for: PPEvent.self)
-        try eventBox.put(ppEvents)
-        batch.events.replace(ppEvents)
-        try batch.events.applyToDb()
-        let savedCalendar = try store.box(for: PPCalendar.self).get(ppCalendar.id)!
-        savedCalendar.eventBatches.append(batch)
-        try savedCalendar.eventBatches.applyToDb()
-
-        let cache = makeCache(store: store)
-        let model = SingleCalendarModel(calendarid: Int64(ppCalendar.id), cache: cache)
-        await model.fetch(force: true)
-
-        model.prepareAddEditBatchListViewModel(with: [day10])
-        let batchList = model.addEditBatchListViewModel
-        batchList.prepareAddEditBatchViewModel(with: batchList.eventBatches[0])
-
-        let addEdit = batchList.addEditEventBatchModel
-        addEdit.toggleEvent(on: day12) // Remove day12 event
-        #expect(addEdit.save())
-        model.resetSelectedDays()
-
-        // Wait for async save to persist the event removal
-        #expect(try await waitForStoreCondition(store) {
-            try eventBox.all().count == 1
-        })
-
-        // Path A: verify via model
-        #expect(model.hasEvents(on: day10))
-        #expect(!model.hasEvents(on: day12))
-
-        // Path B: verify via direct ObjectBox
-        let persistedEvents = try eventBox.all()
-        #expect(persistedEvents.count == 1)
-        #expect(Calendar.current.isDate(persistedEvents[0].date, inSameDayAs: day10))
-    }
-
-    @Test func batchUpdateWithNewColorPersistsViaModelAndVerifiableInStorage() async throws {
-        let store = makeStore()
-        defer { store.close() }
-
-        let ppCalendar = makeCalendar(in: store)
-        let day10 = date(year: 2026, month: 6, day: 10)
-
-        let batch = PPEventBatch(title: "Cycle", color: "eventColorOption1")
-        let batchBox = store.box(for: PPEventBatch.self)
-        try batchBox.put(batch)
-        let ppEvents = [
-            PPEvent(name: "Event1", color: "eventColorOption1", date: day10)
-        ]
-        let eventBox = store.box(for: PPEvent.self)
-        try eventBox.put(ppEvents)
-        batch.events.replace(ppEvents)
-        try batch.events.applyToDb()
-        let savedCalendar = try store.box(for: PPCalendar.self).get(ppCalendar.id)!
-        savedCalendar.eventBatches.append(batch)
-        try savedCalendar.eventBatches.applyToDb()
-
-        let cache = makeCache(store: store)
-        let model = SingleCalendarModel(calendarid: Int64(ppCalendar.id), cache: cache)
-        await model.fetch(force: true)
-
-        model.prepareAddEditBatchListViewModel(with: [day10])
-        let batchList = model.addEditBatchListViewModel
-        batchList.prepareAddEditBatchViewModel(with: batchList.eventBatches[0])
-
-        let addEdit = batchList.addEditEventBatchModel
-        addEdit.selectedColor = .option3
-        addEdit.recolorAllEvents()
-        #expect(addEdit.save())
-        model.resetSelectedDays()
-
-        // Wait for async save to persist the color change
-        #expect(try await waitForStoreCondition(store) {
-            try batchBox.all().first?.color == "eventColorOption3"
-        })
-
-        // Path A: verify via model
-        #expect(model.hasEvents(on: day10))
-
-        // Path B: verify via direct ObjectBox
-        let persisted = try batchBox.all()[0]
-        #expect(persisted.color == "eventColorOption3")
-        let persistedEvents = Array(persisted.events)
-        #expect(persistedEvents.count == 1)
-        #expect(persistedEvents[0].color == "eventColorOption3")
-    }
-
-    @Test func twoIndependentBatchesBothPersistViaModelAndVerifiableInStorage() async throws {
-        let store = makeStore()
-        defer { store.close() }
-
-        let ppCalendar = makeCalendar(in: store)
-        let cache = makeCache(store: store)
-        let model = SingleCalendarModel(calendarid: Int64(ppCalendar.id), cache: cache)
-        await model.fetch(force: true)
-
-        // Create batch A
-        model.selectedColor = .option1
-        model.changeEvent(event(day: 10))
-        model.daySelectionManager.selectionMode = .multiple
-        model.prepareAddEditEventBatchViewModel()
-        let addEditA = model.addEditBatchListViewModel.addEditEventBatchModel
-        addEditA.eventBatchName = "Batch A"
-        addEditA.selectedColor = .option1
-        addEditA.recolorAllEvents()
-        #expect(addEditA.save())
-        model.resetSelectedDays()
-
-        #expect(try await waitForBatchCount(1, in: store))
-
-        // Create batch B
-        model.selectedColor = .option3
-        model.changeEvent(event(day: 20))
-        model.daySelectionManager.selectionMode = .multiple
-        model.prepareAddEditEventBatchViewModel()
-        let addEditB = model.addEditBatchListViewModel.addEditEventBatchModel
-        addEditB.eventBatchName = "Batch B"
-        addEditB.selectedColor = .option3
-        addEditB.recolorAllEvents()
-        #expect(addEditB.save())
-        model.resetSelectedDays()
-
-        #expect(try await waitForBatchCount(2, in: store))
-
-        // Path A: verify via model
-        #expect(model.hasEvents(on: date(year: 2026, month: 6, day: 10)))
-        #expect(model.hasEvents(on: date(year: 2026, month: 6, day: 20)))
-
-        // Path B: verify via direct ObjectBox
-        let batchBox = store.box(for: PPEventBatch.self)
-        let batches = try batchBox.all()
-        #expect(batches.count == 2)
-        let names = Set(batches.map(\.title))
-        #expect(names.contains("Batch A"))
-        #expect(names.contains("Batch B"))
-    }
-
-    @Test func calendarUpdateAfterBatchCommitRetrievesCorrectBatchesViaCache() async throws {
-        let store = makeStore()
-        defer { store.close() }
-
-        let ppCalendar = makeCalendar(in: store)
-        let cache = makeCache(store: store)
-        let model = SingleCalendarModel(calendarid: Int64(ppCalendar.id), cache: cache)
-        await model.fetch(force: true)
-
-        model.selectedColor = .option1
-        model.changeEvent(event(day: 10))
-        model.daySelectionManager.selectionMode = .multiple
-        model.prepareAddEditEventBatchViewModel()
-        let addEdit = model.addEditBatchListViewModel.addEditEventBatchModel
-        addEdit.eventBatchName = "Persisted"
-        addEdit.selectedColor = .option1
-        addEdit.recolorAllEvents()
-        #expect(addEdit.save())
-        model.resetSelectedDays()
-
-        #expect(try await waitForBatchCount(1, in: store))
-
-        // Path A: verify via cache
-        let fromCache = try await cache.getCalendar(id: Int64(ppCalendar.id))
-        #expect(fromCache != nil)
-        #expect(fromCache?.eventBatches.count == 1)
-        #expect(fromCache?.eventBatches.first?.name == "Persisted")
-        #expect(fromCache?.eventBatches.first?.events.count == 1)
-
-        // Path B: verify via direct ObjectBox
-        let calendarBox = store.box(for: PPCalendar.self)
-        let batchBox = store.box(for: PPEventBatch.self)
-        let persistedCalendar = try calendarBox.get(ppCalendar.id)
-        #expect(persistedCalendar != nil)
-        #expect(persistedCalendar?.eventBatches.count == 1)
-        let persistedBatch = try batchBox.all()[0]
-        #expect(persistedBatch.title == "Persisted")
-        #expect(Array(persistedBatch.events).count == 1)
-    }
-
-    // MARK: - Event add/edit/remove via SingleCalendarModel + direct ObjectBox verification
-
-    @Test func addEventWithCustomColorPersistsViaModelAndVerifiableInStorage() async throws {
-        let store = makeStore()
-        defer { store.close() }
-
-        let ppCalendar = makeCalendar(in: store)
-        let cache = makeCache(store: store)
-        let model = SingleCalendarModel(calendarid: Int64(ppCalendar.id), cache: cache)
-        await model.fetch(force: true)
-
-        model.selectedColor = .option3
-        model.changeEvent(event(day: 10, color: "eventColorOption3"))
-        model.daySelectionManager.selectionMode = .multiple
-
-        model.prepareAddEditEventBatchViewModel()
-        let addEdit = model.addEditBatchListViewModel.addEditEventBatchModel
-        addEdit.eventBatchName = "Custom Color"
-        addEdit.selectedColor = .option3
-        addEdit.recolorAllEvents()
-        #expect(addEdit.save())
-        model.resetSelectedDays()
-
-        #expect(try await waitForBatchCount(1, in: store))
-
-        // Path A: verify via model
-        #expect(model.hasEvents(on: date(year: 2026, month: 6, day: 10)))
-
-        // Path B: verify via direct ObjectBox
-        let eventBox = store.box(for: PPEvent.self)
-        let events = try eventBox.all()
-        #expect(events.count == 1)
-        #expect(events[0].color == "eventColorOption3")
-    }
-
-    @Test func editEventColorInBatchPersistsViaModelAndVerifiableInStorage() async throws {
-        let store = makeStore()
-        defer { store.close() }
-
-        let ppCalendar = makeCalendar(in: store)
-        let day10 = date(year: 2026, month: 6, day: 10)
-
-        let batch = PPEventBatch(title: "Cycle", color: "eventColorOption1")
-        let batchBox = store.box(for: PPEventBatch.self)
-        try batchBox.put(batch)
-        let ppEvents = [
-            PPEvent(name: "Event1", color: "eventColorOption1", date: day10)
-        ]
-        try store.box(for: PPEvent.self).put(ppEvents)
-        batch.events.replace(ppEvents)
-        try batch.events.applyToDb()
-        let savedCalendar = try store.box(for: PPCalendar.self).get(ppCalendar.id)!
-        savedCalendar.eventBatches.append(batch)
-        try savedCalendar.eventBatches.applyToDb()
-
-        let cache = makeCache(store: store)
-        let model = SingleCalendarModel(calendarid: Int64(ppCalendar.id), cache: cache)
-        await model.fetch(force: true)
-
-        model.prepareAddEditBatchListViewModel(with: [day10])
-        let batchList = model.addEditBatchListViewModel
-        batchList.prepareAddEditBatchViewModel(with: batchList.eventBatches[0])
-
-        let addEdit = batchList.addEditEventBatchModel
-        let first = addEdit.addEditListViewModel.events[0]
-        addEdit.addEditListViewModel.prepareAddEditViewModel(with: first)
-        addEdit.addEditListViewModel.addEditEventModel.selectedColor = .option2
-        #expect(addEdit.addEditListViewModel.addEditEventModel.save())
-        addEdit.addEditListViewModel.apply(with: addEdit.addEditListViewModel.addEditEventModel.event!)
-        #expect(addEdit.save())
-        model.resetSelectedDays()
-
-        let eventBox = store.box(for: PPEvent.self)
-
-        // Wait for async save to persist the event color change
-        #expect(try await waitForStoreCondition(store) {
-            try eventBox.all().first?.color == "eventColorOption2"
-        })
-
-        // Path A: verify via model
-        #expect(model.hasEvents(on: day10))
-
-        // Path B: verify via direct ObjectBox
-        let events = try eventBox.all()
-        #expect(events.count == 1)
-        #expect(events[0].color == "eventColorOption2")
-    }
-
-    @Test func removeAllEventsFromBatchDeletesBatchAndEvents() async throws {
-        let store = makeStore()
-        defer { store.close() }
-
-        let ppCalendar = makeCalendar(in: store)
-        let day10 = date(year: 2026, month: 6, day: 10)
-
-        let batch = PPEventBatch(title: "To Clear", color: "eventColorOption1")
-        let batchBox = store.box(for: PPEventBatch.self)
-        try batchBox.put(batch)
-        let ppEvents = [
-            PPEvent(name: "Event1", color: "eventColorOption1", date: day10)
-        ]
-        let eventBox = store.box(for: PPEvent.self)
-        try eventBox.put(ppEvents)
-        batch.events.replace(ppEvents)
-        try batch.events.applyToDb()
-        let savedCalendar = try store.box(for: PPCalendar.self).get(ppCalendar.id)!
-        savedCalendar.eventBatches.append(batch)
-        try savedCalendar.eventBatches.applyToDb()
-
-        let cache = makeCache(store: store)
-        let model = SingleCalendarModel(calendarid: Int64(ppCalendar.id), cache: cache)
-        await model.fetch(force: true)
-
-        model.prepareAddEditBatchListViewModel(with: [day10])
-        let batchList = model.addEditBatchListViewModel
-        batchList.prepareAddEditBatchViewModel(with: batchList.eventBatches[0])
-
-        let addEdit = batchList.addEditEventBatchModel
-        addEdit.toggleEvent(on: day10) // Remove all events
-        #expect(addEdit.save())
-        model.resetSelectedDays()
-
-        // Wait for async save to persist the deletion
-        #expect(try await waitForStoreCondition(store) {
-            try batchBox.all().isEmpty
-        })
-
-        // Path A: verify via model
-        #expect(!model.hasEvents(on: day10))
-
-        // Path B: verify via direct ObjectBox
-        let persistedBatches = try batchBox.all()
-        #expect(persistedBatches.isEmpty)
-        let persistedEvents = try eventBox.all()
-        #expect(persistedEvents.isEmpty)
-    }
-
-    @Test func createMultipleBatchesOnDifferentDaysPersistsCorrectly() async throws {
-        let store = makeStore()
-        defer { store.close() }
-
-        let ppCalendar = makeCalendar(in: store)
-        let cache = makeCache(store: store)
-        let model = SingleCalendarModel(calendarid: Int64(ppCalendar.id), cache: cache)
-        await model.fetch(force: true)
-
-        let day5 = date(year: 2026, month: 6, day: 5)
-        let day15 = date(year: 2026, month: 6, day: 15)
-
-        // Batch on day 5
-        model.selectedColor = .option1
-        model.changeEvent(EventDataSource(name: "Day5 Event", date: day5, color: PCColorOption.option1.colorName))
-        model.daySelectionManager.selectionMode = .multiple
-        model.prepareAddEditEventBatchViewModel()
-        let addEditA = model.addEditBatchListViewModel.addEditEventBatchModel
-        addEditA.eventBatchName = "Day 5 Batch"
-        addEditA.selectedColor = .option1
-        addEditA.recolorAllEvents()
-        #expect(addEditA.save())
-        model.resetSelectedDays()
-
-        #expect(try await waitForBatchCount(1, in: store))
-
-        // Batch on day 15
-        model.selectedColor = .option4
-        model.changeEvent(EventDataSource(name: "Day15 Event", date: day15, color: PCColorOption.option4.colorName))
-        model.daySelectionManager.selectionMode = .multiple
-        model.prepareAddEditEventBatchViewModel()
-        let addEditB = model.addEditBatchListViewModel.addEditEventBatchModel
-        addEditB.eventBatchName = "Day 15 Batch"
-        addEditB.selectedColor = .option4
-        addEditB.recolorAllEvents()
-        #expect(addEditB.save())
-        model.resetSelectedDays()
-
-        #expect(try await waitForBatchCount(2, in: store))
-
-        // Path A: verify via model
-        #expect(model.hasEvents(on: day5))
-        #expect(model.hasEvents(on: day15))
-
-        // Path B: verify via direct ObjectBox
-        let batchBox = store.box(for: PPEventBatch.self)
-        let batches = try batchBox.all()
-        #expect(batches.count == 2)
-
-        let day5Batch = batches.first(where: { $0.title == "Day 5 Batch" })
-        #expect(day5Batch != nil)
-        #expect(day5Batch?.color == "eventColorOption1")
-        let day5Events = Array(day5Batch!.events)
-        #expect(day5Events.count == 1)
-        #expect(Calendar.current.isDate(day5Events[0].date, inSameDayAs: day5))
-
-        let day15Batch = batches.first(where: { $0.title == "Day 15 Batch" })
-        #expect(day15Batch != nil)
-        #expect(day15Batch?.color == "eventColorOption4")
-        let day15Events = Array(day15Batch!.events)
-        #expect(day15Events.count == 1)
-        #expect(Calendar.current.isDate(day15Events[0].date, inSameDayAs: day15))
-    }
-
     // MARK: - Calendar CRUD signal verification
 
     @Test func createCalendarSendsAddSignal() async throws {
-        let store = makeStore()
+        let store = try makeStore()
         defer { store.close() }
 
         let cache = makeCache(store: store)
@@ -919,7 +238,7 @@ struct CalendarCacheIntegrationTests {
     }
 
     @Test func updateCalendarSendsChangeSignal() async throws {
-        let store = makeStore()
+        let store = try makeStore()
         defer { store.close() }
 
         let cache = makeCache(store: store)
@@ -944,7 +263,7 @@ struct CalendarCacheIntegrationTests {
     }
 
     @Test func archiveCalendarSendsDeleteSignal() async throws {
-        let store = makeStore()
+        let store = try makeStore()
         defer { store.close() }
 
         let cache = makeCache(store: store)
@@ -966,106 +285,8 @@ struct CalendarCacheIntegrationTests {
         #expect(deleteOps.count == 1)
     }
 
-    // MARK: - Batch persistence via save(for:) round-trip
+    // MARK: - Batch storage round-trips via ObjectBoxCalendarStorage
 
-    @Test func saveForCalendarRoundTripsBatchDataThroughCache() async throws {
-        let store = makeStore()
-        defer { store.close() }
-
-        let ppCalendar = makeCalendar(in: store)
-        let cache = makeCache(store: store)
-        let model = SingleCalendarModel(calendarid: Int64(ppCalendar.id), cache: cache)
-        await model.fetch(force: true)
-
-        // Create and commit batch
-        model.selectedColor = .option1
-        model.changeEvent(event(day: 10))
-        model.daySelectionManager.selectionMode = .multiple
-        model.prepareAddEditEventBatchViewModel()
-        let addEdit = model.addEditBatchListViewModel.addEditEventBatchModel
-        addEdit.eventBatchName = "Round Trip"
-        addEdit.selectedColor = .option1
-        addEdit.recolorAllEvents()
-        #expect(addEdit.save())
-        model.resetSelectedDays()
-
-        #expect(try await waitForBatchCount(1, in: store))
-
-        // Re-fetch from cache to verify round-trip
-        let freshCache = {
-            let storage = ObjectBoxCalendarStorage(store: store)
-            return CalendarCache(repository: storage)
-        }()
-        let calendar = try await freshCache.getCalendar(id: Int64(ppCalendar.id))
-        #expect(calendar?.eventBatches.count == 1)
-        #expect(calendar?.eventBatches.first?.name == "Round Trip")
-        #expect(calendar?.eventBatches.first?.events.count == 1)
-
-        // Path B: verify via direct ObjectBox
-        let batchBox = store.box(for: PPEventBatch.self)
-        let eventBox = store.box(for: PPEvent.self)
-        #expect(try batchBox.all().count == 1)
-        #expect(try eventBox.all().count == 1)
-        #expect(try eventBox.all()[0].name == "Event1")
-    }
-
-    @Test func editBatchThenFetchReturnsUpdatedData() async throws {
-        let store = makeStore()
-        defer { store.close() }
-
-        let ppCalendar = makeCalendar(in: store)
-        let day10 = date(year: 2026, month: 6, day: 10)
-        let day15 = date(year: 2026, month: 6, day: 15)
-
-        let batch = PPEventBatch(title: "Original", color: "eventColorOption1")
-        let batchBox = store.box(for: PPEventBatch.self)
-        try batchBox.put(batch)
-        let ppEvents = [
-            PPEvent(name: "Event1", color: "eventColorOption1", date: day10),
-            PPEvent(name: "Event2", color: "eventColorOption1", date: day15)
-        ]
-        let eventBox = store.box(for: PPEvent.self)
-        try eventBox.put(ppEvents)
-        batch.events.replace(ppEvents)
-        try batch.events.applyToDb()
-        let savedCalendar = try store.box(for: PPCalendar.self).get(ppCalendar.id)!
-        savedCalendar.eventBatches.append(batch)
-        try savedCalendar.eventBatches.applyToDb()
-
-        let cache = makeCache(store: store)
-        let model = SingleCalendarModel(calendarid: Int64(ppCalendar.id), cache: cache)
-        await model.fetch(force: true)
-
-        // Edit batch: remove day15 event, rename
-        model.prepareAddEditBatchListViewModel(with: [day10])
-        let batchList = model.addEditBatchListViewModel
-        batchList.prepareAddEditBatchViewModel(with: batchList.eventBatches[0])
-
-        let addEdit = batchList.addEditEventBatchModel
-        addEdit.eventBatchName = "Edited"
-        addEdit.toggleEvent(on: day15) // Remove day15
-        #expect(addEdit.save())
-        model.resetSelectedDays()
-
-        // Wait for async save to persist the edited batch
-        #expect(try await waitForStoreCondition(store) {
-            try batchBox.all().first?.title == "Edited"
-        })
-
-        // Verify via cache
-        let fromCache = try await cache.getCalendar(id: Int64(ppCalendar.id))
-        #expect(fromCache?.eventBatches.count == 1)
-        #expect(fromCache?.eventBatches.first?.name == "Edited")
-        #expect(fromCache?.eventBatches.first?.events.count == 1)
-
-        // Verify via direct ObjectBox
-        let persistedBatch = try batchBox.all()[0]
-        #expect(persistedBatch.title == "Edited")
-        #expect(Array(persistedBatch.events).count == 1)
-        let persistedEvent = Array(persistedBatch.events)[0]
-        #expect(Calendar.current.isDate(persistedEvent.date, inSameDayAs: day10))
-    }
-    
     @Test func saveCalendarKeepsEventsWhenAddingNewEvent() async throws {
         let store = try makeStore()
         defer { store.close() }
@@ -1087,16 +308,16 @@ struct CalendarCacheIntegrationTests {
         _ = try calendarBox.put(calendar)
 
         let storage = ObjectBoxCalendarStorage(store: store)
-        var dto = try calendarBox.get(calendar.id).map { CalendarDataSource($0) }!
+        var dto = try calendarBox.get(calendar.id).map { CalendarDataSource($0)! }!
         dto.eventBatches[0].events.append(.init(name: "New", date: Date().addingTimeInterval(172800), color: "eventColorOption1"))
         _ = try await storage.saveCalendar(dto)
 
-        let readBack = try calendarBox.get(calendar.id).map { CalendarDataSource($0) }!
+        let readBack = try calendarBox.get(calendar.id).map { CalendarDataSource($0)! }!
         #expect(readBack.eventBatches[0].events.count == 2)
         #expect(readBack.eventBatches[0].events.contains(where: { $0.name == "New" }))
         #expect(try eventBox.all().count == 2)
     }
-    
+
     @Test func getActiveCalendarsReturnsOnlyNonArchived() async throws {
         let store = try makeStore()
         defer { store.close() }
@@ -1126,7 +347,7 @@ struct CalendarCacheIntegrationTests {
         let afterRestore = try await storage.getActiveCalendars()
         #expect(afterRestore.count == 2)
     }
-    
+
     @Test func saveCalendarDeletesOrphanedBatchAndItsEvents() async throws {
         let store = try makeStore()
         defer { store.close() }
@@ -1151,20 +372,20 @@ struct CalendarCacheIntegrationTests {
         let empty = CalendarDataSource(id: Int64(calendar.id), name: "Test", year: 2026, numberOfColumns: 3, eventBatches: [])
         _ = try await storage.saveCalendar(empty)
 
-        let readBack = try calendarBox.get(calendar.id).map { CalendarDataSource($0) }!
+        let readBack = try calendarBox.get(calendar.id).map { CalendarDataSource($0)! }!
         #expect(readBack.eventBatches.isEmpty)
         #expect(try batchBox.all().isEmpty)
         #expect(try eventBox.all().isEmpty)
     }
-    
+
     @Test func saveCalendarKeepsBatchEventsWhenRenaming() async throws {
         let store = try makeStore()
         defer { store.close() }
-        
+
         let calendarBox = store.box(for: PPCalendar.self)
         let batchBox = store.box(for: PPEventBatch.self)
         let eventBox = store.box(for: PPEvent.self)
-        
+
         let calendar = PPCalendar(name: "Test", year: 2026, numberOfColumns: 3)
         try calendarBox.put(calendar)
         let e1 = PPEvent(name: "A", color: "eventColorOption1", date: Date())
@@ -1177,13 +398,13 @@ struct CalendarCacheIntegrationTests {
         calendar.eventBatches.append(batch)
         try calendar.eventBatches.applyToDb()
         _ = try calendarBox.put(calendar)
-        
+
         let storage = ObjectBoxCalendarStorage(store: store)
-        var dto = try calendarBox.get(calendar.id).map { CalendarDataSource($0) }!
+        var dto = try calendarBox.get(calendar.id).map { CalendarDataSource($0)! }!
         dto.eventBatches[0].name = "Renamed"
         _ = try await storage.saveCalendar(dto)
-        
-        let readBack = try calendarBox.get(calendar.id).map { CalendarDataSource($0) }!
+
+        let readBack = try calendarBox.get(calendar.id).map { CalendarDataSource($0)! }!
         #expect(readBack.eventBatches.count == 1)
         #expect(readBack.eventBatches[0].name == "Renamed")
         #expect(readBack.eventBatches[0].events.count == 2)

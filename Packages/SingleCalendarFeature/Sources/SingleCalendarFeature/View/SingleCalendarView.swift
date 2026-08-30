@@ -60,7 +60,7 @@ public struct SingleCalendarView: View {
                     AddEditEventBatchListView(
                         viewModel: viewModel.addEditBatchListViewModel
                     )
-                case .batchEditor(let source):
+                case .batchEditor:
                     AddEditEventBatchScreen(
                         viewModel: viewModel.addEditBatchListViewModel.addEditEventBatchModel,
                         onCommit: { viewModel.commitPendingBatch() }

@@ -1,6 +1,6 @@
 //
 //  EventBatchCreationTests.swift
-//  PinCalAppTests
+//  CorePersistenceTests
 //
 //  Created by Oleg Bragin on 04.08.2026.
 //
@@ -8,9 +8,23 @@
 import Testing
 import Foundation
 import ObjectBox
-import CorePersistence
 import DSKit
-@testable import PinCalApp
+@testable import CorePersistence
+@testable import SingleCalendarFeature
+
+private struct NoopCalendarRepository: CalendarRepository {
+    func getCalendar(id: Int64) async throws -> CalendarDataSource? { nil }
+    @discardableResult
+    func saveCalendar(_ calendar: CalendarDataSource) async throws -> Int64 { 0 }
+    @discardableResult
+    func deleteCalendar(_ calendarId: Int64) async throws -> Int64 { calendarId }
+    func getAllCalendars() async throws -> [CalendarDataSource] { [] }
+    func getActiveCalendars() async throws -> [CalendarDataSource] { [] }
+    func getArchivedCalendars() async throws -> [CalendarDataSource] { [] }
+    func archiveCalendar(_ calendarId: Int64) async throws {}
+    func restoreCalendar(_ calendarId: Int64) async throws {}
+    func removeEvents(_ eventIds: [Int64], calendarId: Int64) async throws {}
+}
 
 @MainActor
 struct EventBatchCreationTests {
@@ -259,7 +273,7 @@ struct EventBatchCreationTests {
     // MARK: - SingleCalendarModel
     
     @Test func colorPickerDisabledInMultipleModeWithColorAndEvents() {
-        let model = SingleCalendarModel(calendarid: 0, cache: CalendarCache(manager: CalendarManager()))
+        let model = SingleCalendarModel(calendarid: 0, cache: CalendarCache(repository: NoopCalendarRepository()))
         model.selectedColor = .option1
         model.daySelectionManager.selectionMode = .multiple
         model.changeEvent(event(day: 3))
@@ -268,7 +282,7 @@ struct EventBatchCreationTests {
     }
     
     @Test func colorPickerEnabledWhenNoColorSelected() {
-        let model = SingleCalendarModel(calendarid: 0, cache: CalendarCache(manager: CalendarManager()))
+        let model = SingleCalendarModel(calendarid: 0, cache: CalendarCache(repository: NoopCalendarRepository()))
         model.selectedColor = nil
         model.daySelectionManager.selectionMode = .multiple
         model.changeEvent(event(day: 3))
@@ -277,7 +291,7 @@ struct EventBatchCreationTests {
     }
     
     @Test func colorPickerEnabledWhenNoEventsAddedYet() {
-        let model = SingleCalendarModel(calendarid: 0, cache: CalendarCache(manager: CalendarManager()))
+        let model = SingleCalendarModel(calendarid: 0, cache: CalendarCache(repository: NoopCalendarRepository()))
         model.selectedColor = .option1
         model.daySelectionManager.selectionMode = .multiple
         
@@ -285,7 +299,7 @@ struct EventBatchCreationTests {
     }
     
     @Test func colorPickerEnabledInSingleMode() {
-        let model = SingleCalendarModel(calendarid: 0, cache: CalendarCache(manager: CalendarManager()))
+        let model = SingleCalendarModel(calendarid: 0, cache: CalendarCache(repository: NoopCalendarRepository()))
         model.selectedColor = .option1
         model.daySelectionManager.selectionMode = .single
         model.changeEvent(event(day: 3))
@@ -294,7 +308,7 @@ struct EventBatchCreationTests {
     }
     
     @Test func prepareAddEditEventBatchViewModelPopulatesEditorFromAddedEvents() {
-        let model = SingleCalendarModel(calendarid: 0, cache: CalendarCache(manager: CalendarManager()))
+        let model = SingleCalendarModel(calendarid: 0, cache: CalendarCache(repository: NoopCalendarRepository()))
         model.selectedColor = .option1
         model.changeEvent(event(day: 3))
         model.changeEvent(event(day: 5))
@@ -311,7 +325,7 @@ struct EventBatchCreationTests {
     }
     
     @Test func prepareAddEditEventBatchViewModelDoesNothingWithoutEvents() {
-        let model = SingleCalendarModel(calendarid: 0, cache: CalendarCache(manager: CalendarManager()))
+        let model = SingleCalendarModel(calendarid: 0, cache: CalendarCache(repository: NoopCalendarRepository()))
         model.daySelectionManager.selectionMode = .multiple
         
         model.prepareAddEditEventBatchViewModel()
@@ -320,7 +334,7 @@ struct EventBatchCreationTests {
     }
     
     @Test func cancelMultipleChangesExitsModeAndClearsState() {
-        let model = SingleCalendarModel(calendarid: 0, cache: CalendarCache(manager: CalendarManager()))
+        let model = SingleCalendarModel(calendarid: 0, cache: CalendarCache(repository: NoopCalendarRepository()))
         model.selectedColor = .option1
         model.daySelectionManager.selectionMode = .multiple
         model.changeEvent(event(day: 3))
@@ -333,7 +347,7 @@ struct EventBatchCreationTests {
     }
     
     @Test func resetSelectedDaysExitsMultipleModeWhenSheetDismissed() {
-        let model = SingleCalendarModel(calendarid: 0, cache: CalendarCache(manager: CalendarManager()))
+        let model = SingleCalendarModel(calendarid: 0, cache: CalendarCache(repository: NoopCalendarRepository()))
         model.selectedColor = .option1
         model.daySelectionManager.selectionMode = .multiple
         model.changeEvent(event(day: 3))
@@ -353,8 +367,8 @@ struct EventBatchCreationTests {
         let calendar = PPCalendar(name: "Test", year: 2026, numberOfColumns: 3)
         try calendarBox.put(calendar)
         
-        let manager = CalendarManager(service: ObjectBoxCalendarStorage(store: store))
-        let cache = CalendarCache(manager: manager)
+        let storage = ObjectBoxCalendarStorage(store: store)
+        let cache = CalendarCache(repository: storage)
         let model = SingleCalendarModel(calendarid: Int64(calendar.id), cache: cache)
         await model.fetch(force: true)
         #expect(model.state == .content)
@@ -405,8 +419,8 @@ struct EventBatchCreationTests {
         let calendar = PPCalendar(name: "Test", year: 2026, numberOfColumns: 3)
         try calendarBox.put(calendar)
         
-        let manager = CalendarManager(service: ObjectBoxCalendarStorage(store: store))
-        let cache = CalendarCache(manager: manager)
+        let storage = ObjectBoxCalendarStorage(store: store)
+        let cache = CalendarCache(repository: storage)
         let model = SingleCalendarModel(calendarid: Int64(calendar.id), cache: cache)
         await model.fetch(force: true)
         
@@ -434,8 +448,8 @@ struct EventBatchCreationTests {
         let calendar = PPCalendar(name: "Test", year: 2026, numberOfColumns: 3)
         try calendarBox.put(calendar)
         
-        let manager = CalendarManager(service: ObjectBoxCalendarStorage(store: store))
-        let cache = CalendarCache(manager: manager)
+        let storage = ObjectBoxCalendarStorage(store: store)
+        let cache = CalendarCache(repository: storage)
         let model = SingleCalendarModel(calendarid: Int64(calendar.id), cache: cache)
         await model.fetch(force: true)
         
@@ -547,8 +561,8 @@ struct EventBatchCreationTests {
         savedCalendar.eventBatches.append(batch)
         try savedCalendar.eventBatches.applyToDb()
         
-        let manager = CalendarManager(service: ObjectBoxCalendarStorage(store: store))
-        let cache = CalendarCache(manager: manager)
+        let storage = ObjectBoxCalendarStorage(store: store)
+        let cache = CalendarCache(repository: storage)
         let model = SingleCalendarModel(calendarid: Int64(calendar.id), cache: cache)
         await model.fetch(force: true)
         #expect(model.state == .content)
@@ -599,8 +613,8 @@ struct EventBatchCreationTests {
         let calendar = PPCalendar(name: "Test", year: 2026, numberOfColumns: 3)
         try calendarBox.put(calendar)
         
-        let manager = CalendarManager(service: ObjectBoxCalendarStorage(store: store))
-        let cache = CalendarCache(manager: manager)
+        let storage = ObjectBoxCalendarStorage(store: store)
+        let cache = CalendarCache(repository: storage)
         let model = SingleCalendarModel(calendarid: Int64(calendar.id), cache: cache)
         await model.fetch(force: true)
         #expect(model.state == .content)
@@ -640,7 +654,7 @@ struct EventBatchCreationTests {
     }
     
     @Test func prepareAddEditEventBatchViewModelForDateCreatesBatchForDay() {
-        let model = SingleCalendarModel(calendarid: 0, cache: CalendarCache(manager: CalendarManager()))
+        let model = SingleCalendarModel(calendarid: 0, cache: CalendarCache(repository: NoopCalendarRepository()))
         let day10 = date(year: 2026, month: 6, day: 10)
         
         model.prepareAddEditEventBatchViewModel(for: day10)

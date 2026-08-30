@@ -1,4 +1,4 @@
-// swift-tools-version: 5.10
+// swift-tools-version: 6.0
 import PackageDescription
 
 let package = Package(
@@ -24,6 +24,10 @@ let package = Package(
         ),
         .package(
             path: "../AppNavigation"
+        ),
+        .package(
+            url: "https://github.com/objectbox/objectbox-swift-spm",
+            from: "5.3.0"
         )
     ],
     targets: [
@@ -42,8 +46,16 @@ let package = Package(
         ),
         .testTarget(
             name: "SingleCalendarFeatureTests",
-            dependencies: ["SingleCalendarFeature"],
+            dependencies: [
+                "SingleCalendarFeature",
+                "CorePersistence",
+                "DSKit",
+                "CoreDomain",
+                "AppNavigation",
+                .product(name: "ObjectBox.xcframework", package: "objectbox-swift-spm")
+            ],
             path: "Tests/SingleCalendarFeatureTests"
         )
-    ]
+    ],
+    swiftLanguageModes: [.v6],
 )

@@ -119,7 +119,7 @@ for key in strings.keys.sorted() {
     let escaped = key.replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: "\"", with: "\\\"")
 
     if numArgs == 0 {
-        lines.append("    static let \(methodName) = LocalizedStringKey(\"\(escaped)\")")
+        lines.append("    static var \(methodName): LocalizedStringKey { LocalizedStringKey(\"\(escaped)\") }")
     } else {
         var argNames: [String] = []
         if let comment = (entry["comment"] as? String)?.lowercased() {

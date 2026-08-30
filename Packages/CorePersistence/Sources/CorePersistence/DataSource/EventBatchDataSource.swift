@@ -7,7 +7,7 @@
 
 import Foundation
 
-public struct EventBatchDataSource: Identifiable, Hashable {
+public struct EventBatchDataSource: Identifiable, Hashable, Sendable {
     public var id: Int64
     public var name: String
     public var colorName: String

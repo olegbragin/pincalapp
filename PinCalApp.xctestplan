@@ -46,6 +46,34 @@
         "identifier" : "CalendarListFeatureTests",
         "name" : "CalendarListFeatureTests"
       }
+    },
+    {
+      "target" : {
+        "containerPath" : "container:Packages\/CoreDomain",
+        "identifier" : "CoreDomainTests",
+        "name" : "CoreDomainTests"
+      }
+    },
+    {
+      "target" : {
+        "containerPath" : "container:Packages\/SingleCalendarFeature",
+        "identifier" : "SingleCalendarFeatureTests",
+        "name" : "SingleCalendarFeatureTests"
+      }
+    },
+    {
+      "target" : {
+        "containerPath" : "container:Packages\/DSKit",
+        "identifier" : "DSKitTests",
+        "name" : "DSKitTests"
+      }
+    },
+    {
+      "target" : {
+        "containerPath" : "container:Packages\/CorePersistence",
+        "identifier" : "CorePersistenceTests",
+        "name" : "CorePersistenceTests"
+      }
     }
   ],
   "version" : 1

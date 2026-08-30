@@ -6,14 +6,14 @@
 //
 
 import Foundation
-import ObjectBox
+@preconcurrency import ObjectBox
 
-public class ObjectBoxCalendarStorage: CalendarStorage, CalendarRepository {
+public class ObjectBoxCalendarStorage: CalendarStorage, CalendarRepository, @unchecked Sendable {
     public static let shared = ObjectBoxCalendarStorage()
     
-    private let store: Store
-    private let calendarEntityBox: Box<PPCalendar>
-    private let eventEntityBox: Box<PPEvent>
+    private nonisolated(unsafe) let store: Store
+    private nonisolated(unsafe) let calendarEntityBox: Box<PPCalendar>
+    private nonisolated(unsafe) let eventEntityBox: Box<PPEvent>
     
     public init(store: Store = ObjectBoxFactory.shared.store) {
         self.store = store

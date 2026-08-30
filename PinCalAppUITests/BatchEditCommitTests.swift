@@ -183,6 +183,7 @@ final class BatchEditCommitTests: XCTestCase {
 
     // MARK: - Color change regressions (same STR as name, but changing color)
 
+    @MainActor
     private func selectEventColor(_ colorName: String, in app: XCUIApplication) {
         let picker = app.buttons["color-picker-compact"]
         XCTAssertTrue(picker.waitForExistence(timeout: 5), "Color picker should be visible")

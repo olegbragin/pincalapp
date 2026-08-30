@@ -43,9 +43,9 @@ public class RootNavigation {
             presentedSheet = nil
             
         // MARK: - Push (navigation stack)
-        case .dayBatches(let date):
+        case .dayBatches:
             path.append(route)
-        case .batchEditor(let source):
+        case .batchEditor:
             path.append(route)
             
         // MARK: - Present (sheet)

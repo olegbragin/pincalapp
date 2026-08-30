@@ -67,6 +67,7 @@ final class PinCalAppUITests: XCTestCase {
         XCTAssertFalse(app.staticTexts["Women Cycle"].waitForExistence(timeout: 2), "Removed events must not reopen the batch list")
     }
 
+    @MainActor
     private func openCalendarsList(_ app: XCUIApplication) {
         if app.buttons["sidebar-calendars"].waitForExistence(timeout: 2) {
             app.buttons["sidebar-calendars"].tap()

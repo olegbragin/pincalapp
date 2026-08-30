@@ -7,8 +7,7 @@
 
 import Testing
 import Foundation
-import DSKit
-@testable import PinCalApp
+@testable import DSKit
 
 @MainActor
 struct PCCalendarYearModelTests {
