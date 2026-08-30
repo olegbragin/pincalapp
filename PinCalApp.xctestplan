@@ -1,0 +1,52 @@
+{
+  "configurations" : [
+    {
+      "id" : "2C88478D-7087-4B2C-AF59-2897C113FDF7",
+      "name" : "Test Scheme Action",
+      "options" : {
+
+      }
+    }
+  ],
+  "defaultOptions" : {
+    "performanceAntipatternCheckerEnabled" : true,
+    "targetForVariableExpansion" : {
+      "containerPath" : "container:PinCalApp.xcodeproj",
+      "identifier" : "D7B935782FA90E7A00E5A62D",
+      "name" : "PinCalApp"
+    }
+  },
+  "testTargets" : [
+    {
+      "parallelizable" : false,
+      "target" : {
+        "containerPath" : "container:PinCalApp.xcodeproj",
+        "identifier" : "D7B935852FA90E7C00E5A62D",
+        "name" : "PinCalAppTests"
+      }
+    },
+    {
+      "target" : {
+        "containerPath" : "container:PinCalApp.xcodeproj",
+        "identifier" : "D7B9358F2FA90E7C00E5A62D",
+        "name" : "PinCalAppUITests"
+      }
+    },
+    {
+      "parallelizable" : true,
+      "target" : {
+        "containerPath" : "container:Packages\/AppNavigation",
+        "identifier" : "AppNavigationTests",
+        "name" : "AppNavigationTests"
+      }
+    },
+    {
+      "target" : {
+        "containerPath" : "container:Packages\/CalendarListFeature",
+        "identifier" : "CalendarListFeatureTests",
+        "name" : "CalendarListFeatureTests"
+      }
+    }
+  ],
+  "version" : 1
+}

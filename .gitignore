@@ -39,8 +39,11 @@ playground.xcworkspace
 #
 # Pods/
 #
-# Add this line if you want to avoid checking in source code from the Xcode workspace
+# Track the intentional PinCalApp workspace (resolves local package test targets).
+# Other Xcode-generated workspaces and user data stay ignored.
 **.xcworkspace
+!PinCalApp.xcworkspace/
+PinCalApp.xcworkspace/xcuserdata/
 
 # Carthage
 #

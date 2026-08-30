@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Workspace
+   version = "1.0">
+   <FileRef
+      location = "group:PinCalApp.xcodeproj">
+   </FileRef>
+   <FileRef
+      location = "group:Packages/AppNavigation">
+   </FileRef>
+   <FileRef
+      location = "group:Packages/CalendarListFeature">
+   </FileRef>
+   <FileRef
+      location = "group:Packages/CoreDomain">
+   </FileRef>
+   <FileRef
+      location = "group:Packages/CorePersistence">
+   </FileRef>
+   <FileRef
+      location = "group:Packages/DSKit">
+   </FileRef>
+   <FileRef
+      location = "group:Packages/SingleCalendarFeature">
+   </FileRef>
+</Workspace>

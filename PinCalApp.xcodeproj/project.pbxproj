@@ -33,6 +33,7 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
+		D7AF935230439EFC0001486C /* PinCalApp.xctestplan */ = {isa = PBXFileReference; lastKnownFileType = text; path = PinCalApp.xctestplan; sourceTree = "<group>"; };
 		D7B935792FA90E7A00E5A62D /* PinCalApp.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = PinCalApp.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		D7B935862FA90E7C00E5A62D /* PinCalAppTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = PinCalAppTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		D7B935902FA90E7C00E5A62D /* PinCalAppUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = PinCalAppUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -90,6 +91,7 @@
 		D7B935702FA90E7A00E5A62D = {
 			isa = PBXGroup;
 			children = (
+				D7AF935230439EFC0001486C /* PinCalApp.xctestplan */,
 				D7B9357B2FA90E7A00E5A62D /* PinCalApp */,
 				D7B935892FA90E7C00E5A62D /* PinCalAppTests */,
 				D7B935932FA90E7C00E5A62D /* PinCalAppUITests */,

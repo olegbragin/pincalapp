@@ -30,7 +30,9 @@ let package = Package(
         .testTarget(
             name: "CalendarListFeatureTests",
             dependencies: [
-                "CalendarListFeature"
+                "CalendarListFeature",
+                "CorePersistence",
+                "CoreDomain"
             ],
             path: "Tests/CalendarListFeatureTests"
         )

@@ -1,0 +1,24 @@
+{
+  "originHash" : "d79b6dd1f67e9ad4fed5c6d4495646b53095bcd252abb2accfcafe0696279b1c",
+  "pins" : [
+    {
+      "identity" : "objectbox-swift-spm",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/objectbox/objectbox-swift-spm",
+      "state" : {
+        "revision" : "eb4238dad6e07ca4f7d99e47ff2936fb837c0c39",
+        "version" : "5.3.0"
+      }
+    },
+    {
+      "identity" : "swift-collections",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/apple/swift-collections.git",
+      "state" : {
+        "revision" : "a0cb0954ecb21e4e31b0070e6ed5674e8556685a",
+        "version" : "1.6.0"
+      }
+    }
+  ],
+  "version" : 3
+}

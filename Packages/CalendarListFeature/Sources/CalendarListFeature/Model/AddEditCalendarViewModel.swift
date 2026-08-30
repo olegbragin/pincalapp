@@ -23,6 +23,7 @@ public final class AddEditCalendarViewModel {
     func reset() {
         id = 0
         label = ""
+        calendar = nil
     }
 }
 
