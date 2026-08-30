@@ -1,11 +1,15 @@
 //
-//  PCKeyboardState.swift
-//  PinCalApp
-//
-//  Created by Oleg Bragin on 24.08.2026.
-//
+ //  PCKeyboardState.swift
+ //  PinCalApp
+ //
+ //  Created by Oleg Bragin on 24.08.2026.
+ //
 
+#if os(iOS)
 import UIKit
+#else
+import AppKit
+#endif
 import Observation
 
 @MainActor
@@ -19,6 +23,7 @@ public final class PCKeyboardState {
     private nonisolated(unsafe) var notificationTokens: [NSObjectProtocol] = []
 
     public init() {
+#if os(iOS)
         let notificationCenter = NotificationCenter.default
         notificationTokens.append(
             notificationCenter.addObserver(
@@ -35,20 +40,25 @@ public final class PCKeyboardState {
                 }
             }
         )
+#endif
     }
 
     private func process(keyboardFrame: CGRect) {
+#if os(iOS)
         guard let window = Self.keyWindow else { return }
         let visibleHeight = max(0, window.bounds.maxY - keyboardFrame.minY)
         keyboardHeight = min(visibleHeight, window.bounds.height)
+#endif
     }
 
+#if os(iOS)
     private static var keyWindow: UIWindow? {
         UIApplication.shared.connectedScenes
             .compactMap { $0 as? UIWindowScene }
             .flatMap { $0.windows }
             .first { $0.isKeyWindow }
     }
+#endif
 
     deinit {
         notificationTokens.forEach(NotificationCenter.default.removeObserver)
