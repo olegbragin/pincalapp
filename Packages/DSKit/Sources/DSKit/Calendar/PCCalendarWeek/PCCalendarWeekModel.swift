@@ -18,10 +18,10 @@ public final class PCCalendarWeekModel: Identifiable {
     
     public var isLongPressed: Bool = false
     
-    public init(dto: PCCalendarWeekDataSource, daySelectionManager: PCCalendarDaySelectionManager) {
+    public init(dto: PCCalendarWeekDataSource, monthNumber: Int, daySelectionManager: PCCalendarDaySelectionManager) {
         self.daySelectionManager = daySelectionManager
         self.days = dto.days.map {
-            PCCalendarDayModel(dto: $0)
+            PCCalendarDayModel(dto: $0, gridMonth: monthNumber)
         }
     }
     

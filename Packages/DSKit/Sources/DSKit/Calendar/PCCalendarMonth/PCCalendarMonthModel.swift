@@ -28,7 +28,7 @@ public final class PCCalendarMonthModel: Identifiable {
         self.weekDaySymbols = dto.weekDaySymbols
         self.weekHeaderModel = PCCalendarWeekHeaderModel(weekSymbols: dto.weekDaySymbols)
         self.weeks = dto.weeks.map {
-            .init(dto: $0, daySelectionManager: daySelectionManager)
+            .init(dto: $0, monthNumber: dto.number, daySelectionManager: daySelectionManager)
         }
     }
 }

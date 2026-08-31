@@ -131,7 +131,8 @@ public struct PCCalendarDayView: View {
                 number: 2,
                 isInCurrentMonth: true,
                 isToday: true
-            )
+            ),
+            gridMonth: 2
         ),
         cellSize: 50
     )

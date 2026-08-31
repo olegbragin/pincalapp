@@ -12,6 +12,8 @@ public struct AddEditEventBatchView: View {
     @Bindable public var viewModel: AddEditEventBatchViewModel
     
     public var onSave: () -> Void = {}
+
+    public static let saveButtonAccessibilityIdentifier = "batch-save-button"
     
     public init(viewModel: AddEditEventBatchViewModel, onSave: @escaping () -> Void = {}) {
         self.viewModel = viewModel
@@ -64,6 +66,7 @@ public struct AddEditEventBatchView: View {
                     Image(systemName: "checkmark")
                         .accessibilityLabel("Save")
                 }
+                .accessibilityIdentifier(Self.saveButtonAccessibilityIdentifier)
                 .disabled(!viewModel.canSave)
             }
         }

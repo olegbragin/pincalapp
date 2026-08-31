@@ -126,11 +126,17 @@ public final class SingleCalendarModel {
         
         label = calendar.name
         isArchived = calendar.isArchived
-        yearModel.months = dataProvider.months(forYear: calendar.year).map {
-            PCCalendarMonthModel(dto: $0, daySelectionManager: daySelectionManager)
+        // Build the year model only once. Rebuilding it on every fetch would
+        // swap out the PCCalendarDayModel instances the views are bound to,
+        // so event updates would not be observed and committed days would
+        // silently stop rendering. Event changes are applied in-place below.
+        if yearModel.months.isEmpty {
+            yearModel.months = dataProvider.months(forYear: calendar.year).map {
+                PCCalendarMonthModel(dto: $0, daySelectionManager: daySelectionManager)
+            }
+            yearModel.numberOfCurrentMonth = dataProvider.numberOfCurrentMonth
+            yearModel.set(initialNumberOfColumns: calendar.numberOfColumns)
         }
-        yearModel.numberOfCurrentMonth = dataProvider.numberOfCurrentMonth
-        yearModel.set(initialNumberOfColumns: calendar.numberOfColumns)
         
         originalBatches = calendar.eventBatches
         updateYearModel(with: originalEvents)

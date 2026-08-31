@@ -71,6 +71,11 @@ public actor CalendarCache {
     }
 
     public func getCalendar(id: Int64) async throws -> CalendarDataSource? {
-        try await repository.getCalendar(id: id)
+        if let cached = calendars.first(where: { $0.id == id }) {
+            return cached
+        }
+        guard let fetched = try await repository.getCalendar(id: id) else { return nil }
+        calendars.append(fetched)
+        return fetched
     }
 }

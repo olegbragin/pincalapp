@@ -59,6 +59,7 @@ public struct PCCalendarWeekView: View {
                         .init(date: Date(), number: 45, isInCurrentMonth: true, isToday: true),
                     ],
                 ),
+                monthNumber: 1,
                 daySelectionManager: PCCalendarDaySelectionManager()
             ),
             cellSize: 50

@@ -155,12 +155,26 @@ struct SingleCalendarModelTests {
         await model.fetch(force: true)
         #expect(model.label == "Original")
 
+        // A change made directly to the repository bypasses the cache, which is
+        // the single source of truth. fetch therefore does not observe it.
         repository.renameCalendar(42, to: "Renamed")
 
         await model.fetch()
         #expect(model.label == "Original")
 
         await model.fetch(force: true)
+        #expect(model.label == "Original")
+    }
+
+    @Test("fetch reloads from the cache after a cache update")
+    func fetchReloadsFromCacheAfterUpdate() async throws {
+        let (_, cache, model) = makeFixture(calendar: makeCalendar(name: "Original", year: 2026))
+        await model.fetch(force: true)
+        #expect(model.label == "Original")
+
+        let renamed = CalendarDataSource(id: 42, name: "Renamed", year: 2026, numberOfColumns: 3)
+        try await cache.updateCalendar(renamed)
+        await waitUntil { model.label == "Renamed" }
         #expect(model.label == "Renamed")
     }
 
