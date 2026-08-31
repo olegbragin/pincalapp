@@ -225,6 +225,7 @@
 				D7A647353040DD35009034E4 /* XCLocalSwiftPackageReference "Packages/CoreDomain" */,
 				D7A647383040DD40009034E4 /* XCLocalSwiftPackageReference "Packages/CalendarListFeature" */,
 				D7A6473B3040DD4C009034E4 /* XCLocalSwiftPackageReference "Packages/AppNavigation" */,
+				D796CDD03045533B005EA9F5 /* XCLocalSwiftPackageReference "Packages/AutoTestRunner" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = D7B9357A2FA90E7A00E5A62D /* Products */;
@@ -662,6 +663,10 @@
 /* End XCConfigurationList section */
 
 /* Begin XCLocalSwiftPackageReference section */
+		D796CDD03045533B005EA9F5 /* XCLocalSwiftPackageReference "Packages/AutoTestRunner" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = Packages/AutoTestRunner;
+		};
 		D7A6472C3040DCD7009034E4 /* XCLocalSwiftPackageReference "Packages/SingleCalendarFeature" */ = {
 			isa = XCLocalSwiftPackageReference;
 			relativePath = Packages/SingleCalendarFeature;
