@@ -58,9 +58,7 @@ public struct AddEditEventBatchView: View {
             ToolbarItem(placement: .topBarTrailing) {
                 PCButton {
                     Task {
-                        if viewModel.save() {
-                            onSave()
-                        }
+                        onSave()
                     }
                 } label: {
                     Image(systemName: "checkmark")
