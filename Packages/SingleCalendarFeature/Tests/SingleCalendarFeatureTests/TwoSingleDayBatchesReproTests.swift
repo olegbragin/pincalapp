@@ -219,6 +219,95 @@ struct TwoSingleDayBatchesReproTests {
         #expect(AddEditEventBatchView.saveButtonAccessibilityIdentifier == "batch-save-button")
     }
 
+    // MARK: - Duplicate batch regression
+
+    @Test func editingExistingBatchAddingDaysDoesNotCreateDuplicates() async throws {
+        let store = try makeStore()
+        defer { store.close() }
+
+        let ppCalendar = makeCalendar(in: store)
+        let cache = makeCache(store: store)
+        let model = SingleCalendarModel(calendarid: Int64(ppCalendar.id), cache: cache)
+        await model.fetch(force: true)
+        #expect(model.state == .content)
+
+        let day10 = date(year: 2026, month: 11, day: 10)
+        let day12 = date(year: 2026, month: 11, day: 12)
+
+        // ── Create initial batch on day 10 ──
+        model.prepareAddEditEventBatchViewModel(for: day10)
+        var addEdit = model.addEditBatchListViewModel.addEditEventBatchModel
+        addEdit.eventBatchName = "Original"
+        addEdit.selectedColor = .option1
+        #expect(addEdit.save())
+        model.commitPendingBatch()
+
+        #expect(try await waitForBatchCount(1, in: store))
+        await settle()
+
+        // Verify initial state - single batch
+        let originalBatchesAfterFirst = model.originalBatches
+        #expect(originalBatchesAfterFirst.count == 1)
+        #expect(model.hasEvents(on: day10))
+
+        // ── Simulate: open batch list for day 10, select the batch, edit it ──
+        model.prepareAddEditBatchListViewModel(with: [day10])
+        let batchList = model.addEditBatchListViewModel
+        #expect(batchList.eventBatches.count == 1)
+        let existingBatch = batchList.eventBatches[0]
+
+        // Open editor for existing batch
+        batchList.prepareAddEditBatchViewModel(with: existingBatch)
+        addEdit = batchList.addEditEventBatchModel
+        #expect(addEdit.eventBatchId != 0)
+        #expect(addEdit.addEditListViewModel.events.count == 1)
+
+        // Add another day (day 12) via toggle
+        addEdit.toggleEvent(on: day12)
+        #expect(addEdit.addEditListViewModel.events.count == 2)
+
+        // Save the edited batch
+        #expect(addEdit.save())
+        model.commitPendingBatch()
+
+        #expect(try await waitForBatchCount(1, in: store))
+        await settle()
+
+        // ── Critical assertion: NO DUPLICATES in originalBatches ──
+        // The bug was: originalBatches would contain 2 batches with same key
+        // (one old, one new) causing display duplicates
+        let finalBatches = model.originalBatches
+        
+        // Should still be exactly 1 batch (the original was updated, not duplicated)
+        #expect(finalBatches.count == 1, "Expected 1 batch after edit, got \(finalBatches.count)")
+
+        // Verify the batch has both events
+        let updatedBatch = finalBatches[0]
+        #expect(updatedBatch.events.count == 2)
+        let eventDates = updatedBatch.events.map(\.date).sorted()
+        #expect(eventDates[0] == day10)
+        #expect(eventDates[1] == day12)
+
+        // Verify no duplicate keys in originalBatches
+        let keys = finalBatches.map { model.key(for: $0) }
+        let uniqueKeys = Set(keys)
+        #expect(keys.count == uniqueKeys.count,
+                "Duplicate batch keys detected in originalBatches: \(keys)")
+
+        // Verify day markers appear correctly on year view
+        #expect(model.hasEvents(on: day10))
+        #expect(model.hasEvents(on: day12))
+        #expect(!dayEvents(model, day10).isEmpty)
+        #expect(!dayEvents(model, day12).isEmpty)
+
+        // Store should have exactly 1 batch
+        let batchBox = store.box(for: PPEventBatch.self)
+        #expect(try batchBox.all().count == 1)
+        let persistedBatch = try batchBox.all()[0]
+        #expect(persistedBatch.title == "Original")
+        #expect(try store.box(for: PPEvent.self).all().count == 2)
+    }
+
     // MARK: - Helpers
 
     private func waitForBatchCount(_ expected: Int, in store: Store, timeout: TimeInterval = 3) async throws -> Bool {

@@ -31,10 +31,6 @@ public struct AddEditEventBatchListView: View {
                                 VStack(alignment: .leading, spacing: 2) {
                                     Text(eventBatch.name)
                                         .font(.headline)
-                                    Text("\(eventBatch.id)")
-                                        .font(.headline)
-                                    Text("\(eventBatch.timestamp)")
-                                        .font(.headline)
                                     ForEach(eventBatch.eventsForDay(viewModel.selectedDay), id: \.self) { event in
                                         Text("at \(event.date.formatted(date: .omitted, time: .shortened))")
                                     }
