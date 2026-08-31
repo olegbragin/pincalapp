@@ -26,6 +26,7 @@ public struct AddEditListView: View {
                         label: {
                             HStack(spacing: 12) {
                                 Text(.eventAt(event.name, event.date.formatted(date: .omitted, time: .shortened)))
+                                    .foregroundStyle(Color.dsKit.colorForegroundOnEventCard)
                                 
                                 Spacer()
                                 Image(systemName: "chevron.right")
