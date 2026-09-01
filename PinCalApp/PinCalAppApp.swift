@@ -1,6 +1,5 @@
 import SwiftUI
 import CorePersistence
-import ObjectBox
 
 @main
 struct PinCalAppApp: App {
@@ -10,13 +9,12 @@ struct PinCalAppApp: App {
         UITableView.appearance().backgroundColor = .clear
         UITableViewCell.appearance().backgroundColor = .clear
 
-        let store: Store
+        let storage: CalendarRepository
         if UITestStoreFactory.shouldSeedForUITests() {
-            store = UITestStoreFactory.makeSeededStore()
+            storage = ObjectBoxCalendarStorage(store: UITestStoreFactory.makeSeededStore())
         } else {
-            store = try! ObjectBoxFactory.makePersistentStore()
+            storage = ObjectBoxCalendarStorage(store: ObjectBoxFactory.makePersistentStore())
         }
-        let storage = ObjectBoxCalendarStorage(store: store)
         _cache = State(initialValue: CalendarCache(repository: storage))
     }
 

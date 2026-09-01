@@ -8,7 +8,7 @@
 import Foundation
 @preconcurrency import ObjectBox
 
-public class ObjectBoxCalendarStorage: CalendarStorage, CalendarRepository, @unchecked Sendable {
+public class ObjectBoxCalendarStorage: CalendarRepository, @unchecked Sendable {
     private nonisolated(unsafe) let store: Store
     private nonisolated(unsafe) let calendarEntityBox: Box<PPCalendar>
     private nonisolated(unsafe) let eventEntityBox: Box<PPEvent>

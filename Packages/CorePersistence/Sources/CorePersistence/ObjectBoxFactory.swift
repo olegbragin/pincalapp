@@ -10,21 +10,18 @@ import ObjectBox
 
 public struct ObjectBoxFactory {
     /// Creates a persistent store for production use
-    public static func makePersistentStore() throws -> Store {
-        let dbPath = try getDatabasePath().path
-        print("[ObjectBoxFactory] Opening store at: \(dbPath)")
-        let store = try Store(directoryPath: dbPath)
-        let count = try? store.box(for: PPCalendar.self).count()
-        print("[ObjectBoxFactory] Store opened. Calendar count: \(count ?? 0)")
+    public static func makePersistentStore() -> Store {
+        let dbPath = try! getDatabasePath().path
+        let store = try! Store(directoryPath: dbPath)
         return store
     }
 
     /// In-memory store for tests/previews — uses ObjectBox `memory:` prefix (no disk I/O)
-    public static func inMemoryStore(named: String) throws -> Store {
+    public static func makeInMemoryStore(named: String) throws -> Store {
         try Store(directoryPath: "memory:\(named)")
     }
 
-private static func getDatabasePath() throws -> URL {
+    private static func getDatabasePath() throws -> URL {
         let databaseName = "p_calendars"
         let appSupport = try FileManager.default.url(
             for: .applicationSupportDirectory,

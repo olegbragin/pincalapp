@@ -17,12 +17,18 @@ struct CalendarCacheIntegrationTests {
     // MARK: - Helpers
 
     private func makeStore() throws -> Store {
-        try ObjectBoxFactory.inMemoryStore(named: "cache-integration-\(UUID().uuidString)")
+        try ObjectBoxFactory.makeInMemoryStore(named: "cache-integration-\(UUID().uuidString)")
     }
 
     private func makeCache(store: Store) -> CalendarCache {
         let storage = ObjectBoxCalendarStorage(store: store)
         return CalendarCache(repository: storage)
+    }
+
+    private func createAndGetCalendar(_ cache: CalendarCache, name: String, year: Int, numberOfColumns: Int) async throws -> CalendarDataSource {
+        try await cache.createCalendar(name: name, year: year, numberOfColumns: numberOfColumns)
+        let all = try await cache.getAllCalendars()
+        return all.first { $0.name == name && $0.year == year && $0.numberOfColumns == numberOfColumns }!
     }
 
     // MARK: - Calendar CRUD via CalendarCache + direct ObjectBox verification
@@ -34,7 +40,7 @@ struct CalendarCacheIntegrationTests {
         let cache = makeCache(store: store)
         let calendarBox = store.box(for: PPCalendar.self)
 
-        let newCalendar = try await cache.createCalendar(name: "My Calendar", year: 2026, numberOfColumns: 3)
+        let newCalendar = try await createAndGetCalendar(cache, name: "My Calendar", year: 2026, numberOfColumns: 3)
 
         // Path A: verify via cache
         #expect(newCalendar.name == "My Calendar")
@@ -57,7 +63,7 @@ struct CalendarCacheIntegrationTests {
         let cache = makeCache(store: store)
         let calendarBox = store.box(for: PPCalendar.self)
 
-        let created = try await cache.createCalendar(name: "Original", year: 2026, numberOfColumns: 2)
+        let created = try await createAndGetCalendar(cache, name: "Original", year: 2026, numberOfColumns: 2)
         var updated = created
         updated.name = "Renamed"
         try await cache.updateCalendar(updated)
@@ -78,7 +84,7 @@ struct CalendarCacheIntegrationTests {
         let cache = makeCache(store: store)
         let calendarBox = store.box(for: PPCalendar.self)
 
-        let created = try await cache.createCalendar(name: "Cols", year: 2026, numberOfColumns: 2)
+        let created = try await createAndGetCalendar(cache, name: "Cols", year: 2026, numberOfColumns: 2)
         var updated = created
         updated.numberOfColumns = 7
         try await cache.updateCalendar(updated)
@@ -99,7 +105,7 @@ struct CalendarCacheIntegrationTests {
         let cache = makeCache(store: store)
         let calendarBox = store.box(for: PPCalendar.self)
 
-        let created = try await cache.createCalendar(name: "To Archive", year: 2026, numberOfColumns: 3)
+        let created = try await createAndGetCalendar(cache, name: "To Archive", year: 2026, numberOfColumns: 3)
         try await cache.archiveCalendar(created)
 
         // Path A: verify via cache
@@ -118,7 +124,7 @@ struct CalendarCacheIntegrationTests {
         let cache = makeCache(store: store)
         let calendarBox = store.box(for: PPCalendar.self)
 
-        let created = try await cache.createCalendar(name: "To Restore", year: 2026, numberOfColumns: 3)
+        let created = try await createAndGetCalendar(cache, name: "To Restore", year: 2026, numberOfColumns: 3)
         try await cache.archiveCalendar(created)
         try await cache.restoreCalendar(created)
 
@@ -138,7 +144,7 @@ struct CalendarCacheIntegrationTests {
         let cache = makeCache(store: store)
         let calendarBox = store.box(for: PPCalendar.self)
 
-        let created = try await cache.createCalendar(name: "To Delete", year: 2026, numberOfColumns: 3)
+        let created = try await createAndGetCalendar(cache, name: "To Delete", year: 2026, numberOfColumns: 3)
         try await cache.permanentlyDeleteCalendar(created)
 
         // Path A: verify via cache
@@ -156,9 +162,9 @@ struct CalendarCacheIntegrationTests {
 
         let cache = makeCache(store: store)
 
-        let cal1 = try await cache.createCalendar(name: "Active1", year: 2026, numberOfColumns: 2)
-        _ = try await cache.createCalendar(name: "Active2", year: 2026, numberOfColumns: 3)
-        let cal3 = try await cache.createCalendar(name: "Archived", year: 2026, numberOfColumns: 4)
+        let cal1 = try await createAndGetCalendar(cache, name: "Active1", year: 2026, numberOfColumns: 2)
+        _ = try await createAndGetCalendar(cache, name: "Active2", year: 2026, numberOfColumns: 3)
+        let cal3 = try await createAndGetCalendar(cache, name: "Archived", year: 2026, numberOfColumns: 4)
 
         try await cache.archiveCalendar(try await cache.getCalendar(id: cal3.id) ?? cal1)
 
@@ -189,8 +195,8 @@ struct CalendarCacheIntegrationTests {
 
         let cache = makeCache(store: store)
 
-        _ = try await cache.createCalendar(name: "Active", year: 2026, numberOfColumns: 2)
-        let archived = try await cache.createCalendar(name: "Archived", year: 2026, numberOfColumns: 3)
+        _ = try await createAndGetCalendar(cache, name: "Active", year: 2026, numberOfColumns: 2)
+        let archived = try await createAndGetCalendar(cache, name: "Archived", year: 2026, numberOfColumns: 3)
         try await cache.archiveCalendar(archived)
 
         // Path A: verify via cache
@@ -225,7 +231,7 @@ struct CalendarCacheIntegrationTests {
             receivedOperations.append(operation)
         }
 
-        _ = try await cache.createCalendar(name: "Signal Test", year: 2026, numberOfColumns: 3)
+        try await cache.createCalendar(name: "Signal Test", year: 2026, numberOfColumns: 3)
 
         cancellable.cancel()
 
@@ -242,7 +248,7 @@ struct CalendarCacheIntegrationTests {
         defer { store.close() }
 
         let cache = makeCache(store: store)
-        let created = try await cache.createCalendar(name: "Original", year: 2026, numberOfColumns: 3)
+        let created = try await createAndGetCalendar(cache, name: "Original", year: 2026, numberOfColumns: 3)
 
         var receivedOperations: [ChangeOperation] = []
         let cancellable = cache.changes.sink { operation in
@@ -267,7 +273,7 @@ struct CalendarCacheIntegrationTests {
         defer { store.close() }
 
         let cache = makeCache(store: store)
-        let created = try await cache.createCalendar(name: "To Archive Signal", year: 2026, numberOfColumns: 3)
+        let created = try await createAndGetCalendar(cache, name: "To Archive Signal", year: 2026, numberOfColumns: 3)
 
         var receivedOperations: [ChangeOperation] = []
         let cancellable = cache.changes.sink { operation in

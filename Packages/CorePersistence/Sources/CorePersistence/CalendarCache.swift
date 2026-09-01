@@ -37,11 +37,10 @@ public actor CalendarCache {
         await MainActor.run { changes.send(.refresh(calendars: snapshot)) }
     }
 
-    public func createCalendar(name: String, year: Int, numberOfColumns: Int) async throws -> CalendarDataSource {
+    public func createCalendar(name: String, year: Int, numberOfColumns: Int) async throws {
         let newCalendar = try await repository.createCalendar(name: name, year: year, numberOfColumns: numberOfColumns)
         calendars.append(newCalendar)
         await MainActor.run { changes.send(.add(item: newCalendar)) }
-        return newCalendar
     }
 
     public func updateCalendar(_ calendar: CalendarDataSource) async throws {
@@ -77,5 +76,9 @@ public actor CalendarCache {
         guard let fetched = try await repository.getCalendar(id: id) else { return nil }
         calendars.append(fetched)
         return fetched
+    }
+
+    public func getAllCalendars() async throws -> [CalendarDataSource] {
+        try await repository.getAllCalendars()
     }
 }
