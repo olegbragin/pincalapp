@@ -798,4 +798,167 @@ struct SingleCalendarModelObjectBoxIntegrationTests {
         let persistedEvent = Array(persistedBatch.events)[0]
         #expect(Calendar.current.isDate(persistedEvent.date, inSameDayAs: day10))
     }
+
+    // MARK: - Batch list refresh after editing the anchor day
+
+    @Test func editingBatchKeepsItInBatchListAfterRemovingAnchorDay() async throws {
+        let store = try makeStore()
+        defer { store.close() }
+
+        let ppCalendar = makeCalendar(in: store)
+        let cache = makeCache(store: store)
+        let model = SingleCalendarModel(calendarid: Int64(ppCalendar.id), cache: cache)
+        await model.fetch(force: true)
+        #expect(model.state == .content)
+
+        let day10 = date(year: 2026, month: 4, day: 10)
+        let day11 = date(year: 2026, month: 4, day: 11)
+        let day12 = date(year: 2026, month: 4, day: 12)
+
+        // STR 2-4: tap empty day 10 -> editor anchored at day 10, add 11 & 12.
+        model.prepareAddEditEventBatchViewModel(for: day10)
+        let addEdit = model.addEditBatchListViewModel.addEditEventBatchModel
+        addEdit.eventBatchName = "Batch"
+        addEdit.selectedColor = .option1
+        addEdit.toggleEvent(on: day11)
+        addEdit.toggleEvent(on: day12)
+        #expect(addEdit.save())
+        model.commitPendingBatch()
+        #expect(try await waitForBatchCount(1, in: store))
+        try? await Task.sleep(for: .milliseconds(300))
+
+        // STR 6: day 10 list must contain the batch.
+        model.prepareAddEditBatchListViewModel(with: [day10])
+        #expect(model.addEditBatchListViewModel.eventBatches.count == 1,
+                "Day 10 list should contain the batch right after creation")
+
+        // STR 7-8: open the batch, remove day 10.
+        let batchList = model.addEditBatchListViewModel
+        batchList.prepareAddEditBatchViewModel(with: batchList.eventBatches[0])
+        let addEdit2 = batchList.addEditEventBatchModel
+        addEdit2.toggleEvent(on: day10)
+        #expect(addEdit2.addEditListViewModel.events.contains {
+            Calendar.current.isDate($0.date, inSameDayAs: day10)
+        } == false, "day 10 event must be removed")
+
+        // STR 9: save.
+        #expect(addEdit2.save())
+        model.commitPendingBatch()
+        try? await Task.sleep(for: .milliseconds(300))
+
+        // The batch still has 11 & 12, so the day-10 batch list must not be empty.
+        #expect(model.addEditBatchListViewModel.eventBatches.count == 1,
+                "Batch list should still contain the batch (events remain on 11 & 12)")
+    }
+
+    @Test func removingAnchorDayFromNilDateBatchKeepsItInBatchList() async throws {
+        let store = try makeStore()
+        defer { store.close() }
+
+        let ppCalendar = makeCalendar(in: store)
+        let cache = makeCache(store: store)
+        let model = SingleCalendarModel(calendarid: Int64(ppCalendar.id), cache: cache)
+        await model.fetch(force: true)
+        #expect(model.state == .content)
+
+        let day10 = date(year: 2026, month: 4, day: 10)
+        let day11 = date(year: 2026, month: 4, day: 11)
+        let day12 = date(year: 2026, month: 4, day: 12)
+
+        // Create a batch through the multiselect path — this leaves its
+        // `date` (anchor) nil, so the batch is only associated with its events.
+        model.selectedColor = .option1
+        model.changeEvent(EventDataSource(name: "", date: day10, color: PCColorOption.option1.colorName))
+        model.changeEvent(EventDataSource(name: "", date: day11, color: PCColorOption.option1.colorName))
+        model.changeEvent(EventDataSource(name: "", date: day12, color: PCColorOption.option1.colorName))
+        model.daySelectionManager.selectionMode = .multiple
+        _ = model.handleSelectionConfirmation()
+
+        let addEdit = model.addEditBatchListViewModel.addEditEventBatchModel
+        addEdit.eventBatchName = "Batch"
+        addEdit.selectedColor = .option1
+        #expect(addEdit.save())
+        model.commitPendingBatch()
+        try? await Task.sleep(for: .milliseconds(300))
+
+        model.prepareAddEditBatchListViewModel(with: [day10])
+        #expect(model.addEditBatchListViewModel.eventBatches.count == 1,
+                "Day 10 list should contain the batch right after creation")
+
+        // Open the batch, remove day 10.
+        let batchList = model.addEditBatchListViewModel
+        batchList.prepareAddEditBatchViewModel(with: batchList.eventBatches[0])
+        let addEdit2 = batchList.addEditEventBatchModel
+        addEdit2.toggleEvent(on: day10)
+        #expect(addEdit2.save())
+        model.commitPendingBatch()
+
+        // commitPendingBatch refreshes the visible batch list; it must keep the
+        // just-saved batch even though it no longer falls on day 10.
+        #expect(model.addEditBatchListViewModel.eventBatches.count == 1,
+                "Batch list should still contain the batch (events remain on 11 & 12)")
+    }
+
+    // MARK: - Year view markers must reflect actual events
+
+    @Test func removingAnchorDayUncolorsItOnYearView() async throws {
+        let store = try makeStore()
+        defer { store.close() }
+
+        let ppCalendar = makeCalendar(in: store)
+        let cache = makeCache(store: store)
+        let model = SingleCalendarModel(calendarid: Int64(ppCalendar.id), cache: cache)
+        await model.fetch(force: true)
+        #expect(model.state == .content)
+
+        let day10 = date(year: 2026, month: 4, day: 10)
+        let day11 = date(year: 2026, month: 4, day: 11)
+        let day12 = date(year: 2026, month: 4, day: 12)
+
+        // Create a batch anchored at day 10, with events on 11 & 12.
+        model.prepareAddEditEventBatchViewModel(for: day10)
+        let addEdit = model.addEditBatchListViewModel.addEditEventBatchModel
+        addEdit.eventBatchName = "Batch"
+        addEdit.selectedColor = .option1
+        addEdit.toggleEvent(on: day11)
+        addEdit.toggleEvent(on: day12)
+        #expect(addEdit.save())
+        model.commitPendingBatch()
+        try? await Task.sleep(for: .milliseconds(300))
+
+        // The anchor day is marked right after creation (it has an event).
+        #expect(!dayMarkers(model, day10).isEmpty,
+                "Day 10 should be marked after creation")
+
+        // Open the batch and remove day 10.
+        model.prepareAddEditBatchListViewModel(with: [day10])
+        let batchList = model.addEditBatchListViewModel
+        batchList.prepareAddEditBatchViewModel(with: batchList.eventBatches[0])
+        let addEdit2 = batchList.addEditEventBatchModel
+        addEdit2.toggleEvent(on: day10)
+        #expect(addEdit2.save())
+        model.commitPendingBatch()
+        try? await Task.sleep(for: .milliseconds(300))
+
+        // The marker must be driven by events: day 10 is unmarked, 11 & 12 stay.
+        #expect(dayMarkers(model, day10).isEmpty,
+                "Day 10 must NOT be marked after its event was removed from the batch")
+        #expect(!dayMarkers(model, day11).isEmpty,
+                "Day 11 should still be marked")
+        #expect(!dayMarkers(model, day12).isEmpty,
+                "Day 12 should still be marked")
+    }
+
+    private func dayMarkers(_ model: SingleCalendarModel, _ date: Date) -> [String] {
+        for month in model.yearModel.months {
+            for week in month.weeks {
+                for day in week.days {
+                    guard let d = day.date, day.isInCurrentMonth,
+                          Calendar.current.isDate(d, inSameDayAs: date) else { continue }
+                    return day.events
+                }
+            }
+        }
+        return []
+    }
 }

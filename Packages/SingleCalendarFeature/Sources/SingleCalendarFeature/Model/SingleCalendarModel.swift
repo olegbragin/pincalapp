@@ -200,7 +200,7 @@ public final class SingleCalendarModel {
         }
         updateYearModel(with: originalEvents)
         save(for: calendarid)
-        refreshBatchListIfVisible()
+        refreshBatchListIfVisible(keeping: eventBatch)
         if daySelectionManager.selectionMode == .multiple {
             daySelectionManager.toggleSelectionMode()
             addedEvents = []
@@ -208,9 +208,9 @@ public final class SingleCalendarModel {
         }
     }
 
-    private func refreshBatchListIfVisible() {
+    private func refreshBatchListIfVisible(keeping batch: EventBatchDataSource) {
         guard let selectedDay = addEditBatchListViewModel.selectedDay else { return }
-        prepareAddEditBatchListViewModel(with: [selectedDay])
+        prepareAddEditBatchListViewModel(with: [selectedDay], keeping: batch)
     }
     
     public func cancelMultipleChanges() {
@@ -220,15 +220,24 @@ public final class SingleCalendarModel {
         selectedColor = nil
     }
     
-    public func prepareAddEditBatchListViewModel(with selectedDays: Set<Date>) {
+    public func prepareAddEditBatchListViewModel(with selectedDays: Set<Date>, keeping keepBatch: EventBatchDataSource? = nil) {
         guard let selectedDay = selectedDays.first else {
             addEditBatchListViewModel.reset()
             return
         }
-        let dayBatches = originalBatches.filter { batch in
+        var dayBatches = originalBatches.filter { batch in
             batch.events.contains { event in
                 isSameDay(event.date, selectedDay)
             } || (batch.date.map { isSameDay($0, selectedDay) } ?? false)
+        }
+        // After an edit the batch may no longer fall on the day the list was
+        // opened from (e.g. its anchor/event days changed). Keep the batch the
+        // user just saved visible — provided it still exists — so the list does
+        // not look empty right after saving.
+        if let keepBatch,
+           originalBatches.contains(where: { key(for: $0) == key(for: keepBatch) }),
+           !dayBatches.contains(where: { key(for: $0) == key(for: keepBatch) }) {
+            dayBatches.append(keepBatch)
         }
         addEditBatchListViewModel.prepare(with: dayBatches, and: selectedDay)
     }
@@ -296,7 +305,6 @@ public final class SingleCalendarModel {
     
     private func updateYearModel(with events: Set<EventDataSource>) {
         let eventColorsByDay = colorsByStartOfDay(from: events)
-        let batchColorsByDay = batchColorsByStartOfDay()
         yearModel.months.forEach { month in
             month.weeks.forEach { week in
                 week.days
@@ -306,7 +314,7 @@ public final class SingleCalendarModel {
                     .forEach { day in
                         guard let dayDate = day.date else { return }
                         let key = Calendar.autoupdatingCurrent.startOfDay(for: dayDate)
-                        let newEvents = (eventColorsByDay[key] ?? []) + (batchColorsByDay[key] ?? [])
+                        let newEvents = eventColorsByDay[key] ?? []
                         guard day.events != newEvents else { return }
                         day.events = newEvents
                     }
@@ -317,7 +325,7 @@ public final class SingleCalendarModel {
     private func updateDayModel(at date: Date, with events: Set<EventDataSource>) {
         guard let day = dayModel(for: date) else { return }
         let key = Calendar.autoupdatingCurrent.startOfDay(for: date)
-        let newEvents = (colorsByStartOfDay(from: events)[key] ?? []) + (batchColorsByStartOfDay()[key] ?? [])
+        let newEvents = colorsByStartOfDay(from: events)[key] ?? []
         guard day.events != newEvents else { return }
         day.events = newEvents
     }
@@ -344,12 +352,4 @@ public final class SingleCalendarModel {
         return result
     }
     
-    private func batchColorsByStartOfDay() -> [Date: [String]] {
-        var result: [Date: [String]] = [:]
-        for batch in originalBatches {
-            guard let batchDate = batch.date, !batch.colorName.isEmpty else { continue }
-            result[Calendar.autoupdatingCurrent.startOfDay(for: batchDate), default: []].append(batch.colorName)
-        }
-        return result
-    }
 }
