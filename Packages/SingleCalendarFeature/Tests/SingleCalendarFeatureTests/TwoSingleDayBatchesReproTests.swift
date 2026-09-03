@@ -246,15 +246,25 @@ struct TwoSingleDayBatchesReproTests {
         await settle()
 
         // Verify initial state - single batch
-        let originalBatchesAfterFirst = model.originalBatches
-        #expect(originalBatchesAfterFirst.count == 1)
+        #expect(model.originalBatches.count == 1)
         #expect(model.hasEvents(on: day10))
 
+        // Reload from the store so the committed batch carries its persisted id,
+        // matching the state after a fresh app session / calendar re-open.
+        let reopenedModel = SingleCalendarModel(
+            calendarid: Int64(ppCalendar.id),
+            cache: makeCache(store: store)
+        )
+        await reopenedModel.fetch(force: true)
+        #expect(reopenedModel.state == .content)
+        #expect(reopenedModel.originalBatches.count == 1)
+
         // ── Simulate: open batch list for day 10, select the batch, edit it ──
-        model.prepareAddEditBatchListViewModel(with: [day10])
-        let batchList = model.addEditBatchListViewModel
+        reopenedModel.prepareAddEditBatchListViewModel(with: [day10])
+        let batchList = reopenedModel.addEditBatchListViewModel
         #expect(batchList.eventBatches.count == 1)
         let existingBatch = batchList.eventBatches[0]
+        #expect(existingBatch.id != 0, "Persisted batch should have a real id")
 
         // Open editor for existing batch
         batchList.prepareAddEditBatchViewModel(with: existingBatch)
@@ -268,7 +278,7 @@ struct TwoSingleDayBatchesReproTests {
 
         // Save the edited batch
         #expect(addEdit.save())
-        model.commitPendingBatch()
+        reopenedModel.commitPendingBatch()
 
         #expect(try await waitForBatchCount(1, in: store))
         await settle()
@@ -276,8 +286,8 @@ struct TwoSingleDayBatchesReproTests {
         // ── Critical assertion: NO DUPLICATES in originalBatches ──
         // The bug was: originalBatches would contain 2 batches with same key
         // (one old, one new) causing display duplicates
-        let finalBatches = model.originalBatches
-        
+        let finalBatches = reopenedModel.originalBatches
+
         // Should still be exactly 1 batch (the original was updated, not duplicated)
         #expect(finalBatches.count == 1, "Expected 1 batch after edit, got \(finalBatches.count)")
 
@@ -289,16 +299,16 @@ struct TwoSingleDayBatchesReproTests {
         #expect(eventDates[1] == day12)
 
         // Verify no duplicate keys in originalBatches
-        let keys = finalBatches.map { model.key(for: $0) }
+        let keys = finalBatches.map { reopenedModel.key(for: $0) }
         let uniqueKeys = Set(keys)
         #expect(keys.count == uniqueKeys.count,
                 "Duplicate batch keys detected in originalBatches: \(keys)")
 
         // Verify day markers appear correctly on year view
-        #expect(model.hasEvents(on: day10))
-        #expect(model.hasEvents(on: day12))
-        #expect(!dayEvents(model, day10).isEmpty)
-        #expect(!dayEvents(model, day12).isEmpty)
+        #expect(reopenedModel.hasEvents(on: day10))
+        #expect(reopenedModel.hasEvents(on: day12))
+        #expect(!dayEvents(reopenedModel, day10).isEmpty)
+        #expect(!dayEvents(reopenedModel, day12).isEmpty)
 
         // Store should have exactly 1 batch
         let batchBox = store.box(for: PPEventBatch.self)

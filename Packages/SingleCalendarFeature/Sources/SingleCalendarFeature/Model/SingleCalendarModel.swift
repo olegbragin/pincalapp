@@ -26,7 +26,7 @@ public final class SingleCalendarModel {
     private let dataProvider = PCCalendarDataProvider()
     private let cache: CalendarCache
     
-    private var originalBatches: [EventBatchDataSource] = []
+    private(set) var originalBatches: [EventBatchDataSource] = []
     private var addedEvents: Set<EventDataSource> = []
     
     public private(set) var calendarid: Int64
@@ -180,12 +180,14 @@ public final class SingleCalendarModel {
         ])
     }
     
-    public func handleSelectionConfirmation() {
+    public func handleSelectionConfirmation() -> AppRoute? {
         guard !addedEvents.isEmpty else {
             cancelMultipleChanges()
-            return
+            return nil
         }
         prepareAddEditEventBatchViewModel()
+        guard let day = addedEvents.sorted(by: { $0.date < $1.date }).first?.date else { return nil }
+        return .batchEditor(.newDay(day))
     }
     
     public func commitPendingBatch() {
@@ -199,6 +201,11 @@ public final class SingleCalendarModel {
         updateYearModel(with: originalEvents)
         save(for: calendarid)
         refreshBatchListIfVisible()
+        if daySelectionManager.selectionMode == .multiple {
+            daySelectionManager.toggleSelectionMode()
+            addedEvents = []
+            selectedColor = nil
+        }
     }
 
     private func refreshBatchListIfVisible() {
@@ -250,7 +257,9 @@ public final class SingleCalendarModel {
         daySelectionManager.selectedDays = []
         if daySelectionManager.selectionMode == .multiple {
             commitPendingBatch()
-            daySelectionManager.toggleSelectionMode()
+            if daySelectionManager.selectionMode == .multiple {
+                daySelectionManager.toggleSelectionMode()
+            }
             addedEvents = []
             selectedColor = nil
             updateYearModel(with: originalEvents)
@@ -260,13 +269,13 @@ public final class SingleCalendarModel {
         addEditBatchListViewModel.addEditEventBatchModel.reset()
     }
     
-    private enum BatchMergeKey: Hashable {
+    enum BatchMergeKey: Hashable {
         case persisted(Int64)
         case pending(UUID)
         case unsaved(Int)
     }
     
-    private func key(for batch: EventBatchDataSource) -> BatchMergeKey {
+    func key(for batch: EventBatchDataSource) -> BatchMergeKey {
         if batch.id != 0 {
             return .persisted(batch.id)
         }

@@ -113,7 +113,9 @@ public struct SingleCalendarView: View {
                     systemImage: viewModel.daySelectionManager.selectionMode == .multiple ? "checkmark" : "plus.rectangle.on.rectangle"
                 ) {
                     if viewModel.daySelectionManager.selectionMode == .multiple {
-                        viewModel.handleSelectionConfirmation()
+                        if let route = viewModel.handleSelectionConfirmation() {
+                            navigation.goTo(route)
+                        }
                     } else {
                         viewModel.daySelectionManager.toggleSelectionMode()
                     }
