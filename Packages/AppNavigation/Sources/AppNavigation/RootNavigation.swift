@@ -47,6 +47,8 @@ public class RootNavigation {
             path.append(route)
         case .batchEditor:
             path.append(route)
+        case .eventEditor:
+            path.append(route)
             
         // MARK: - Present (sheet)
         case .addCalendar:

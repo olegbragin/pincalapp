@@ -19,8 +19,6 @@ public final class AddEditListViewModel {
     var onEventsChanged: (() -> Void)?
 
     var addEditEventModel = AddEditEventViewModel()
-    /// The event currently being edited; non-nil pushes the event editor.
-    var editingEvent: EventDataSource?
     
     init(events: [EventDataSource] = [EventDataSource]()) {
         self.events = events
@@ -41,7 +39,6 @@ public final class AddEditListViewModel {
         addEditEventModel.selectedColor = PCColorOption(event.color)
         addEditEventModel.selectedDate = event.date
         addEditEventModel.timestamp = event.timestamp
-        editingEvent = event
     }
     
     func apply(with event: EventDataSource) {
@@ -56,14 +53,12 @@ public final class AddEditListViewModel {
     }
 
     /// Commits any pending edited event that was saved in the child editor
-    /// but not yet applied (e.g. if `editingEvent` hasn't cleared yet).
-    /// Returns true if a pending event was committed.
+    /// but not yet applied. Returns true if a pending event was committed.
     @discardableResult
     func commitPendingEventIfNeeded() -> Bool {
         guard let pending = addEditEventModel.event else { return false }
         apply(with: pending)
         addEditEventModel.reset()
-        editingEvent = nil
         return true
     }
     
@@ -91,7 +86,6 @@ public final class AddEditListViewModel {
     func reset() {
         events = []
         selectedDay = nil
-        editingEvent = nil
         addEditEventModel.reset()
     }
 }

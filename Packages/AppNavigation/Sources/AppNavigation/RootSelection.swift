@@ -21,6 +21,23 @@ public enum BatchEditorSource: Hashable {
     case existingBatch(Int64)
 }
 
+/// Lightweight event data for navigation routing.
+public struct EventEditorSource: Hashable {
+    public var id: Int64
+    public var name: String
+    public var date: Date
+    public var color: String
+    public var timestamp: UUID?
+
+    public init(id: Int64, name: String, date: Date, color: String, timestamp: UUID? = nil) {
+        self.id = id
+        self.name = name
+        self.date = date
+        self.color = color
+        self.timestamp = timestamp
+    }
+}
+
 /// Single global enum for all possible navigation routes in the app.
 public enum AppRoute: Hashable {
     // Sidebar category selection
@@ -32,6 +49,7 @@ public enum AppRoute: Hashable {
     // Navigation stack pushes
     case dayBatches(Date)
     case batchEditor(BatchEditorSource)
+    case eventEditor(EventEditorSource)
     
     // Sheets
     case addCalendar
@@ -42,7 +60,7 @@ public enum AppRoute: Hashable {
             return .open  // Changes split-view content column
         case .calendar:
             return .open
-        case .dayBatches, .batchEditor:
+        case .dayBatches, .batchEditor, .eventEditor:
             return .push
         case .addCalendar:
             return .present

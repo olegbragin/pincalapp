@@ -11,11 +11,12 @@ import CorePersistence
 
 public struct AddEditEventView: View {
     @Bindable public var viewModel: AddEditEventViewModel
+    public var onCommit: ((EventDataSource) -> Void)?
 
-    public init(viewModel: AddEditEventViewModel) {
+    public init(viewModel: AddEditEventViewModel, onCommit: ((EventDataSource) -> Void)? = nil) {
         self.viewModel = viewModel
+        self.onCommit = onCommit
     }
-    public var onCommit: ((EventDataSource) -> Void)? = nil
     
     @Environment(\.dismiss) private var dismiss
     
@@ -61,11 +62,8 @@ public struct AddEditEventView: View {
                 Button {
                     Task {
                         if viewModel.save(), let event = viewModel.event {
-                            if let onCommit {
-                                onCommit(event)
-                            } else {
-                                dismiss()
-                            }
+                            onCommit?(event)
+                            dismiss()
                         }
                     }
                 } label: {

@@ -10,12 +10,13 @@ import AppNavigation
 import DSKit
 
 public struct AddEditEventBatchListView: View {
+    @Environment(RootNavigation.self) var navigation
+    
     @Bindable public var viewModel: AddEditEventBatchListViewModel
 
     public init(viewModel: AddEditEventBatchListViewModel) {
         self.viewModel = viewModel
     }
-    @Environment(RootNavigation.self) var navigation
 
     public var body: some View {
         List {

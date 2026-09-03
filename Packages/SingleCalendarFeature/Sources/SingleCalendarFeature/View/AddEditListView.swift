@@ -7,9 +7,12 @@
 
 import SwiftUI
 import DSKit
+import CorePersistence
+import AppNavigation
 
 public struct AddEditListView: View {
     @Bindable public var viewModel: AddEditListViewModel
+    @Environment(RootNavigation.self) private var navigation
 
     public init(viewModel: AddEditListViewModel) {
         self.viewModel = viewModel
@@ -22,6 +25,13 @@ public struct AddEditListView: View {
                     Button(
                         action: {
                             viewModel.prepareAddEditViewModel(with: event)
+                            navigation.goTo(.eventEditor(EventEditorSource(
+                                id: event.id,
+                                name: event.name,
+                                date: event.date,
+                                color: event.color,
+                                timestamp: event.timestamp
+                            )))
                         },
                         label: {
                             HStack(spacing: 12) {
@@ -47,27 +57,6 @@ public struct AddEditListView: View {
         .scrollContentBackground(.hidden)
         .scrollDismissesKeyboard(.interactively)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .navigationDestination(item: $viewModel.editingEvent) { _ in
-            var view = AddEditEventView(viewModel: viewModel.addEditEventModel)
-            view.onCommit = { event in
-                viewModel.apply(with: event)
-                viewModel.editingEvent = nil
-                viewModel.addEditEventModel.reset()
-            }
-            return view
-        }
-        .onChange(of: viewModel.editingEvent) { _, newValue in
-            if newValue == nil {
-                // Handles swipe-back/cancel without Save, or as fallback
-                // if onCommit wasn't invoked. commitPendingEventIfNeeded is safe
-                // to call multiple times (it clears after first apply).
-                if viewModel.addEditEventModel.event != nil {
-                    viewModel.commitPendingEventIfNeeded()
-                } else {
-                    viewModel.addEditEventModel.reset()
-                }
-            }
-        }
     }
 }
 

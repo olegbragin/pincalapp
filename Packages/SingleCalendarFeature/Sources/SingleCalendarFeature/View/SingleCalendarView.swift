@@ -24,14 +24,13 @@ public struct SingleCalendarView: View {
         ZStack {
             SingleCalendarStateView(state: viewModel.state) {
                 AnyView(
-                    SingleCalendarFrameView {
-                        SingleCalendarCalendarContent(
-                            isMultiSelect: viewModel.daySelectionManager.selectionMode == .multiple,
-                            selectedColor: $viewModel.selectedColor,
-                            isColorPickerDisabled: viewModel.isColorPickerDisabled,
-                            yearModel: viewModel.yearModel
-                        )
-                    }
+                    SingleCalendarCalendarContent(
+                        isMultiSelect: viewModel.daySelectionManager.selectionMode == .multiple,
+                        selectedColor: $viewModel.selectedColor,
+                        isColorPickerDisabled: viewModel.isColorPickerDisabled,
+                        yearModel: viewModel.yearModel
+                    )
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .onChange(of: viewModel.yearModel.numberOfColumns) {
                         if $0 != $1 {
                             scheduleColumnCountSave()
@@ -65,12 +64,21 @@ public struct SingleCalendarView: View {
                         viewModel: viewModel.addEditBatchListViewModel.addEditEventBatchModel,
                         onCommit: { viewModel.commitPendingBatch() }
                     )
+                case .eventEditor:
+                    let listVM = viewModel.addEditBatchListViewModel.addEditEventBatchModel.addEditListViewModel
+                    AddEditEventView(
+                        viewModel: listVM.addEditEventModel,
+                        onCommit: { committed in
+                            listVM.apply(with: committed)
+                            listVM.addEditEventModel.reset()
+                        }
+                    )
                 case .calendar:
-                    EmptyView() // Not pushed, handled by split view
+                    EmptyView()
                 case .addCalendar:
-                    EmptyView() // Not pushed, presented as sheet
+                    EmptyView()
                 case .sidebar:
-                    EmptyView() // Not pushed, handled by split view sidebar
+                    EmptyView()
                 }
             }
         }

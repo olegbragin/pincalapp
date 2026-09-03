@@ -120,7 +120,6 @@ struct EventBatchCreationTests {
         
         viewModel.prepareAddEditViewModel(with: viewModel.events[0])
         
-        #expect(viewModel.editingEvent != nil)
         #expect(viewModel.addEditEventModel.eventName == "Event1")
         #expect(viewModel.addEditEventModel.selectedColor == .option2)
         #expect(viewModel.addEditEventModel.selectedDate == viewModel.events[0].date)

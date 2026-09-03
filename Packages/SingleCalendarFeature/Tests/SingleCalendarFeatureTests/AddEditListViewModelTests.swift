@@ -161,7 +161,6 @@ struct AddEditListViewModelTests {
         vm.reset()
 
         #expect(vm.events.isEmpty)
-        #expect(vm.editingEvent == nil)
         #expect(vm.selectedDay == nil)
     }
 }
