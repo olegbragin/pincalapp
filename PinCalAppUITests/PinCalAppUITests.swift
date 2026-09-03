@@ -77,16 +77,15 @@ final class PinCalAppUITests: XCTestCase {
     private func dayIdentifier(day: Int) -> String {
         let calendar = Calendar.current
         let now = Date()
-        let components = DateComponents(
-            year: calendar.component(.year, from: now),
-            month: calendar.component(.month, from: now),
-            day: day
-        )
+        let year = calendar.component(.year, from: now)
+        let month = calendar.component(.month, from: now)
+        let components = DateComponents(year: year, month: month, day: day)
         let date = calendar.date(from: components)!
         let formatter = DateFormatter()
         formatter.dateFormat = "yyyy-MM-dd"
         formatter.locale = Locale(identifier: "en_US_POSIX")
-        return "day-\(formatter.string(from: date))"
+        let gridMonth = String(format: "%02d", month)
+        return "day-\(gridMonth)-\(formatter.string(from: date))"
     }
 
     @MainActor
@@ -217,5 +216,115 @@ final class PinCalAppUITests: XCTestCase {
         // The renamed calendar should be visible.
         let renamed = app.staticTexts["Renamed"].firstMatch
         XCTAssertTrue(renamed.waitForExistence(timeout: 5), "Calendar should show the new name after saving")
+    }
+
+    // MARK: - Batch list keeps a batch after its anchor day's event is removed
+
+    @MainActor
+    func testBatchListStillShowsBatchAfterRemovingAnchorDay() throws {
+        let app = XCUIApplication()
+        app.launchArguments = ["-UITestSeedData"]
+        app.launch()
+
+        openCalendarsList(app)
+        app.staticTexts["UI Test Calendar"].firstMatch.tap()
+
+        // The seeded calendar has "Women Cycle" on days 10 and 12, so we anchor
+        // a fresh batch on an empty day (11) and add events on 12 and 13.
+        let anchorDay = dayIdentifier(day: 11)
+        let addDay1 = dayIdentifier(day: 12)
+        let addDay2 = dayIdentifier(day: 13)
+        let editorCalendar = app.descendants(matching: .any).matching(identifier: "batch-editor-calendar").firstMatch
+        let saveButton = app.buttons["batch-save-button"]
+
+        // Tap the empty day and create a batch anchored there with two more days.
+        app.descendants(matching: .any).matching(identifier: anchorDay).firstMatch.tap()
+        let nameField = app.textFields["batch-name-field"]
+        XCTAssertTrue(nameField.waitForExistence(timeout: 5), "Batch editor should open for an empty day")
+        nameField.tap()
+        nameField.typeText("Cycle")
+
+        editorCalendar.descendants(matching: .any).matching(identifier: addDay1).firstMatch.tap()
+        editorCalendar.descendants(matching: .any).matching(identifier: addDay2).firstMatch.tap()
+        saveButton.tap()
+        XCTAssertTrue(editorCalendar.waitForNonExistence(timeout: 5), "Batch editor should dismiss after Save")
+
+        // Re-open the anchor day: the batch list must contain the batch.
+        app.descendants(matching: .any).matching(identifier: anchorDay).firstMatch.tap()
+        let cycle = app.staticTexts["Cycle"]
+        XCTAssertTrue(cycle.waitForExistence(timeout: 5), "Batch list should contain the batch")
+
+        // Open the batch, remove the anchor day's event, save.
+        cycle.tap()
+        XCTAssertTrue(saveButton.waitForExistence(timeout: 5), "Batch editor should open for the existing batch")
+        editorCalendar.descendants(matching: .any).matching(identifier: anchorDay).firstMatch.tap()
+        saveButton.tap()
+        XCTAssertTrue(editorCalendar.waitForNonExistence(timeout: 5), "Batch editor should dismiss after Save")
+
+        // Bug: the batch list must still contain the batch (events remain on 12 & 13).
+        XCTAssertTrue(cycle.waitForExistence(timeout: 5),
+                      "Batch list should still contain the batch after removing the anchor day")
+    }
+
+    // MARK: - Removing the anchor day must uncolor it on the single calendar view
+
+    @MainActor
+    func testRemovingAnchorDayUncolorsItOnCalendar() throws {
+        let app = XCUIApplication()
+        app.launchArguments = ["-UITestSeedData"]
+        app.launch()
+
+        openCalendarsList(app)
+        app.staticTexts["UI Test Calendar"].firstMatch.tap()
+
+        let anchorDay = dayIdentifier(day: 11)
+        let addDay1 = dayIdentifier(day: 12)
+        let addDay2 = dayIdentifier(day: 13)
+        let editorCalendar = app.descendants(matching: .any).matching(identifier: "batch-editor-calendar").firstMatch
+        let saveButton = app.buttons["batch-save-button"]
+
+        // Create a batch anchored at day 11 with events on 12 & 13.
+        app.descendants(matching: .any).matching(identifier: anchorDay).firstMatch.tap()
+        let nameField = app.textFields["batch-name-field"]
+        XCTAssertTrue(nameField.waitForExistence(timeout: 5), "Batch editor should open for an empty day")
+        nameField.tap()
+        nameField.typeText("Cycle")
+        editorCalendar.descendants(matching: .any).matching(identifier: addDay1).firstMatch.tap()
+        editorCalendar.descendants(matching: .any).matching(identifier: addDay2).firstMatch.tap()
+        saveButton.tap()
+        XCTAssertTrue(editorCalendar.waitForNonExistence(timeout: 5), "Batch editor should dismiss after Save")
+
+        // The anchor day is marked right after creation (it has an event).
+        let dayEl = app.descendants(matching: .any).matching(identifier: anchorDay).firstMatch
+        XCTAssertTrue(dayEl.waitForExistence(timeout: 5), "Anchor day should be visible on the calendar")
+        XCTAssertTrue(dayEl.label.lowercased().contains("event"),
+                      "Anchor day should be marked after creation; label = \(dayEl.label)")
+
+        // Open the batch, remove the anchor day's event, save.
+        app.descendants(matching: .any).matching(identifier: anchorDay).firstMatch.tap()
+        let cycle = app.staticTexts["Cycle"]
+        XCTAssertTrue(cycle.waitForExistence(timeout: 5), "Batch list should contain the batch")
+        cycle.tap()
+        XCTAssertTrue(saveButton.waitForExistence(timeout: 5), "Batch editor should open")
+        editorCalendar.descendants(matching: .any).matching(identifier: anchorDay).firstMatch.tap()
+        saveButton.tap()
+        XCTAssertTrue(editorCalendar.waitForNonExistence(timeout: 5), "Batch editor should dismiss after Save")
+
+        // Pop back to the single calendar view.
+        let back = app.buttons["Back"].exists ? app.buttons["Back"] : app.buttons["BackButton"]
+        XCTAssertTrue(back.waitForExistence(timeout: 3), "Batch list back button should exist")
+        back.tap()
+
+        // The anchor day must no longer be marked (its event was removed).
+        let dayAfter = app.descendants(matching: .any).matching(identifier: anchorDay).firstMatch
+        XCTAssertTrue(dayAfter.waitForExistence(timeout: 5), "Anchor day should still be visible")
+        XCTAssertFalse(dayAfter.label.lowercased().contains("event"),
+                       "Anchor day must NOT be marked after removing its event; label = \(dayAfter.label)")
+
+        // Days that still have events must remain marked.
+        let day12 = app.descendants(matching: .any).matching(identifier: addDay1).firstMatch
+        XCTAssertTrue(day12.waitForExistence(timeout: 5))
+        XCTAssertTrue(day12.label.lowercased().contains("event"),
+                      "Day 12 should remain marked; label = \(day12.label)")
     }
 }
