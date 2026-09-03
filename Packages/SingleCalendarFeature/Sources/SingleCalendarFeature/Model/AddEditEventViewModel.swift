@@ -38,6 +38,15 @@ public final class AddEditEventViewModel {
         return true
     }
     
+    func update(from event: EventDataSource) {
+        eventId = event.id
+        eventName = event.name
+        selectedColor = PCColorOption(event.color)
+        selectedDate = event.date
+        timestamp = event.timestamp
+        selectedDayToShowEvents = event.date
+    }
+    
     func reset() {
         selectedDayToShowEvents = nil
 

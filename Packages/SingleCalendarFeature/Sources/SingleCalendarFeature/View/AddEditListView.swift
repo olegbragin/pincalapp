@@ -24,7 +24,6 @@ public struct AddEditListView: View {
                 PCCard {
                     Button(
                         action: {
-                            viewModel.prepareAddEditViewModel(with: event)
                             navigation.goTo(.eventEditor(EventEditorSource(
                                 id: event.id,
                                 name: event.name,

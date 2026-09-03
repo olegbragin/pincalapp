@@ -10,12 +10,16 @@ import DSKit
 import CorePersistence
 
 public struct AddEditEventView: View {
-    @Bindable public var viewModel: AddEditEventViewModel
+    @State private var viewModel = AddEditEventViewModel()
     public var onCommit: ((EventDataSource) -> Void)?
 
-    public init(viewModel: AddEditEventViewModel, onCommit: ((EventDataSource) -> Void)? = nil) {
-        self.viewModel = viewModel
+    public init(event: EventDataSource, onCommit: ((EventDataSource) -> Void)? = nil) {
         self.onCommit = onCommit
+        _viewModel = State(initialValue: {
+            let vm = AddEditEventViewModel()
+            vm.update(from: event)
+            return vm
+        }())
     }
     
     @Environment(\.dismiss) private var dismiss

@@ -64,13 +64,18 @@ public struct SingleCalendarView: View {
                         viewModel: viewModel.addEditBatchListViewModel.addEditEventBatchModel,
                         onCommit: { viewModel.commitPendingBatch() }
                     )
-                case .eventEditor:
+                case .eventEditor(let source):
                     let listVM = viewModel.addEditBatchListViewModel.addEditEventBatchModel.addEditListViewModel
                     AddEditEventView(
-                        viewModel: listVM.addEditEventModel,
+                        event: EventDataSource(
+                            id: source.id,
+                            name: source.name,
+                            date: source.date,
+                            color: source.color,
+                            timestamp: source.timestamp
+                        ),
                         onCommit: { committed in
                             listVM.apply(with: committed)
-                            listVM.addEditEventModel.reset()
                         }
                     )
                 case .calendar:
