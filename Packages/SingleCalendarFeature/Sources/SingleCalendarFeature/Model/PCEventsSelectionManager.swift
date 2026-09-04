@@ -19,12 +19,17 @@ import Observation
 public final class PCEventsSelectionManager {
     private(set) var events: [EventDataSource] = []
 
+    /// Calendar used for all "is the same day" comparisons. Injected so the
+    /// manager doesn't silently depend on the process calendar.
+    private let calendar: Calendar
+
     /// Invoked whenever a mutation that should refresh the calendar markers
     /// happens (e.g. `apply`, `removeEvents`).
     var onEventsChanged: (() -> Void)?
 
-    public init(events: [EventDataSource] = []) {
+    public init(events: [EventDataSource] = [], calendar: Calendar = .autoupdatingCurrent) {
         self.events = events
+        self.calendar = calendar
     }
 
     func prepare(with events: [EventDataSource]) {
@@ -37,7 +42,7 @@ public final class PCEventsSelectionManager {
 
     func hasEvent(on date: Date) -> Bool {
         events.contains {
-            Calendar.current.isDate($0.date, inSameDayAs: date)
+            calendar.isDate($0.date, inSameDayAs: date)
         }
     }
 
@@ -48,7 +53,7 @@ public final class PCEventsSelectionManager {
 
     func removeEvent(on date: Date) {
         events.removeAll {
-            Calendar.current.isDate($0.date, inSameDayAs: date)
+            calendar.isDate($0.date, inSameDayAs: date)
         }
     }
 

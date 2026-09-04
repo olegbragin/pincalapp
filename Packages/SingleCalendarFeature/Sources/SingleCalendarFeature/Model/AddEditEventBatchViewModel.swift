@@ -35,7 +35,10 @@ public final class AddEditEventBatchViewModel {
     }
 
     var yearModel = PCCalendarYearModel()
-    private let dataProvider = PCCalendarDataProvider()
+    /// Provides the month/week data used to build the calendar. Injected so the
+    /// view model doesn't implicitly construct (or depend on) the concrete
+    /// provider and can be given a deterministic one in tests.
+    private let dataProvider: PCCalendarDataProvider
     private var builtCalendarYear: Int?
 
     var preferredTitle: String? {
@@ -48,10 +51,12 @@ public final class AddEditEventBatchViewModel {
 
     init(
         eventsSelectionManager: PCEventsSelectionManager,
-        daySelectionManager: PCCalendarDaySelectionManager
+        daySelectionManager: PCCalendarDaySelectionManager,
+        dataProvider: PCCalendarDataProvider = PCCalendarDataProvider()
     ) {
         self.eventsSelectionManager = eventsSelectionManager
         self.daySelectionManager = daySelectionManager
+        self.dataProvider = dataProvider
         eventsSelectionManager.onEventsChanged = { [weak self] in
             self?.refreshCalendarDays()
         }
@@ -120,13 +125,14 @@ public final class AddEditEventBatchViewModel {
     }
 
     private var calendarYear: Int {
+        let calendar = Calendar.autoupdatingCurrent
         if let firstEventDate = eventsSelectionManager.events.map(\.date).min() {
-            return Calendar.current.component(.year, from: firstEventDate)
+            return calendar.component(.year, from: firstEventDate)
         }
         if let date {
-            return Calendar.current.component(.year, from: date)
+            return calendar.component(.year, from: date)
         }
-        return Calendar.current.component(.year, from: Date())
+        return calendar.component(.year, from: Date())
     }
 
     private func updateYearModel() {
