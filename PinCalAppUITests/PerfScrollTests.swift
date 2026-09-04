@@ -12,7 +12,7 @@ final class PerfScrollTests: XCTestCase {
     @MainActor
     func testScrollYearCalendarAndBatchEditor() throws {
         let app = XCUIApplication()
-        app.launchArguments = ["-UITestSeedData"]
+        app.launchArguments = ["-UITestSeedData", "-UITestColumns", "1"]
         app.launch()
 
         if app.buttons["sidebar-calendars"].waitForExistence(timeout: 2) {

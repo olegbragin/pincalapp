@@ -26,12 +26,7 @@ public struct PCCalendarYearView: View {
     private static let minMonthWidth: CGFloat = minMonthCellSize * 7
     
     private static func maxColumns(forWidth width: CGFloat) -> Int {
-        // Allow the column count to scale down with the available width. The
-        // previous hard `3` floor forced tiny, hard-to-tap day cells (≈17pt)
-        // whenever the split-view detail column was narrow, and the reported
-        // frames of those micro-cells didn't line up with the actual hit
-        // regions — making day taps land on the wrong (adjacent-month) cell.
-        max(1, Int(floor(width / minMonthWidth)))
+        max(3, Int(floor(width / minMonthWidth)))
     }
     
     public var body: some View {

@@ -21,7 +21,7 @@ final class PinCalAppUITests: XCTestCase {
     @MainActor
     func testEditingBatchRemovesToggledOffEventsFromCalendar() throws {
         let app = XCUIApplication()
-        app.launchArguments = ["-UITestSeedData"]
+        app.launchArguments = ["-UITestSeedData", "-UITestColumns", "1"]
         app.launch()
 
         // Navigate: sidebar → Calendars → calendar
@@ -87,7 +87,7 @@ final class PinCalAppUITests: XCTestCase {
     @MainActor
     func testNavigationToCalendarAndBack() throws {
         let app = XCUIApplication()
-        app.launchArguments = ["-UITestSeedData"]
+        app.launchArguments = ["-UITestSeedData", "-UITestColumns", "1"]
         app.launch()
 
         // Navigate to the calendar list via sidebar.
@@ -117,7 +117,7 @@ final class PinCalAppUITests: XCTestCase {
     @MainActor
     func testiPadSidebarSelectsDetailCalendar() throws {
         let app = XCUIApplication()
-        app.launchArguments = ["-UITestSeedData"]
+        app.launchArguments = ["-UITestSeedData", "-UITestColumns", "1"]
         app.launch()
 
         // Navigate to the calendar list via sidebar (iPad shows sidebar; iPhone skips to content).
@@ -166,7 +166,7 @@ final class PinCalAppUITests: XCTestCase {
     @MainActor
     func testCalendarNameEditingKeyboardScroll() throws {
         let app = XCUIApplication()
-        app.launchArguments = ["-UITestSeedData"]
+        app.launchArguments = ["-UITestSeedData", "-UITestColumns", "1"]
         app.launch()
 
         // Navigate to the calendar list via sidebar.
@@ -219,7 +219,7 @@ final class PinCalAppUITests: XCTestCase {
     @MainActor
     func testBatchListStillShowsBatchAfterRemovingAnchorDay() throws {
         let app = XCUIApplication()
-        app.launchArguments = ["-UITestSeedData"]
+        app.launchArguments = ["-UITestSeedData", "-UITestColumns", "1"]
         app.launch()
 
         openCalendarsList(app)
@@ -267,7 +267,7 @@ final class PinCalAppUITests: XCTestCase {
     @MainActor
     func testRemovingAnchorDayUncolorsItOnCalendar() throws {
         let app = XCUIApplication()
-        app.launchArguments = ["-UITestSeedData"]
+        app.launchArguments = ["-UITestSeedData", "-UITestColumns", "1"]
         app.launch()
 
         openCalendarsList(app)
@@ -329,7 +329,7 @@ final class PinCalAppUITests: XCTestCase {
     @MainActor
     func testRemovingAllBatchesReturnsToSingleCalendar() throws {
         let app = XCUIApplication()
-        app.launchArguments = ["-UITestSeedData"]
+        app.launchArguments = ["-UITestSeedData", "-UITestColumns", "1"]
         app.launch()
 
         openCalendarsList(app)
@@ -373,7 +373,7 @@ final class PinCalAppUITests: XCTestCase {
     @MainActor
     func testRemovingAllEventsFromBatchDeletesItAndReturnsToCalendar() throws {
         let app = XCUIApplication()
-        app.launchArguments = ["-UITestSeedData"]
+        app.launchArguments = ["-UITestSeedData", "-UITestColumns", "1"]
         app.launch()
 
         openCalendarsList(app)
@@ -408,7 +408,7 @@ final class PinCalAppUITests: XCTestCase {
     @MainActor
     func testDeletingAllEventsFromBatchEditorListDeletesBatch() throws {
         let app = XCUIApplication()
-        app.launchArguments = ["-UITestSeedData"]
+        app.launchArguments = ["-UITestSeedData", "-UITestColumns", "1"]
         app.launch()
 
         openCalendarsList(app)
