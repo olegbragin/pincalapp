@@ -7,12 +7,14 @@
 
 import SwiftUI
 import DSKit
+import AppNavigation
 
 public struct AddEditEventBatchScreen: View {
     @Bindable public var viewModel: AddEditEventBatchViewModel
 
     public var onCommit: (() -> Void)? = nil
     @Environment(\.dismiss) private var dismiss
+    @Environment(RootNavigation.self) private var navigation
 
     public init(viewModel: AddEditEventBatchViewModel, onCommit: (() -> Void)? = nil) {
         self.viewModel = viewModel
@@ -47,8 +49,15 @@ public struct AddEditEventBatchScreen: View {
 
     private func save() {
         if viewModel.save() {
+            let batchDeleted = viewModel.eventBatch?.events.isEmpty == true
             onCommit?()
-            dismiss()
+            if batchDeleted {
+                // Every event was removed, so the batch no longer exists.
+                // Return straight to the single calendar view.
+                navigation.popToRoot()
+            } else {
+                dismiss()
+            }
         }
     }
 }
@@ -59,5 +68,6 @@ public struct AddEditEventBatchScreen: View {
             viewModel: .init(events: [.init(name: "1", date: Date(), color: "eventColorOption1")])
         )
     }
+    .environment(RootNavigation())
     .environment(PCKeyboardState())
 }

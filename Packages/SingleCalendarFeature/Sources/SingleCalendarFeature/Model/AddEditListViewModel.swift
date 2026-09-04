@@ -72,6 +72,13 @@ public final class AddEditListViewModel {
             Calendar.current.isDate($0.date, inSameDayAs: date)
         }
     }
+
+    /// Removes the events at the given indices (used by the List's edit-mode
+    /// delete/`onDelete`), then notifies listeners so the calendar refreshes.
+    func removeEvents(at indexSet: IndexSet) {
+        indexSet.sorted(by: >).forEach { events.remove(at: $0) }
+        onEventsChanged?()
+    }
     
     func hasEvent(on date: Date) -> Bool {
         events.contains {

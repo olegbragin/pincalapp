@@ -52,10 +52,16 @@ public struct AddEditListView: View {
                 .listRowBackground(Color.clear)
                 .listRowSeparator(.hidden)
             }
+            .onDelete(perform: deleteEvents)
         }
+        .environment(\.editMode, .constant(.active))
         .scrollContentBackground(.hidden)
         .scrollDismissesKeyboard(.interactively)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private func deleteEvents(at offsets: IndexSet) {
+        viewModel.removeEvents(at: offsets)
     }
 }
 

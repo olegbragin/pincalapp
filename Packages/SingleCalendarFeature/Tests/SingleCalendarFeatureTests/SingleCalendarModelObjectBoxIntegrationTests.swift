@@ -205,14 +205,21 @@ struct SingleCalendarModelObjectBoxIntegrationTests {
         #expect(batchList.eventBatches[0].events.count == 2)
 
         // Path B: exactly one batch with two events is persisted (no duplicates).
-        #expect(try await waitForBatchCount(1, in: store))
-        try await Task.sleep(for: .milliseconds(300))
+        #expect(try await waitForStoreCondition(store) {
+            let batchCount = try batchBox.all().count
+            let eventCount = try eventBox.all().count
+            return batchCount == 1 && eventCount == 2
+        })
         #expect(try batchBox.all().count == 1)
         #expect(try eventBox.all().count == 2)
 
         // Idempotency: later pop to root (resetSelectedDays) must not duplicate.
         model.resetSelectedDays()
-        try await Task.sleep(for: .milliseconds(300))
+        #expect(try await waitForStoreCondition(store) {
+            let batchCount = try batchBox.all().count
+            let eventCount = try eventBox.all().count
+            return batchCount == 1 && eventCount == 2
+        })
         #expect(try batchBox.all().count == 1)
         #expect(try eventBox.all().count == 2)
     }

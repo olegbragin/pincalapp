@@ -43,6 +43,12 @@ public struct SingleCalendarView: View {
                     .onChange(of: viewModel.addEditBatchListViewModel.eventBatchesToDelete) {
                         if $0 != $1 {
                             viewModel.deleteBatches($1, for: viewModel.calendarid)
+                            // Once every batch for the day is gone, go straight
+                            // back to the single calendar view.
+                            if viewModel.addEditBatchListViewModel.eventBatches.isEmpty {
+                                navigation.popToRoot()
+                                navigation.goTo(.calendar(viewModel.calendarid))
+                            }
                         }
                     }
                 )

@@ -114,6 +114,26 @@ struct AddEditListViewModelTests {
         #expect(vm.events.isEmpty)
     }
 
+    @Test("removeEvents removes events by index and notifies")
+    func removeEventsByIndexSet() {
+        var changeCount = 0
+        let vm = AddEditListViewModel(events: [
+            EventDataSource(name: "A", date: day(2026, 6, 1), color: "eventColorOption1"),
+            EventDataSource(name: "B", date: day(2026, 6, 2), color: "eventColorOption1"),
+            EventDataSource(name: "C", date: day(2026, 6, 3), color: "eventColorOption1")
+        ])
+        vm.onEventsChanged = { changeCount += 1 }
+
+        vm.removeEvents(at: IndexSet(integer: 1))
+
+        #expect(vm.events.map(\.name) == ["A", "C"])
+        #expect(changeCount == 1)
+
+        vm.removeEvents(at: IndexSet(integer: 0))
+
+        #expect(vm.events.map(\.name) == ["C"])
+    }
+
     @Test("hasEvent reports presence on the same calendar day")
     func hasEventOnDay() {
         let vm = AddEditListViewModel(events: [
