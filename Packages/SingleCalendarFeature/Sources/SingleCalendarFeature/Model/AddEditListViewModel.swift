@@ -12,64 +12,57 @@ import Observation
 @MainActor
 @Observable
 public final class AddEditListViewModel {
-    private(set) var events = [EventDataSource]()
+    /// Shared events store. `PCEventsSelectionManager` owns the data; this view
+    /// model is a thin adapter over it (kept for call sites that expect a list
+    /// view model).
+    let eventsSelectionManager: PCEventsSelectionManager
+
     private(set) var selectedDay: Date?
-    
-    var onEventsChanged: (() -> Void)?
-    
-    init(events: [EventDataSource] = [EventDataSource]()) {
-        self.events = events
-    }
-    
-    func prepare(with events: [EventDataSource]) {
-        self.events = events
-            .sorted(by: { $0.date < $1.date })
-            .map { event in
-                event.timestamp == nil ? event.withTimestamp(UUID()) : event
-            }
-    }
-    
-    func apply(with event: EventDataSource) {
-        if let indexToReplace = events.firstIndex(where: { $0.timestamp == event.timestamp }) {
-            events[indexToReplace] = event
-        } else if event.id != 0, let indexToReplace = events.firstIndex(where: { $0.id == event.id }) {
-            events[indexToReplace] = event
-        } else {
-            events.append(event)
-        }
-        onEventsChanged?()
-    }
-    
-    func addEvent(_ event: EventDataSource) {
-        events.append(event.withTimestamp(UUID()))
-        events.sort(by: { $0.date < $1.date })
-    }
-    
-    func removeEvent(on date: Date) {
-        events.removeAll {
-            Calendar.current.isDate($0.date, inSameDayAs: date)
-        }
+
+    var onEventsChanged: (() -> Void)? {
+        didSet { eventsSelectionManager.onEventsChanged = onEventsChanged }
     }
 
-    /// Removes the events at the given indices (used by the List's edit-mode
-    /// delete/`onDelete`), then notifies listeners so the calendar refreshes.
+    var events: [EventDataSource] { eventsSelectionManager.events }
+
+    init(eventsSelectionManager: PCEventsSelectionManager) {
+        self.eventsSelectionManager = eventsSelectionManager
+    }
+
+    convenience init(events: [EventDataSource] = []) {
+        self.init(eventsSelectionManager: PCEventsSelectionManager(events: events))
+    }
+
+    func prepare(with events: [EventDataSource]) {
+        eventsSelectionManager.prepare(with: events)
+    }
+
+    func apply(with event: EventDataSource) {
+        eventsSelectionManager.apply(event)
+    }
+
+    func addEvent(_ event: EventDataSource) {
+        eventsSelectionManager.addEvent(event)
+    }
+
+    func removeEvent(on date: Date) {
+        eventsSelectionManager.removeEvent(on: date)
+    }
+
     func removeEvents(at indexSet: IndexSet) {
-        indexSet.sorted(by: >).forEach { events.remove(at: $0) }
-        onEventsChanged?()
+        eventsSelectionManager.removeEvents(at: indexSet)
     }
-    
+
     func hasEvent(on date: Date) -> Bool {
-        events.contains {
-            Calendar.current.isDate($0.date, inSameDayAs: date)
-        }
+        eventsSelectionManager.hasEvent(on: date)
     }
-    
+
     func recolorAll(to colorName: String) {
-        events = events.map { $0.withColor(colorName) }
+        eventsSelectionManager.recolorAll(to: colorName)
     }
-    
+
     func reset() {
-        events = []
+        eventsSelectionManager.reset()
         selectedDay = nil
     }
 }

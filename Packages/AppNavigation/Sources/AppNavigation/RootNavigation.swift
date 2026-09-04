@@ -37,7 +37,10 @@ public class RootNavigation {
             }
             
         // MARK: - Open (split-view detail column replacement)
-        case .calendar(let id):
+        case .calendar(let id, let toRoot):
+            if toRoot {
+                popToRoot()
+            }
             detailCalendarID = id
             preferredCompactColumn = .detail
             presentedSheet = nil
@@ -61,8 +64,10 @@ public class RootNavigation {
         presentedSheet = nil
     }
     
-    /// Clear navigation stack (pop to root)
-    public func popToRoot() {
+    /// Clear navigation stack (pop to root). Only callable internally — callers
+    /// should use `goTo(.calendar(id, toRoot: true))` to open a calendar and
+    /// return to its root in one step.
+    private func popToRoot() {
         path = NavigationPath()
     }
 }

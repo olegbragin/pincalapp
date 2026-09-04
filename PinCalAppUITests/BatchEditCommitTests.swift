@@ -41,9 +41,7 @@ final class BatchEditCommitTests: XCTestCase {
             saveButton.waitForExistence(timeout: 2),
             "Editor should be dismissed after Save"
         )
-        let backButton = app.navigationBars.firstMatch.buttons.element(boundBy: 0)
-        XCTAssertTrue(backButton.waitForExistence(timeout: 5), "Back button should be visible")
-        backButton.tap()
+        KeyboardAvoidanceTestSupport.tapBackButton(in: app)
 
         // The edited day now has events: tapping it must open the BATCH LIST,
         // not a new-batch editor. Before the fix this opened the editor because
@@ -96,9 +94,7 @@ final class BatchEditCommitTests: XCTestCase {
         batchSaveButton.tap()
 
         // Dismiss back to the calendar.
-        let backButton = app.navigationBars.firstMatch.buttons.element(boundBy: 0)
-        XCTAssertTrue(backButton.waitForExistence(timeout: 5), "Back button should be visible")
-        backButton.tap()
+        KeyboardAvoidanceTestSupport.tapBackButton(in: app)
 
         // Re-open the same batch: tap day 10 again.
         KeyboardAvoidanceTestSupport.tapDay(day: 10, in: app)
@@ -230,9 +226,7 @@ final class BatchEditCommitTests: XCTestCase {
         XCTAssertTrue(batchSaveButton.waitForExistence(timeout: 5))
         batchSaveButton.tap()
 
-        let backButton = app.navigationBars.firstMatch.buttons.element(boundBy: 0)
-        XCTAssertTrue(backButton.waitForExistence(timeout: 5))
-        backButton.tap()
+        KeyboardAvoidanceTestSupport.tapBackButton(in: app)
 
         KeyboardAvoidanceTestSupport.tapDay(day: 10, in: app)
         XCTAssertTrue(batchRow.waitForExistence(timeout: 5))

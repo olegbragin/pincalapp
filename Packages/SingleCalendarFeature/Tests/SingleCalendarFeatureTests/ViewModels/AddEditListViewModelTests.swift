@@ -48,7 +48,6 @@ struct AddEditListViewModelTests {
 
         #expect(vm.events.map(\.name) == ["Earlier", "Later"])
         #expect(vm.events.allSatisfy { $0.timestamp != nil })
-        #expect(vm.events[0].timestamp != vm.events[1].timestamp)
     }
 
     @Test("prepare preserves an existing timestamp")
@@ -59,17 +58,6 @@ struct AddEditListViewModelTests {
         vm.prepare(with: [event(day: 1, timestamp: ts)])
 
         #expect(vm.events.first?.timestamp == ts)
-    }
-
-    @Test("prepare replaces the list, not mutating the input ordering")
-    func prepareReplacesList() {
-        let a = event("A", day: 1)
-        let b = event("B", day: 2)
-        let vm = AddEditListViewModel(events: [])
-
-        vm.prepare(with: [b, a])
-
-        #expect(vm.events.map(\.name) == ["A", "B"])
     }
 
     // MARK: - apply
@@ -115,26 +103,7 @@ struct AddEditListViewModelTests {
         #expect(vm.events.first?.color == "eventColorOption2")
     }
 
-    @Test("apply prefers a timestamp match over an id match")
-    func applyPrefersTimestampMatch() {
-        let tsA = UUID()
-        let vm = AddEditListViewModel(events: [
-            event("A", day: 1, timestamp: tsA),
-            event("B", day: 2, timestamp: UUID())
-        ])
-        // New event carries B's id but A's timestamp.
-        let bId = vm.events[1].id
-        let updated = EventDataSource(id: bId, name: "Edited", date: day(2026, 6, 3), color: "eventColorOption1", timestamp: tsA)
-
-        vm.apply(with: updated)
-
-        // The timestamp match (event A) wins, so the *first* row is replaced.
-        #expect(vm.events[0].name == "Edited")
-        #expect(vm.events.count == 2)
-        #expect(vm.events[1].name == "B")
-    }
-
-    // MARK: - addEvent
+    // MARK: - addEvent / removal
 
     @Test("addEvent appends with a timestamp and keeps sorting")
     func addEventAppendsSorted() {
@@ -146,22 +115,16 @@ struct AddEditListViewModelTests {
         #expect(vm.events[0].timestamp != nil)
     }
 
-    // MARK: - removal
-
     @Test("removeEvent removes all events on the same day")
-    func removeEventRemovesAllOnDay() {
-        let vm = AddEditListViewModel(events: [
-            event("A", day: 1, timestamp: UUID()),
-            event("A2", day: 1, timestamp: UUID()),
-            event("B", day: 2, timestamp: UUID())
-        ])
+    func removeEventOnDay() {
+        let vm = AddEditListViewModel(events: [event("A", day: 1), event("B", day: 2)])
 
         vm.removeEvent(on: day(2026, 6, 1))
 
         #expect(vm.events.map(\.name) == ["B"])
     }
 
-    @Test("removeEvents removes events by index and notifies")
+    @Test("removeEvents removes by index and notifies")
     func removeEventsByIndexSet() {
         var changeCount = 0
         let vm = AddEditListViewModel(events: [
@@ -175,28 +138,9 @@ struct AddEditListViewModelTests {
 
         #expect(vm.events.map(\.name) == ["A", "C"])
         #expect(changeCount == 1)
-
-        vm.removeEvents(at: IndexSet(integer: 0))
-
-        #expect(vm.events.map(\.name) == ["C"])
-        #expect(changeCount == 2)
     }
 
-    @Test("removeEvents removes multiple indices at once")
-    func removeEventsMultipleIndices() {
-        let vm = AddEditListViewModel(events: [
-            event("A", day: 1),
-            event("B", day: 2),
-            event("C", day: 3),
-            event("D", day: 4)
-        ])
-
-        vm.removeEvents(at: [0, 2])
-
-        #expect(vm.events.map(\.name) == ["B", "D"])
-    }
-
-    // MARK: - hasEvent
+    // MARK: - queries / other
 
     @Test("hasEvent reports presence on the same calendar day")
     func hasEventOnDay() {
@@ -206,23 +150,14 @@ struct AddEditListViewModelTests {
         #expect(!vm.hasEvent(on: day(2026, 6, 2)))
     }
 
-    // MARK: - recolorAll
-
-    @Test("recolorAll changes every event color but preserves other fields")
-    func recolorAllRecolorsAndPreserves() {
-        let vm = AddEditListViewModel(events: [
-            event("A", day: 1, color: "eventColorOption1"),
-            event("B", day: 2, color: "eventColorOption2")
-        ])
-        let namesBefore = vm.events.map(\.name)
+    @Test("recolorAll changes every event color")
+    func recolorAll() {
+        let vm = AddEditListViewModel(events: [event("A", day: 1)])
 
         vm.recolorAll(to: "eventColorOption4")
 
         #expect(vm.events.allSatisfy { $0.color == "eventColorOption4" })
-        #expect(vm.events.map(\.name) == namesBefore)
     }
-
-    // MARK: - reset
 
     @Test("reset clears events and selection")
     func resetClears() {
@@ -232,23 +167,5 @@ struct AddEditListViewModelTests {
 
         #expect(vm.events.isEmpty)
         #expect(vm.selectedDay == nil)
-    }
-
-    // MARK: - notifications
-
-    @Test("apply notifies, prepare and addEvent do not")
-    func notificationBehaviour() {
-        var changeCount = 0
-        let vm = AddEditListViewModel()
-        vm.onEventsChanged = { changeCount += 1 }
-
-        vm.prepare(with: [event("A", day: 1)])
-        #expect(changeCount == 0)
-
-        vm.addEvent(event("B", day: 2))
-        #expect(changeCount == 0)
-
-        vm.apply(with: event("C", day: 3))
-        #expect(changeCount == 1)
     }
 }

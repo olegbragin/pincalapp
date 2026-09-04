@@ -54,7 +54,7 @@ public struct PCCalendarCardView: View {
                                 nameFieldFocused = true
                             }
                             .onSubmit {
-                                viewModel.confirmEdit()
+                                confirmEdit()
                             }
                             .accessibilityIdentifier("card-name-field-\(viewModel.id)")
                     } else {
@@ -73,7 +73,7 @@ public struct PCCalendarCardView: View {
                             .background(Capsule().fill(.white.opacity(0.15)))
                     } else if viewModel.isEditing {
                         Button {
-                            viewModel.confirmEdit()
+                            confirmEdit()
                         } label: {
                             Image(systemName: "checkmark")
                                 .font(.system(size: 13, weight: .semibold))
@@ -181,8 +181,16 @@ public struct PCCalendarCardView: View {
             if isFocused {
                 onNameFieldFocusedChanged?(viewModel.id, true)
             } else if viewModel.isEditing {
-                viewModel.confirmEdit()
+                confirmEdit()
             }
         }
+    }
+
+    /// Resigns focus before committing so the focused `TextField` is never
+    /// removed from the hierarchy (removing a still-focused field triggers a
+    /// UIKit `UIFocusSystem` assertion on iOS 26, which crashes the app).
+    private func confirmEdit() {
+        nameFieldFocused = false
+        viewModel.confirmEdit()
     }
 }

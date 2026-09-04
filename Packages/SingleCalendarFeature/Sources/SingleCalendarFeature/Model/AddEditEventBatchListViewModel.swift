@@ -16,11 +16,22 @@ import DSKit
 public final class AddEditEventBatchListViewModel {
     private(set) var eventBatches = [EventBatchDataSource]()
     private(set) var selectedDay: Date?
-    
-    var addEditEventBatchModel = AddEditEventBatchViewModel()
+
+    let eventsSelectionManager: PCEventsSelectionManager
+    let daySelectionManager: PCCalendarDaySelectionManager
+    var addEditEventBatchModel: AddEditEventBatchViewModel
     var eventBatchesToDelete = [EventBatchDataSource]()
     var eventBatchesSelectedToDelete = [EventBatchDataSource]()
     var isEditing = false
+
+    init() {
+        eventsSelectionManager = PCEventsSelectionManager()
+        daySelectionManager = PCCalendarDaySelectionManager()
+        addEditEventBatchModel = .init(
+            eventsSelectionManager: eventsSelectionManager,
+            daySelectionManager: daySelectionManager
+        )
+    }
 
     func removeBatches(at indexPaths: IndexSet) {
         let removedBatches = indexPaths.map { eventBatches[$0] }
@@ -41,7 +52,6 @@ public final class AddEditEventBatchListViewModel {
         addEditEventBatchModel.eventBatchName = eventBatch?.name ?? ""
         addEditEventBatchModel.selectedColor = PCColorOption(eventBatch?.colorName ?? "") ?? .option1
         addEditEventBatchModel.date = eventBatch?.date ?? (eventBatch == nil ? selectedDay : nil)
-        addEditEventBatchModel.selectedDays = selectedDay.map { [$0] } ?? []
         addEditEventBatchModel.timestamp = eventBatch?.timestamp ?? UUID()
         addEditEventBatchModel.prepare(with: eventBatch?.events ?? [])
     }

@@ -46,8 +46,7 @@ public struct SingleCalendarView: View {
                             // Once every batch for the day is gone, go straight
                             // back to the single calendar view.
                             if viewModel.addEditBatchListViewModel.eventBatches.isEmpty {
-                                navigation.popToRoot()
-                                navigation.goTo(.calendar(viewModel.calendarid))
+                                navigation.goTo(.calendar(viewModel.calendarid, toRoot: true))
                             }
                         }
                     }
@@ -68,10 +67,11 @@ public struct SingleCalendarView: View {
                 case .batchEditor:
                     AddEditEventBatchScreen(
                         viewModel: viewModel.addEditBatchListViewModel.addEditEventBatchModel,
+                        calendarId: viewModel.calendarid,
                         onCommit: { viewModel.commitPendingBatch() }
                     )
                 case .eventEditor(let source):
-                    let listVM = viewModel.addEditBatchListViewModel.addEditEventBatchModel.addEditListViewModel
+                    let selectionManager = viewModel.addEditBatchListViewModel.addEditEventBatchModel.eventsSelectionManager
                     AddEditEventView(
                         event: EventDataSource(
                             id: source.id,
@@ -81,7 +81,7 @@ public struct SingleCalendarView: View {
                             timestamp: source.timestamp
                         ),
                         onCommit: { committed in
-                            listVM.apply(with: committed)
+                            selectionManager.apply(committed)
                         }
                     )
                 case .calendar:

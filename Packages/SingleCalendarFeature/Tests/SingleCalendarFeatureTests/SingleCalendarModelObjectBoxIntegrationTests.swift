@@ -569,12 +569,12 @@ struct SingleCalendarModelObjectBoxIntegrationTests {
         batchList.prepareAddEditBatchViewModel(with: batchList.eventBatches[0])
 
         let addEdit = batchList.addEditEventBatchModel
-        let first = addEdit.addEditListViewModel.events[0]
+        let first = addEdit.eventsSelectionManager.events[0]
         let editor = AddEditEventViewModel()
         editor.update(from: first)
         editor.selectedColor = .option2
         #expect(editor.save())
-        addEdit.addEditListViewModel.apply(with: editor.event!)
+        addEdit.eventsSelectionManager.apply(editor.event!)
         #expect(addEdit.save())
         model.resetSelectedDays()
 
@@ -845,7 +845,7 @@ struct SingleCalendarModelObjectBoxIntegrationTests {
         batchList.prepareAddEditBatchViewModel(with: batchList.eventBatches[0])
         let addEdit2 = batchList.addEditEventBatchModel
         addEdit2.toggleEvent(on: day10)
-        #expect(addEdit2.addEditListViewModel.events.contains {
+        #expect(addEdit2.eventsSelectionManager.events.contains {
             Calendar.current.isDate($0.date, inSameDayAs: day10)
         } == false, "day 10 event must be removed")
 

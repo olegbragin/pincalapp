@@ -301,9 +301,8 @@ struct SingleCalendarModelTests {
         #expect(batchModel.eventBatchName == "")
         #expect(batchModel.selectedColor == .option1)
         #expect(batchModel.date == someDay)
-        #expect(batchModel.selectedDays == [someDay])
-        #expect(batchModel.addEditListViewModel.events.count == 1)
-        #expect(batchModel.addEditListViewModel.events.first?.date == someDay)
+        #expect(batchModel.eventsSelectionManager.events.count == 1)
+        #expect(batchModel.eventsSelectionManager.events.first?.date == someDay)
     }
 
     @Test("commitPendingBatch appends a brand-new batch")
@@ -317,7 +316,7 @@ struct SingleCalendarModelTests {
         let batchModel = model.addEditBatchListViewModel.addEditEventBatchModel
         batchModel.eventBatchName = "Summer"
         batchModel.selectedColor = .option1
-        batchModel.addEditListViewModel.addEvent(event("A", on: someDay))
+        batchModel.eventsSelectionManager.addEvent(event("A", on: someDay))
         #expect(batchModel.save())
 
         model.commitPendingBatch()
@@ -342,8 +341,8 @@ struct SingleCalendarModelTests {
 
         model.addEditBatchListViewModel.prepareAddEditBatchViewModel(with: original)
         let batchModel = model.addEditBatchListViewModel.addEditEventBatchModel
-        batchModel.addEditListViewModel.removeEvent(on: day1)
-        batchModel.addEditListViewModel.addEvent(event("B", on: day2))
+        batchModel.eventsSelectionManager.removeEvent(on: day1)
+        batchModel.eventsSelectionManager.addEvent(event("B", on: day2))
         #expect(batchModel.save())
 
         model.commitPendingBatch()
@@ -367,7 +366,7 @@ struct SingleCalendarModelTests {
 
         model.addEditBatchListViewModel.prepareAddEditBatchViewModel(with: original)
         let batchModel = model.addEditBatchListViewModel.addEditEventBatchModel
-        batchModel.addEditListViewModel.removeEvent(on: someDay)
+        batchModel.eventsSelectionManager.removeEvent(on: someDay)
         #expect(batchModel.save())
 
         model.commitPendingBatch()

@@ -78,13 +78,15 @@ public final class SingleCalendarModel {
             return nil
         }
 
+        let out: AppRoute
         if hasEvents(on: day) {
             prepareAddEditBatchListViewModel(with: selectedDays)
-            return .dayBatches(day)
+            out = .dayBatches(day)
         } else {
             prepareAddEditEventBatchViewModel(for: day)
-            return .batchEditor(.newDay(day))
+            out = .batchEditor(.newDay(day))
         }
+        return out
     }
     
     public init(calendarid: Int64, cache: CalendarCache) {
@@ -162,7 +164,6 @@ public final class SingleCalendarModel {
         addEditModel.eventBatchName = sortedEvents.first?.name ?? ""
         addEditModel.selectedColor = PCColorOption(sortedEvents.first?.color ?? "") ?? selectedColor
         addEditModel.date = nil
-        addEditModel.selectedDays = sortedEvents.map(\.date)
         addEditModel.timestamp = UUID()
         addEditModel.prepare(with: sortedEvents)
     }
@@ -173,7 +174,6 @@ public final class SingleCalendarModel {
         addEditModel.eventBatchName = ""
         addEditModel.selectedColor = .option1
         addEditModel.date = date
-        addEditModel.selectedDays = [date]
         addEditModel.timestamp = UUID()
         addEditModel.prepare(with: [
             EventDataSource(name: "", date: date, color: PCColorOption.option1.colorName)
