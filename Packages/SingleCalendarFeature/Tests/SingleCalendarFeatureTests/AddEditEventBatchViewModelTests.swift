@@ -19,7 +19,7 @@ struct AddEditEventBatchViewModelTests {
             EventDataSource(name: "A", date: date, color: "eventColorOption1")
         ])
 
-        #expect(vm.addEditListViewModel.events.count == 1)
+        #expect(vm.eventsSelectionManager.events.count == 1)
         #expect(vm.yearModel.months.count == 12)
         #expect(vm.yearModel.numberOfCurrentMonth > 0)
     }
@@ -85,14 +85,14 @@ struct AddEditEventBatchViewModelTests {
 
         vm.toggleEvent(on: date)
 
-        #expect(vm.addEditListViewModel.events.count == 1)
-        #expect(vm.addEditListViewModel.events.first?.name == "Trip")
-        #expect(vm.addEditListViewModel.events.first?.color == PCColorOption.option2.colorName)
+        #expect(vm.eventsSelectionManager.events.count == 1)
+        #expect(vm.eventsSelectionManager.events.first?.name == "Trip")
+        #expect(vm.eventsSelectionManager.events.first?.color == PCColorOption.option2.colorName)
         #expect(vm.daySelectionManager.selectedDays.isEmpty)
 
         vm.toggleEvent(on: date)
 
-        #expect(vm.addEditListViewModel.events.isEmpty)
+        #expect(vm.eventsSelectionManager.events.isEmpty)
     }
 
     @Test("recolorAllEvents applies the selected color to all events")
@@ -105,7 +105,7 @@ struct AddEditEventBatchViewModelTests {
 
         vm.recolorAllEvents()
 
-        #expect(vm.addEditListViewModel.events.allSatisfy { $0.color == PCColorOption.option4.colorName })
+        #expect(vm.eventsSelectionManager.events.allSatisfy { $0.color == PCColorOption.option4.colorName })
     }
 
     @Test("preferredTitle formats a single date")
@@ -158,8 +158,8 @@ struct AddEditEventBatchViewModelTests {
 
         vm.prepare(with: replacement)
 
-        #expect(vm.addEditListViewModel.events.map(\.name) == ["B"])
-        #expect(vm.addEditListViewModel.events.first?.date == newDate)
+        #expect(vm.eventsSelectionManager.events.map(\.name) == ["B"])
+        #expect(vm.eventsSelectionManager.events.first?.date == newDate)
         #expect(vm.yearModel.months.count == 12)
     }
 
@@ -178,7 +178,7 @@ struct AddEditEventBatchViewModelTests {
         #expect(vm.date == nil)
         #expect(vm.timestamp == nil)
         #expect(vm.eventBatch == nil)
-        #expect(vm.selectedDays.isEmpty)
+        #expect(vm.daySelectionManager.selectedDays.isEmpty)
         #expect(vm.yearModel.months.isEmpty)
     }
 }

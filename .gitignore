@@ -5,6 +5,9 @@
 ## User settings
 xcuserdata/
 
+## Derived data (created when building with `-derivedDataPath DerivedData`)
+DerivedData/
+
 ## Obj-C/Swift specific
 *.hmap
 

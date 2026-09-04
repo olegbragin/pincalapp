@@ -11,11 +11,11 @@ import CorePersistence
 import AppNavigation
 
 public struct AddEditListView: View {
-    @Bindable public var viewModel: AddEditListViewModel
+    @State private var viewModel: AddEditListViewModel
     @Environment(RootNavigation.self) private var navigation
 
-    public init(viewModel: AddEditListViewModel) {
-        self.viewModel = viewModel
+    public init(manager: PCEventsSelectionManager) {
+        _viewModel = State(initialValue: AddEditListViewModel(eventsSelectionManager: manager))
     }
     
     public var body: some View {
@@ -52,13 +52,20 @@ public struct AddEditListView: View {
                 .listRowBackground(Color.clear)
                 .listRowSeparator(.hidden)
             }
+            .onDelete(perform: deleteItems)
         }
+        .listStyle(.plain)
         .scrollContentBackground(.hidden)
         .scrollDismissesKeyboard(.interactively)
+        .environment(\.editMode, .constant(.active))
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private func deleteItems(offsets: IndexSet) {
+        viewModel.removeEvents(at: offsets)
     }
 }
 
 #Preview {
-    AddEditListView(viewModel: .init(events: [.init(name: "1", date: Date(), color: "eventColorOption1")]))
+    AddEditListView(manager: .init(events: [.init(name: "1", date: Date(), color: "eventColorOption1")]))
 }

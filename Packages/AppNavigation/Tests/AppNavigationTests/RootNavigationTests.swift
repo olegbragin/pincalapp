@@ -33,7 +33,7 @@ struct RootNavigationTests {
     func goToSidebarArchived() {
         let nav = RootNavigation()
         // First set a detail calendar
-        nav.goTo(.calendar(42))
+        nav.goTo(.calendar(42, toRoot: false))
         #expect(nav.detailCalendarID == 42)
         
         // Now switch to archived
@@ -48,7 +48,7 @@ struct RootNavigationTests {
     @Test("goTo calendar sets detailCalendarID and preferredCompactColumn")
     func goToCalendar() {
         let nav = RootNavigation()
-        nav.goTo(.calendar(123))
+        nav.goTo(.calendar(123, toRoot: false))
         
         #expect(nav.detailCalendarID == 123)
         #expect(nav.preferredCompactColumn == .detail)
@@ -61,7 +61,7 @@ struct RootNavigationTests {
         nav.goTo(.addCalendar)
         #expect(nav.presentedSheet == .addCalendar)
         
-        nav.goTo(.calendar(456))
+        nav.goTo(.calendar(456, toRoot: false))
         
         #expect(nav.presentedSheet == nil)
         #expect(nav.detailCalendarID == 456)
@@ -131,18 +131,20 @@ struct RootNavigationTests {
     
     // MARK: - Path Management Tests
     
-    @Test("popToRoot clears navigation path")
-    func popToRoot() {
+    @Test("calendar(toRoot: true) clears the navigation path")
+    func calendarToRootClearsPath() {
         let nav = RootNavigation()
         
         nav.goTo(.dayBatches(Date()))
         nav.goTo(.batchEditor(.newDay(Date())))
         #expect(nav.path.count == 2)
         
-        nav.popToRoot()
+        nav.goTo(.calendar(999, toRoot: true))
         
         #expect(nav.path.count == 0)
         #expect(nav.isAtRoot == true)
+        #expect(nav.detailCalendarID == 999)
+        #expect(nav.preferredCompactColumn == .detail)
     }
     
     @Test("isAtRoot is true initially")
@@ -158,11 +160,11 @@ struct RootNavigationTests {
         #expect(nav.isAtRoot == false)
     }
     
-    @Test("isAtRoot is true after popToRoot")
-    func isAtRootAfterPopToRoot() {
+    @Test("isAtRoot is true after going to root via calendar(toRoot: true)")
+    func isAtRootAfterCalendarToRoot() {
         let nav = RootNavigation()
         nav.goTo(.dayBatches(Date()))
-        nav.popToRoot()
+        nav.goTo(.calendar(999, toRoot: true))
         #expect(nav.isAtRoot == true)
     }
     
@@ -176,7 +178,7 @@ struct RootNavigationTests {
     
     @Test("AppRoute calendar has open style")
     func calendarStyle() {
-        #expect(AppRoute.calendar(1).navigationStyle == .open)
+        #expect(AppRoute.calendar(1, toRoot: false).navigationStyle == .open)
     }
     
     @Test("AppRoute dayBatches has push style")
@@ -199,9 +201,9 @@ struct RootNavigationTests {
     
     @Test("AppRoute cases are hashable and comparable")
     func appRouteHashable() {
-        let route1 = AppRoute.calendar(1)
-        let route2 = AppRoute.calendar(1)
-        let route3 = AppRoute.calendar(2)
+        let route1 = AppRoute.calendar(1, toRoot: false)
+        let route2 = AppRoute.calendar(1, toRoot: false)
+        let route3 = AppRoute.calendar(2, toRoot: false)
         
         #expect(route1 == route2)
         #expect(route1 != route3)

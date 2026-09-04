@@ -85,7 +85,7 @@ struct AddEditEventBatchListViewModelTests {
         #expect(editor.eventBatchName == "Existing")
         #expect(editor.selectedColor != nil)
         #expect(editor.date == nil)
-        #expect(editor.addEditListViewModel.events.count == 1)
+        #expect(editor.eventsSelectionManager.events.count == 1)
     }
 
     @Test("reset clears batches and editor state")

@@ -19,7 +19,7 @@ struct RootContentView: View {
                 cache: cache,
                 selectedCalendarID: selectedCalendarID,
                 onSelectCalendar: { id in
-                    navigation.goTo(.calendar(id))
+                    navigation.goTo(.calendar(id, toRoot: false))
                 }
             )
         case .archived:
@@ -28,7 +28,7 @@ struct RootContentView: View {
                 cache: cache,
                 selectedCalendarID: selectedCalendarID,
                 onSelectCalendar: { id in
-                    navigation.goTo(.calendar(id))
+                    navigation.goTo(.calendar(id, toRoot: false))
                 }
             )
         }

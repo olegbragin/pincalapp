@@ -50,22 +50,40 @@ enum KeyboardAvoidanceTestSupport {
             }
         }
         let cell = target ?? query.firstMatch
+
+        // The year grid reflows (and animates) when its column count clamps on
+        // appear/size change, so a cell's reported frame can be stale at tap
+        // time. A tap at a stale center then lands on an adjacent day (often
+        // the same cell of the neighbouring month), which is the source of
+        // flaky day taps on the iPad split view. Wait until the frame stops
+        // moving before tapping.
+        _ = stableFrame(of: cell, timeout: 4)
+
         cell.tap()
     }
 
     static func dayIdentifier(day: Int) -> String {
         let calendar = Calendar.current
         let now = Date()
-        let components = DateComponents(
-            year: calendar.component(.year, from: now),
-            month: calendar.component(.month, from: now),
-            day: day
-        )
+        let year = calendar.component(.year, from: now)
+        let month = calendar.component(.month, from: now)
+        let components = DateComponents(year: year, month: month, day: day)
         let date = calendar.date(from: components)!
         let formatter = DateFormatter()
         formatter.dateFormat = "yyyy-MM-dd"
         formatter.locale = Locale(identifier: "en_US_POSIX")
-        return "day-\(formatter.string(from: date))"
+        let gridMonth = String(format: "%02d", month)
+        return "day-\(gridMonth)-\(formatter.string(from: date))"
+    }
+
+    @MainActor
+    static func tapBackButton(in app: XCUIApplication) {
+        // iPad split-view exposes several navigation bars at once, so
+        // `navigationBars.firstMatch` resolves to the wrong bar (often the
+        // sidebar's "Hide Sidebar"). Prefer the explicit SwiftUI back button.
+        let back = app.buttons["Back"].exists ? app.buttons["Back"] : app.buttons["BackButton"]
+        XCTAssertTrue(back.waitForExistence(timeout: 5), "Back button should be visible")
+        back.tap()
     }
 
     @MainActor

@@ -44,7 +44,7 @@ public enum AppRoute: Hashable {
     case sidebar(SidebarCategory)
     
     // Split-view detail column replacements (open)
-    case calendar(Int64)
+    case calendar(Int64, toRoot: Bool)
     
     // Navigation stack pushes
     case dayBatches(Date)

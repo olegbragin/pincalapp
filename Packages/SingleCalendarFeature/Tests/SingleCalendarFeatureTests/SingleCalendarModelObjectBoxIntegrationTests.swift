@@ -205,14 +205,21 @@ struct SingleCalendarModelObjectBoxIntegrationTests {
         #expect(batchList.eventBatches[0].events.count == 2)
 
         // Path B: exactly one batch with two events is persisted (no duplicates).
-        #expect(try await waitForBatchCount(1, in: store))
-        try await Task.sleep(for: .milliseconds(300))
+        #expect(try await waitForStoreCondition(store) {
+            let batchCount = try batchBox.all().count
+            let eventCount = try eventBox.all().count
+            return batchCount == 1 && eventCount == 2
+        })
         #expect(try batchBox.all().count == 1)
         #expect(try eventBox.all().count == 2)
 
         // Idempotency: later pop to root (resetSelectedDays) must not duplicate.
         model.resetSelectedDays()
-        try await Task.sleep(for: .milliseconds(300))
+        #expect(try await waitForStoreCondition(store) {
+            let batchCount = try batchBox.all().count
+            let eventCount = try eventBox.all().count
+            return batchCount == 1 && eventCount == 2
+        })
         #expect(try batchBox.all().count == 1)
         #expect(try eventBox.all().count == 2)
     }
@@ -562,11 +569,12 @@ struct SingleCalendarModelObjectBoxIntegrationTests {
         batchList.prepareAddEditBatchViewModel(with: batchList.eventBatches[0])
 
         let addEdit = batchList.addEditEventBatchModel
-        let first = addEdit.addEditListViewModel.events[0]
-        addEdit.addEditListViewModel.prepareAddEditViewModel(with: first)
-        addEdit.addEditListViewModel.addEditEventModel.selectedColor = .option2
-        #expect(addEdit.addEditListViewModel.addEditEventModel.save())
-        addEdit.addEditListViewModel.apply(with: addEdit.addEditListViewModel.addEditEventModel.event!)
+        let first = addEdit.eventsSelectionManager.events[0]
+        let editor = AddEditEventViewModel()
+        editor.update(from: first)
+        editor.selectedColor = .option2
+        #expect(editor.save())
+        addEdit.eventsSelectionManager.apply(editor.event!)
         #expect(addEdit.save())
         model.resetSelectedDays()
 
@@ -837,7 +845,7 @@ struct SingleCalendarModelObjectBoxIntegrationTests {
         batchList.prepareAddEditBatchViewModel(with: batchList.eventBatches[0])
         let addEdit2 = batchList.addEditEventBatchModel
         addEdit2.toggleEvent(on: day10)
-        #expect(addEdit2.addEditListViewModel.events.contains {
+        #expect(addEdit2.eventsSelectionManager.events.contains {
             Calendar.current.isDate($0.date, inSameDayAs: day10)
         } == false, "day 10 event must be removed")
 

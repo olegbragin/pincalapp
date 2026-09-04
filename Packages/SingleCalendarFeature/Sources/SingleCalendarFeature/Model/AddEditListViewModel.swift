@@ -7,85 +7,62 @@
 
 import Foundation
 import CorePersistence
-import DSKit
 import Observation
 
 @MainActor
 @Observable
 public final class AddEditListViewModel {
-    private(set) var events = [EventDataSource]()
+    /// Shared events store. `PCEventsSelectionManager` owns the data; this view
+    /// model is a thin adapter over it (kept for call sites that expect a list
+    /// view model).
+    let eventsSelectionManager: PCEventsSelectionManager
+
     private(set) var selectedDay: Date?
-    
-    var onEventsChanged: (() -> Void)?
 
-    var addEditEventModel = AddEditEventViewModel()
-    
-    init(events: [EventDataSource] = [EventDataSource]()) {
-        self.events = events
+    var onEventsChanged: (() -> Void)? {
+        didSet { eventsSelectionManager.onEventsChanged = onEventsChanged }
     }
-    
+
+    var events: [EventDataSource] { eventsSelectionManager.events }
+
+    init(eventsSelectionManager: PCEventsSelectionManager) {
+        self.eventsSelectionManager = eventsSelectionManager
+    }
+
+    convenience init(events: [EventDataSource] = []) {
+        self.init(eventsSelectionManager: PCEventsSelectionManager(events: events))
+    }
+
     func prepare(with events: [EventDataSource]) {
-        self.events = events
-            .sorted(by: { $0.date < $1.date })
-            .map { event in
-                event.timestamp == nil ? event.withTimestamp(UUID()) : event
-            }
-    }
-    
-    func prepareAddEditViewModel(with event: EventDataSource) {
-        addEditEventModel.selectedDayToShowEvents = event.date
-        addEditEventModel.eventName = event.name
-        addEditEventModel.eventId = event.id
-        addEditEventModel.selectedColor = PCColorOption(event.color)
-        addEditEventModel.selectedDate = event.date
-        addEditEventModel.timestamp = event.timestamp
-    }
-    
-    func apply(with event: EventDataSource) {
-        if let indexToReplace = events.firstIndex(where: { $0.timestamp == event.timestamp }) {
-            events[indexToReplace] = event
-        } else if event.id != 0, let indexToReplace = events.firstIndex(where: { $0.id == event.id }) {
-            events[indexToReplace] = event
-        } else {
-            events.append(event)
-        }
-        onEventsChanged?()
+        eventsSelectionManager.prepare(with: events)
     }
 
-    /// Commits any pending edited event that was saved in the child editor
-    /// but not yet applied. Returns true if a pending event was committed.
-    @discardableResult
-    func commitPendingEventIfNeeded() -> Bool {
-        guard let pending = addEditEventModel.event else { return false }
-        apply(with: pending)
-        addEditEventModel.reset()
-        return true
+    func apply(with event: EventDataSource) {
+        eventsSelectionManager.apply(event)
     }
-    
+
     func addEvent(_ event: EventDataSource) {
-        events.append(event.withTimestamp(UUID()))
-        events.sort(by: { $0.date < $1.date })
+        eventsSelectionManager.addEvent(event)
     }
-    
+
     func removeEvent(on date: Date) {
-        events.removeAll {
-            Calendar.current.isDate($0.date, inSameDayAs: date)
-        }
+        eventsSelectionManager.removeEvent(on: date)
     }
-    
+
+    func removeEvents(at indexSet: IndexSet) {
+        eventsSelectionManager.removeEvents(at: indexSet)
+    }
+
     func hasEvent(on date: Date) -> Bool {
-        events.contains {
-            Calendar.current.isDate($0.date, inSameDayAs: date)
-        }
+        eventsSelectionManager.hasEvent(on: date)
     }
-    
+
     func recolorAll(to colorName: String) {
-        events = events.map { $0.withColor(colorName) }
+        eventsSelectionManager.recolorAll(to: colorName)
     }
-    
+
     func reset() {
-        events = []
+        eventsSelectionManager.reset()
         selectedDay = nil
-        addEditEventModel.reset()
     }
 }

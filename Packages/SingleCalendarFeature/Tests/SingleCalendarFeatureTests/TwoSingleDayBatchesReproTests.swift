@@ -270,11 +270,11 @@ struct TwoSingleDayBatchesReproTests {
         batchList.prepareAddEditBatchViewModel(with: existingBatch)
         addEdit = batchList.addEditEventBatchModel
         #expect(addEdit.eventBatchId != 0)
-        #expect(addEdit.addEditListViewModel.events.count == 1)
+        #expect(addEdit.eventsSelectionManager.events.count == 1)
 
         // Add another day (day 12) via toggle
         addEdit.toggleEvent(on: day12)
-        #expect(addEdit.addEditListViewModel.events.count == 2)
+        #expect(addEdit.eventsSelectionManager.events.count == 2)
 
         // Save the edited batch
         #expect(addEdit.save())

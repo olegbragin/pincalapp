@@ -42,7 +42,7 @@ public struct AddEditEventBatchView: View {
                     .font(.headline)
                     .fontWeight(.medium)
                 
-                AddEditListView(viewModel: viewModel.addEditListViewModel)
+                AddEditListView(manager: viewModel.eventsSelectionManager)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
