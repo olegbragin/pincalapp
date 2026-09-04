@@ -48,16 +48,12 @@ final class PinCalAppUITests: XCTestCase {
 
         // Save the edited batch.
         editorSave.tap()
-        // Wait for the editor sheet to fully dismiss before checking the batch list doesn't reappear.
+        // Wait for the editor to fully dismiss before checking the day is empty.
         _ = !editorSave.waitForExistence(timeout: 3)
 
-        // The editor dismisses back to the batch list. Pop back to the calendar.
-        let back = app.buttons["Back"].exists ? app.buttons["Back"] : app.buttons["BackButton"]
-        if back.waitForExistence(timeout: 3) {
-            back.tap()
-        }
-
-        XCTAssertFalse(app.staticTexts["Women Cycle"].waitForExistence(timeout: 3), "Batch list sheet should not reopen while saving")
+        // Removing every event empties the batch, so the app returns straight to
+        // the single calendar view (no empty batch list, no extra Back needed).
+        XCTAssertFalse(app.staticTexts["Women Cycle"].waitForExistence(timeout: 3), "Removed events must not reopen the batch list")
 
         // Back on the single calendar, tapping the day must NOT show the batch list again.
         let day10Again = app.descendants(matching: .any).matching(identifier: day10).firstMatch

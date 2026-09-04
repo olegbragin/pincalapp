@@ -54,9 +54,6 @@ public final class AddEditEventBatchViewModel {
     }
     
     func save() -> Bool {
-        // Ensure any pending event edit (saved in child editor but not yet
-        // applied via navigationDestination onChange) is flushed.
-        addEditListViewModel.commitPendingEventIfNeeded()
         guard
             !eventBatchName.isEmpty,
             let selectedColor

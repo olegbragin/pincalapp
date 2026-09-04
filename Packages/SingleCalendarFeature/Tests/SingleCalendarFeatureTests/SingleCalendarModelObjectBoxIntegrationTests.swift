@@ -570,10 +570,11 @@ struct SingleCalendarModelObjectBoxIntegrationTests {
 
         let addEdit = batchList.addEditEventBatchModel
         let first = addEdit.addEditListViewModel.events[0]
-        addEdit.addEditListViewModel.prepareAddEditViewModel(with: first)
-        addEdit.addEditListViewModel.addEditEventModel.selectedColor = .option2
-        #expect(addEdit.addEditListViewModel.addEditEventModel.save())
-        addEdit.addEditListViewModel.apply(with: addEdit.addEditListViewModel.addEditEventModel.event!)
+        let editor = AddEditEventViewModel()
+        editor.update(from: first)
+        editor.selectedColor = .option2
+        #expect(editor.save())
+        addEdit.addEditListViewModel.apply(with: editor.event!)
         #expect(addEdit.save())
         model.resetSelectedDays()
 

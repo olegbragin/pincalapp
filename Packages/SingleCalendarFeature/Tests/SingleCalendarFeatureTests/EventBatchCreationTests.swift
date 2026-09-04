@@ -81,10 +81,11 @@ struct EventBatchCreationTests {
         viewModel.prepare(with: [event(day: 3), event(day: 4)])
         let edited = viewModel.events[0]
         
-        viewModel.prepareAddEditViewModel(with: edited)
-        viewModel.addEditEventModel.selectedColor = .option3
-        #expect(viewModel.addEditEventModel.save())
-        viewModel.apply(with: viewModel.addEditEventModel.event!)
+        let editor = AddEditEventViewModel()
+        editor.update(from: edited)
+        editor.selectedColor = .option3
+        #expect(editor.save())
+        viewModel.apply(with: editor.event!)
         
         let colors = viewModel.events.map(\.color)
         #expect(colors[0] == "eventColorOption3")
@@ -114,20 +115,8 @@ struct EventBatchCreationTests {
         #expect(viewModel.events.allSatisfy { $0.timestamp != nil })
     }
     
-    @Test func prepareAddEditViewModelPopulatesEditor() {
-        let viewModel = AddEditListViewModel()
-        viewModel.prepare(with: [event(day: 3, color: "eventColorOption2")])
-        
-        viewModel.prepareAddEditViewModel(with: viewModel.events[0])
-        
-        #expect(viewModel.addEditEventModel.eventName == "Event1")
-        #expect(viewModel.addEditEventModel.selectedColor == .option2)
-        #expect(viewModel.addEditEventModel.selectedDate == viewModel.events[0].date)
-        #expect(viewModel.addEditEventModel.timestamp == viewModel.events[0].timestamp)
-    }
-    
     // MARK: - AddEditEventBatchViewModel
-    
+
     @Test func batchSaveCreatesBatchWithNameColorAndEvents() {
         let viewModel = AddEditEventBatchViewModel(events: [event(day: 3), event(day: 4)])
         viewModel.eventBatchName = "Women Cycle"
@@ -204,10 +193,11 @@ struct EventBatchCreationTests {
         viewModel.recolorAllEvents()
         
         let first = viewModel.addEditListViewModel.events[0]
-        viewModel.addEditListViewModel.prepareAddEditViewModel(with: first)
-        viewModel.addEditListViewModel.addEditEventModel.selectedColor = .option3
-        #expect(viewModel.addEditListViewModel.addEditEventModel.save())
-        viewModel.addEditListViewModel.apply(with: viewModel.addEditListViewModel.addEditEventModel.event!)
+        let editor = AddEditEventViewModel()
+        editor.update(from: first)
+        editor.selectedColor = .option3
+        #expect(editor.save())
+        viewModel.addEditListViewModel.apply(with: editor.event!)
         
         #expect(viewModel.save())
         
@@ -384,10 +374,11 @@ struct EventBatchCreationTests {
         addEdit.recolorAllEvents()
         
         let first = addEdit.addEditListViewModel.events[0]
-        addEdit.addEditListViewModel.prepareAddEditViewModel(with: first)
-        addEdit.addEditListViewModel.addEditEventModel.selectedColor = .option3
-        #expect(addEdit.addEditListViewModel.addEditEventModel.save())
-        addEdit.addEditListViewModel.apply(with: addEdit.addEditListViewModel.addEditEventModel.event!)
+        let editor = AddEditEventViewModel()
+        editor.update(from: first)
+        editor.selectedColor = .option3
+        #expect(editor.save())
+        addEdit.addEditListViewModel.apply(with: editor.event!)
         
         #expect(addEdit.save())
         model.resetSelectedDays()

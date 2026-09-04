@@ -7,7 +7,6 @@
 
 import Foundation
 import CorePersistence
-import DSKit
 import Observation
 
 @MainActor
@@ -17,8 +16,6 @@ public final class AddEditListViewModel {
     private(set) var selectedDay: Date?
     
     var onEventsChanged: (() -> Void)?
-
-    var addEditEventModel = AddEditEventViewModel()
     
     init(events: [EventDataSource] = [EventDataSource]()) {
         self.events = events
@@ -32,15 +29,6 @@ public final class AddEditListViewModel {
             }
     }
     
-    func prepareAddEditViewModel(with event: EventDataSource) {
-        addEditEventModel.selectedDayToShowEvents = event.date
-        addEditEventModel.eventName = event.name
-        addEditEventModel.eventId = event.id
-        addEditEventModel.selectedColor = PCColorOption(event.color)
-        addEditEventModel.selectedDate = event.date
-        addEditEventModel.timestamp = event.timestamp
-    }
-    
     func apply(with event: EventDataSource) {
         if let indexToReplace = events.firstIndex(where: { $0.timestamp == event.timestamp }) {
             events[indexToReplace] = event
@@ -50,16 +38,6 @@ public final class AddEditListViewModel {
             events.append(event)
         }
         onEventsChanged?()
-    }
-
-    /// Commits any pending edited event that was saved in the child editor
-    /// but not yet applied. Returns true if a pending event was committed.
-    @discardableResult
-    func commitPendingEventIfNeeded() -> Bool {
-        guard let pending = addEditEventModel.event else { return false }
-        apply(with: pending)
-        addEditEventModel.reset()
-        return true
     }
     
     func addEvent(_ event: EventDataSource) {
@@ -93,6 +71,5 @@ public final class AddEditListViewModel {
     func reset() {
         events = []
         selectedDay = nil
-        addEditEventModel.reset()
     }
 }
