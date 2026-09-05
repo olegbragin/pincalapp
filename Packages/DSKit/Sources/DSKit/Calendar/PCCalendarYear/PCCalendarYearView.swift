@@ -29,7 +29,7 @@ public struct PCCalendarYearView: View {
         // whenever the split-view detail column was narrow, and the reported
         // frames of those micro-cells didn't line up with the actual hit
         // regions — making day taps land on the wrong (adjacent-month) cell.
-        max(1, Int(floor(width / minMonthWidth)))
+        max(3, Int(floor(width / minMonthWidth)))
     }
     
     public var body: some View {
