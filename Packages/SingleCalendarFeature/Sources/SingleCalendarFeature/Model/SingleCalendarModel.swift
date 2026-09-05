@@ -41,7 +41,7 @@ public final class SingleCalendarModel {
 
     public var selectedColor: PCColorOption?
     
-    public private(set) var yearModel = PCCalendarYearModel()
+    public private(set) var yearModel = PCCalendarYearDataSource()
 
     public var state: State = .empty
     

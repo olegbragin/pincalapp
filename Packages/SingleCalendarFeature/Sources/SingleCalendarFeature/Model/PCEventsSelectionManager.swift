@@ -26,7 +26,7 @@ public final class PCEventsSelectionManager {
     /// The calendar shown in the batch editor. Kept here so every mutation that
     /// changes the events also refreshes the day markers, and so the calendar
     /// and the events list always agree.
-    let yearModel: PCCalendarYearModel = PCCalendarYearModel()
+    let yearModel: PCCalendarYearDataSource = PCCalendarYearDataSource()
 
     /// Calendar used for all "is the same day" comparisons. Injected so the
     /// manager doesn't silently depend on the process calendar.

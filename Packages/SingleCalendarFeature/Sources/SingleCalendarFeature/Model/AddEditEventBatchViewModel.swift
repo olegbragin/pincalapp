@@ -30,7 +30,7 @@ public final class AddEditEventBatchViewModel {
         eventsSelectionManager.daySelectionManager
     }
 
-    var yearModel: PCCalendarYearModel {
+    var yearModel: PCCalendarYearDataSource {
         eventsSelectionManager.yearModel
     }
 

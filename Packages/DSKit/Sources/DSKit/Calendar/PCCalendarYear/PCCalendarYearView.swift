@@ -10,9 +10,9 @@ import CoreDomain
 import OrderedCollections
 
 public struct PCCalendarYearView: View {
-    @Bindable var viewModel: PCCalendarYearModel
+    @Bindable var viewModel: PCCalendarYearDataSource
 
-    public init(viewModel: PCCalendarYearModel) {
+    public init(viewModel: PCCalendarYearDataSource) {
         self.viewModel = viewModel
     }
     
@@ -120,7 +120,7 @@ public struct PCCalendarYearView: View {
 private func yearViewPreview() -> some View {
     let dataProvider = PCCalendarDataProvider()
     let year = Calendar.autoupdatingCurrent.component(.year, from: Date())
-    let yearModel = PCCalendarYearModel(
+    let yearModel = PCCalendarYearDataSource(
         numberOfCurrentMonth: dataProvider.numberOfCurrentMonth,
         numberOfColumns: 2
     )

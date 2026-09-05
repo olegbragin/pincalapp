@@ -13,9 +13,9 @@ public struct SingleCalendarCalendarContent: View {
     public var isMultiSelect: Bool
     @Binding var selectedColor: PCColorOption?
     public var isColorPickerDisabled: Bool
-    public var yearModel: PCCalendarYearModel
+    public var yearModel: PCCalendarYearDataSource
 
-    public init(isMultiSelect: Bool, selectedColor: Binding<PCColorOption?>, isColorPickerDisabled: Bool, yearModel: PCCalendarYearModel) {
+    public init(isMultiSelect: Bool, selectedColor: Binding<PCColorOption?>, isColorPickerDisabled: Bool, yearModel: PCCalendarYearDataSource) {
         self.isMultiSelect = isMultiSelect
         self._selectedColor = selectedColor
         self.isColorPickerDisabled = isColorPickerDisabled
@@ -39,10 +39,10 @@ public struct SingleCalendarCalendarContent: View {
 
 @MainActor
 private struct SingleCalendarCalendarContentPreview: View {
-    private let yearModel: PCCalendarYearModel = {
+    private let yearModel: PCCalendarYearDataSource = {
         let dataProvider = PCCalendarDataProvider()
         let year = Calendar.autoupdatingCurrent.component(.year, from: Date())
-        let model = PCCalendarYearModel(
+        let model = PCCalendarYearDataSource(
             numberOfCurrentMonth: dataProvider.numberOfCurrentMonth,
             numberOfColumns: 2
         )

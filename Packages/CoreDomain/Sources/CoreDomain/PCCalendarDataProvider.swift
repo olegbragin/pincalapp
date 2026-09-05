@@ -42,8 +42,8 @@ public struct PCCalendarDataProvider {
         year: Int,
         numberOfColumns: Int,
         daySelectionManager: PCCalendarDaySelectionManager
-    ) -> PCCalendarYearModel {
-        let model = PCCalendarYearModel(
+    ) -> PCCalendarYearDataSource {
+        let model = PCCalendarYearDataSource(
             numberOfCurrentMonth: numberOfCurrentMonth,
             numberOfColumns: numberOfColumns
         )

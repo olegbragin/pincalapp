@@ -13,43 +13,30 @@ import DSKit
 
 struct CalendarDetailView: View {
     let calendarId: Int64
-    let cache: CalendarCache
-    let eventsSelectionManager: PCEventsSelectionManager
-    let daySelectionManager: PCCalendarDaySelectionManager
-    @State private var model: SingleCalendarModel
-
-    init(
-        calendarId: Int64,
-        cache: CalendarCache,
-        eventsSelectionManager: PCEventsSelectionManager,
-        daySelectionManager: PCCalendarDaySelectionManager
-    ) {
-        self.calendarId = calendarId
-        self.cache = cache
-        self.eventsSelectionManager = eventsSelectionManager
-        self.daySelectionManager = daySelectionManager
-        self._model = State(initialValue: SingleCalendarModel(
-            calendarid: calendarId,
-            cache: cache,
-            eventsSelectionManager: eventsSelectionManager,
-            daySelectionManager: daySelectionManager
-        ))
-    }
+    @Environment(PCCalendarSession.self) private var session
+    @State private var model: SingleCalendarModel?
 
     var body: some View {
-        SingleCalendarView(viewModel: model)
-            .id(calendarId)
-            .accessibilityIdentifier("calendar-detail-\(calendarId)")
-            .task(id: calendarId) {
-                if model.calendarid != calendarId {
-                    model = SingleCalendarModel(
-                        calendarid: calendarId,
-                        cache: cache,
-                        eventsSelectionManager: eventsSelectionManager,
-                        daySelectionManager: daySelectionManager
-                    )
-                }
-                await model.fetch(force: true)
+        Group {
+            if let model {
+                SingleCalendarView(viewModel: model)
+                    .id(calendarId)
+                    .accessibilityIdentifier("calendar-detail-\(calendarId)")
+            } else {
+                ProgressView()
             }
+        }
+        .task(id: calendarId) {
+            if model?.calendarid != calendarId {
+                model = SingleCalendarModel(
+                    calendarid: calendarId,
+                    cache: session.cache,
+                    dataProvider: session.dataProvider,
+                    eventsSelectionManager: session.eventsSelectionManager,
+                    daySelectionManager: session.daySelectionManager
+                )
+            }
+            await model?.fetch(force: true)
+        }
     }
 }

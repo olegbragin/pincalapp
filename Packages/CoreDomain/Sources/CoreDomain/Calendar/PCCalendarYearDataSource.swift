@@ -11,12 +11,13 @@ import CoreGraphics
 
 @MainActor
 @Observable
-public final class PCCalendarYearModel {
+public final class PCCalendarYearDataSource {
     public private(set) var internalNumberOfColumns: Int = 3
     
     public var numberOfColumns: Int {
         didSet { internalNumberOfColumns = numberOfColumns }
     }
+    
     public var maximumNumberOfColumns: Int = 3 {
         didSet {
             guard maximumNumberOfColumns != oldValue else { return }
@@ -26,6 +27,7 @@ public final class PCCalendarYearModel {
             }
         }
     }
+    
     public var numberOfCurrentMonth: Int = 0
     public var scrollTargetDate: Date?
     public var scrollPosition: CGFloat = 0
