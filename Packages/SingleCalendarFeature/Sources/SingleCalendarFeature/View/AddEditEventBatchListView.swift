@@ -7,15 +7,35 @@
 
 import SwiftUI
 import AppNavigation
+import CorePersistence
 import DSKit
 
 public struct AddEditEventBatchListView: View {
     @Environment(RootNavigation.self) var navigation
-    
-    @Bindable public var viewModel: AddEditEventBatchListViewModel
 
-    public init(viewModel: AddEditEventBatchListViewModel) {
-        self.viewModel = viewModel
+    @State private var viewModel: AddEditEventBatchListViewModel
+
+    private let calendarId: Int64
+    private let loadBatches: () -> [EventBatchDataSource]
+    private let selectedDay: Date?
+    var onDeleteBatches: (([EventBatchDataSource]) -> Void)?
+
+    public init(
+        eventsSelectionManager: PCEventsSelectionManager,
+        daySelectionManager: PCCalendarDaySelectionManager,
+        calendarId: Int64,
+        loadBatches: @escaping () -> [EventBatchDataSource],
+        selectedDay: Date?,
+        onDeleteBatches: (([EventBatchDataSource]) -> Void)? = nil
+    ) {
+        _viewModel = State(initialValue: AddEditEventBatchListViewModel(
+            eventsSelectionManager: eventsSelectionManager,
+            daySelectionManager: daySelectionManager
+        ))
+        self.calendarId = calendarId
+        self.loadBatches = loadBatches
+        self.selectedDay = selectedDay
+        self.onDeleteBatches = onDeleteBatches
     }
 
     public var body: some View {
@@ -24,7 +44,6 @@ public struct AddEditEventBatchListView: View {
                 PCCard {
                     Button(
                         action: {
-                            viewModel.prepareAddEditBatchViewModel(with: eventBatch)
                             navigation.goTo(AppRoute.batchEditor(.existingBatch(eventBatch.id)))
                         },
                         label: {
@@ -64,6 +83,17 @@ public struct AddEditEventBatchListView: View {
             }
         }
         .background(Color.dsKit.colorBackgroundMain)
+        .onAppear {
+            viewModel.prepare(with: loadBatches(), and: selectedDay)
+        }
+        .onChange(of: viewModel.eventBatchesToDelete) { _, newValue in
+            guard !newValue.isEmpty else { return }
+            onDeleteBatches?(newValue)
+            viewModel.prepare(with: loadBatches(), and: selectedDay)
+            if viewModel.eventBatches.isEmpty {
+                navigation.goTo(.calendar(calendarId, toRoot: true))
+            }
+        }
     }
 
     private func deleteItems(offsets: IndexSet) {

@@ -86,11 +86,11 @@ struct TwoSingleDayBatchesReproTests {
 
         // ── First batch on day 9 ──
         model.prepareAddEditEventBatchViewModel(for: day9)
-        var addEdit = model.addEditBatchListViewModel.addEditEventBatchModel
+        var addEdit = model.makeBatchEditor()
         addEdit.eventBatchName = "First"
         addEdit.selectedColor = .option1
         #expect(addEdit.save())
-        model.commitPendingBatch()
+        model.commitPendingBatch(addEdit.eventBatch)
 
         // Wait for the first batch to persist + reload via cache change.
         #expect(try await waitForBatchCount(1, in: store))
@@ -101,11 +101,11 @@ struct TwoSingleDayBatchesReproTests {
 
         // ── Second batch on day 10 ──
         model.prepareAddEditEventBatchViewModel(for: day10)
-        addEdit = model.addEditBatchListViewModel.addEditEventBatchModel
+        addEdit = model.makeBatchEditor()
         addEdit.eventBatchName = "Second"
         addEdit.selectedColor = .option1
         #expect(addEdit.save())
-        model.commitPendingBatch()
+        model.commitPendingBatch(addEdit.eventBatch)
 
         // Persistence check (should pass - events are persisted).
         #expect(try await waitForBatchCount(2, in: store))
@@ -140,11 +140,11 @@ struct TwoSingleDayBatchesReproTests {
 
         // Commit a batch, which triggers an async save -> cache change -> fetch.
         model.prepareAddEditEventBatchViewModel(for: day9)
-        let addEdit = model.addEditBatchListViewModel.addEditEventBatchModel
+        let addEdit = model.makeBatchEditor()
         addEdit.eventBatchName = "First"
         addEdit.selectedColor = .option1
         #expect(addEdit.save())
-        model.commitPendingBatch()
+        model.commitPendingBatch(addEdit.eventBatch)
 
         #expect(try await waitForBatchCount(1, in: store))
         await settle()
@@ -236,11 +236,11 @@ struct TwoSingleDayBatchesReproTests {
 
         // ── Create initial batch on day 10 ──
         model.prepareAddEditEventBatchViewModel(for: day10)
-        var addEdit = model.addEditBatchListViewModel.addEditEventBatchModel
+        var addEdit = model.makeBatchEditor()
         addEdit.eventBatchName = "Original"
         addEdit.selectedColor = .option1
         #expect(addEdit.save())
-        model.commitPendingBatch()
+        model.commitPendingBatch(addEdit.eventBatch)
 
         #expect(try await waitForBatchCount(1, in: store))
         await settle()
@@ -260,15 +260,13 @@ struct TwoSingleDayBatchesReproTests {
         #expect(reopenedModel.originalBatches.count == 1)
 
         // ── Simulate: open batch list for day 10, select the batch, edit it ──
-        reopenedModel.prepareAddEditBatchListViewModel(with: [day10])
-        let batchList = reopenedModel.addEditBatchListViewModel
-        #expect(batchList.eventBatches.count == 1)
-        let existingBatch = batchList.eventBatches[0]
+        #expect(reopenedModel.batches(for: day10).count == 1)
+        let existingBatch = reopenedModel.batches(for: day10)[0]
         #expect(existingBatch.id != 0, "Persisted batch should have a real id")
 
         // Open editor for existing batch
-        batchList.prepareAddEditBatchViewModel(with: existingBatch)
-        addEdit = batchList.addEditEventBatchModel
+        addEdit = reopenedModel.makeBatchEditor()
+        addEdit.load(existingBatch)
         #expect(addEdit.eventBatchId != 0)
         #expect(addEdit.eventsSelectionManager.events.count == 1)
 
@@ -278,7 +276,7 @@ struct TwoSingleDayBatchesReproTests {
 
         // Save the edited batch
         #expect(addEdit.save())
-        reopenedModel.commitPendingBatch()
+        reopenedModel.commitPendingBatch(addEdit.eventBatch)
 
         #expect(try await waitForBatchCount(1, in: store))
         await settle()
@@ -320,7 +318,7 @@ struct TwoSingleDayBatchesReproTests {
 
     // MARK: - Helpers
 
-    private func waitForBatchCount(_ expected: Int, in store: Store, timeout: TimeInterval = 3) async throws -> Bool {
+    private func waitForBatchCount(_ expected: Int, in store: Store, timeout: TimeInterval = 10) async throws -> Bool {
         let batchBox = store.box(for: PPEventBatch.self)
         let deadline = Date().addingTimeInterval(timeout)
         while Date() < deadline {

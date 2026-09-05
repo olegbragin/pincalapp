@@ -62,7 +62,8 @@ struct AddEditEventBatchViewModelTests {
         #expect(vm.eventBatch?.id == 7)
         #expect(vm.eventBatch?.name == "Beach")
         #expect(vm.eventBatch?.colorName == PCColorOption.option2.colorName)
-        #expect(vm.eventBatch?.events == [storedEvent])
+        // Setting the batch color rewrites every event's color in the batch.
+        #expect(vm.eventBatch?.events == [storedEvent.withColor("eventColorOption2")])
         #expect(vm.eventBatch?.date == date)
         #expect(vm.eventBatch?.timestamp == timestampToUse)
     }

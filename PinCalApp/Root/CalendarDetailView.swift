@@ -14,12 +14,26 @@ import DSKit
 struct CalendarDetailView: View {
     let calendarId: Int64
     let cache: CalendarCache
+    let eventsSelectionManager: PCEventsSelectionManager
+    let daySelectionManager: PCCalendarDaySelectionManager
     @State private var model: SingleCalendarModel
 
-    init(calendarId: Int64, cache: CalendarCache) {
+    init(
+        calendarId: Int64,
+        cache: CalendarCache,
+        eventsSelectionManager: PCEventsSelectionManager,
+        daySelectionManager: PCCalendarDaySelectionManager
+    ) {
         self.calendarId = calendarId
         self.cache = cache
-        self._model = State(initialValue: SingleCalendarModel(calendarid: calendarId, cache: cache))
+        self.eventsSelectionManager = eventsSelectionManager
+        self.daySelectionManager = daySelectionManager
+        self._model = State(initialValue: SingleCalendarModel(
+            calendarid: calendarId,
+            cache: cache,
+            eventsSelectionManager: eventsSelectionManager,
+            daySelectionManager: daySelectionManager
+        ))
     }
 
     var body: some View {
@@ -28,7 +42,12 @@ struct CalendarDetailView: View {
             .accessibilityIdentifier("calendar-detail-\(calendarId)")
             .task(id: calendarId) {
                 if model.calendarid != calendarId {
-                    model = SingleCalendarModel(calendarid: calendarId, cache: cache)
+                    model = SingleCalendarModel(
+                        calendarid: calendarId,
+                        cache: cache,
+                        eventsSelectionManager: eventsSelectionManager,
+                        daySelectionManager: daySelectionManager
+                    )
                 }
                 await model.fetch(force: true)
             }

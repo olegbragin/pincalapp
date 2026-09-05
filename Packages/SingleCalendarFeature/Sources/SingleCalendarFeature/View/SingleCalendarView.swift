@@ -40,16 +40,6 @@ public struct SingleCalendarView: View {
                         guard let route = viewModel.route(for: newValue) else { return }
                         navigation.goTo(route)
                     }
-                    .onChange(of: viewModel.addEditBatchListViewModel.eventBatchesToDelete) {
-                        if $0 != $1 {
-                            viewModel.deleteBatches($1, for: viewModel.calendarid)
-                            // Once every batch for the day is gone, go straight
-                            // back to the single calendar view.
-                            if viewModel.addEditBatchListViewModel.eventBatches.isEmpty {
-                                navigation.goTo(.calendar(viewModel.calendarid, toRoot: true))
-                            }
-                        }
-                    }
                 )
             }
             .padding(6)
@@ -60,18 +50,25 @@ public struct SingleCalendarView: View {
             .id(viewModel.calendarid)
             .navigationDestination(for: AppRoute.self) { route in
                 switch route {
-                case .dayBatches:
+                case .dayBatches(let day):
                     AddEditEventBatchListView(
-                        viewModel: viewModel.addEditBatchListViewModel
-                    )
-                case .batchEditor:
-                    AddEditEventBatchScreen(
-                        viewModel: viewModel.addEditBatchListViewModel.addEditEventBatchModel,
+                        eventsSelectionManager: viewModel.eventsSelectionManager,
+                        daySelectionManager: viewModel.daySelectionManager,
                         calendarId: viewModel.calendarid,
-                        onCommit: { viewModel.commitPendingBatch() }
+                        loadBatches: { viewModel.batches(for: day) },
+                        selectedDay: day,
+                        onDeleteBatches: { viewModel.deleteBatches($0, for: viewModel.calendarid) }
+                    )
+                case .batchEditor(let source):
+                    AddEditEventBatchScreen(
+                        eventsSelectionManager: viewModel.eventsSelectionManager,
+                        calendarId: viewModel.calendarid,
+                        source: source,
+                        resolveBatch: { viewModel.batch(withId: $0) },
+                        onCommit: { viewModel.commitPendingBatch($0) }
                     )
                 case .eventEditor(let source):
-                    let selectionManager = viewModel.addEditBatchListViewModel.addEditEventBatchModel.eventsSelectionManager
+                    let selectionManager = viewModel.eventsSelectionManager
                     AddEditEventView(
                         event: EventDataSource(
                             id: source.id,

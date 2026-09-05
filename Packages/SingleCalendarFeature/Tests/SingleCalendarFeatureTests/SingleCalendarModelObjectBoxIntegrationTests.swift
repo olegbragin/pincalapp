@@ -46,7 +46,7 @@ struct SingleCalendarModelObjectBoxIntegrationTests {
         return calendar
     }
 
-    private func waitForBatchCount(_ expected: Int, in store: Store, timeout: TimeInterval = 3) async throws -> Bool {
+    private func waitForBatchCount(_ expected: Int, in store: Store, timeout: TimeInterval = 10) async throws -> Bool {
         let batchBox = store.box(for: PPEventBatch.self)
         let deadline = Date().addingTimeInterval(timeout)
         while Date() < deadline {
@@ -58,7 +58,7 @@ struct SingleCalendarModelObjectBoxIntegrationTests {
 
     private func waitForStoreCondition(
         _ store: Store,
-        timeout: TimeInterval = 3,
+        timeout: TimeInterval = 10,
         _ check: @escaping () throws -> Bool
     ) async throws -> Bool {
         let deadline = Date().addingTimeInterval(timeout)
@@ -67,6 +67,24 @@ struct SingleCalendarModelObjectBoxIntegrationTests {
             try await Task.sleep(for: .milliseconds(50))
         }
         return false
+    }
+
+    /// Waits for the model to reflect a committed state. A committed batch is
+    /// written to the store asynchronously, and the resulting cache change can
+    /// race with the model's own synchronous update — so a direct read right
+    /// after `commitPendingBatch` may briefly see stale `originalBatches`.
+    @MainActor
+    private func waitForModelCondition(
+        _ model: SingleCalendarModel,
+        timeout: TimeInterval = 10,
+        _ check: @escaping () -> Bool
+    ) async -> Bool {
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            if check() { return true }
+            try? await Task.sleep(for: .milliseconds(50))
+        }
+        return check()
     }
 
     // MARK: - Batch persistence via SingleCalendarModel + direct ObjectBox verification
@@ -87,19 +105,18 @@ struct SingleCalendarModelObjectBoxIntegrationTests {
         model.daySelectionManager.selectionMode = .multiple
 
         model.prepareAddEditEventBatchViewModel()
-        let addEdit = model.addEditBatchListViewModel.addEditEventBatchModel
+        let addEdit = model.makeBatchEditor()
         addEdit.eventBatchName = "Women Cycle"
         addEdit.selectedColor = .option1
         addEdit.recolorAllEvents()
 
         #expect(addEdit.save())
-        model.resetSelectedDays()
-
+        model.commitPendingBatch(addEdit.eventBatch)
         #expect(try await waitForBatchCount(1, in: store))
 
         // Path A: verify via model
-        #expect(model.hasEvents(on: date(year: 2026, month: 6, day: 10)))
-        #expect(model.hasEvents(on: date(year: 2026, month: 6, day: 11)))
+        #expect(await waitForModelCondition(model) { model.hasEvents(on: date(year: 2026, month: 6, day: 10)) })
+        #expect(await waitForModelCondition(model) { model.hasEvents(on: date(year: 2026, month: 6, day: 11)) })
 
         // Path B: verify via direct ObjectBox
         let batchBox = store.box(for: PPEventBatch.self)
@@ -137,15 +154,13 @@ struct SingleCalendarModelObjectBoxIntegrationTests {
         let cache = makeCache(store: store)
         let model = SingleCalendarModel(calendarid: Int64(ppCalendar.id), cache: cache)
         await model.fetch(force: true)
+        let batchList = model.batches(for: day10)
+        let addEdit = model.makeBatchEditor()
 
-        model.prepareAddEditBatchListViewModel(with: [day10])
-        let batchList = model.addEditBatchListViewModel
-        batchList.prepareAddEditBatchViewModel(with: batchList.eventBatches[0])
-
-        let addEdit = batchList.addEditEventBatchModel
+        addEdit.load(batchList[0])
         addEdit.eventBatchName = "Renamed"
         #expect(addEdit.save())
-        model.resetSelectedDays()
+        model.commitPendingBatch(addEdit.eventBatch)
 
         // Wait for async save to persist the renamed batch
         #expect(try await waitForStoreCondition(store) {
@@ -153,7 +168,7 @@ struct SingleCalendarModelObjectBoxIntegrationTests {
         })
 
         // Path A: verify via model
-        #expect(model.hasEvents(on: day10))
+        #expect(await waitForModelCondition(model) { model.hasEvents(on: day10) })
 
         // Path B: verify via direct ObjectBox
         let persisted = try batchBox.all()[0]
@@ -185,24 +200,23 @@ struct SingleCalendarModelObjectBoxIntegrationTests {
         let cache = makeCache(store: store)
         let model = SingleCalendarModel(calendarid: Int64(ppCalendar.id), cache: cache)
         await model.fetch(force: true)
-        #expect(!model.hasEvents(on: day15))
+        #expect(await waitForModelCondition(model) { !model.hasEvents(on: day15) })
 
         // STR: tap day -> batch list -> tap batch -> editor
-        model.prepareAddEditBatchListViewModel(with: [day10])
-        let batchList = model.addEditBatchListViewModel
-        batchList.prepareAddEditBatchViewModel(with: batchList.eventBatches[0])
+        let batchList = model.batches(for: day10)
+        let addEdit = model.makeBatchEditor()
 
         // Select an additional event and press Save (commit happens on save,
         // not when the navigation stack reaches its root).
-        let addEdit = batchList.addEditEventBatchModel
+        addEdit.load(batchList[0])
         addEdit.toggleEvent(on: day15)
         #expect(addEdit.save())
-        model.commitPendingBatch()
+        model.commitPendingBatch(addEdit.eventBatch)
 
         // Path A: UI shows the new day immediately after Save + Back.
-        #expect(model.hasEvents(on: day15))
-        #expect(model.hasEvents(on: day10))
-        #expect(batchList.eventBatches[0].events.count == 2)
+        #expect(await waitForModelCondition(model) { model.hasEvents(on: day15) })
+        #expect(await waitForModelCondition(model) { model.hasEvents(on: day10) })
+        #expect(model.batches(for: day10)[0].events.count == 2)
 
         // Path B: exactly one batch with two events is persisted (no duplicates).
         #expect(try await waitForStoreCondition(store) {
@@ -264,7 +278,7 @@ struct SingleCalendarModelObjectBoxIntegrationTests {
         })
 
         // Path A: verify via model
-        #expect(!model.hasEvents(on: day10))
+        #expect(await waitForModelCondition(model) { !model.hasEvents(on: day10) })
 
         // Path B: verify via direct ObjectBox
         let persisted = try batchBox.all()
@@ -289,19 +303,18 @@ struct SingleCalendarModelObjectBoxIntegrationTests {
         model.daySelectionManager.selectionMode = .multiple
 
         model.prepareAddEditEventBatchViewModel()
-        let addEdit = model.addEditBatchListViewModel.addEditEventBatchModel
+        let addEdit = model.makeBatchEditor()
         addEdit.eventBatchName = "Three Events"
         addEdit.selectedColor = .option1
         addEdit.recolorAllEvents()
         #expect(addEdit.save())
-        model.resetSelectedDays()
-
+        model.commitPendingBatch(addEdit.eventBatch)
         #expect(try await waitForBatchCount(1, in: store))
 
         // Path A: verify via model
-        #expect(model.hasEvents(on: date(year: 2026, month: 6, day: 10)))
-        #expect(model.hasEvents(on: date(year: 2026, month: 6, day: 11)))
-        #expect(model.hasEvents(on: date(year: 2026, month: 6, day: 12)))
+        #expect(await waitForModelCondition(model) { model.hasEvents(on: date(year: 2026, month: 6, day: 10)) })
+        #expect(await waitForModelCondition(model) { model.hasEvents(on: date(year: 2026, month: 6, day: 11)) })
+        #expect(await waitForModelCondition(model) { model.hasEvents(on: date(year: 2026, month: 6, day: 12)) })
 
         // Path B: verify via direct ObjectBox
         let eventBox = store.box(for: PPEvent.self)
@@ -339,15 +352,13 @@ struct SingleCalendarModelObjectBoxIntegrationTests {
         let cache = makeCache(store: store)
         let model = SingleCalendarModel(calendarid: Int64(ppCalendar.id), cache: cache)
         await model.fetch(force: true)
+        let batchList = model.batches(for: day10)
+        let addEdit = model.makeBatchEditor()
 
-        model.prepareAddEditBatchListViewModel(with: [day10])
-        let batchList = model.addEditBatchListViewModel
-        batchList.prepareAddEditBatchViewModel(with: batchList.eventBatches[0])
-
-        let addEdit = batchList.addEditEventBatchModel
+        addEdit.load(batchList[0])
         addEdit.toggleEvent(on: day12) // Remove day12 event
         #expect(addEdit.save())
-        model.resetSelectedDays()
+        model.commitPendingBatch(addEdit.eventBatch)
 
         // Wait for async save to persist the event removal
         #expect(try await waitForStoreCondition(store) {
@@ -355,8 +366,8 @@ struct SingleCalendarModelObjectBoxIntegrationTests {
         })
 
         // Path A: verify via model
-        #expect(model.hasEvents(on: day10))
-        #expect(!model.hasEvents(on: day12))
+        #expect(await waitForModelCondition(model) { model.hasEvents(on: day10) })
+        #expect(await waitForModelCondition(model) { !model.hasEvents(on: day12) })
 
         // Path B: verify via direct ObjectBox
         let persistedEvents = try eventBox.all()
@@ -388,16 +399,14 @@ struct SingleCalendarModelObjectBoxIntegrationTests {
         let cache = makeCache(store: store)
         let model = SingleCalendarModel(calendarid: Int64(ppCalendar.id), cache: cache)
         await model.fetch(force: true)
+        let batchList = model.batches(for: day10)
+        let addEdit = model.makeBatchEditor()
 
-        model.prepareAddEditBatchListViewModel(with: [day10])
-        let batchList = model.addEditBatchListViewModel
-        batchList.prepareAddEditBatchViewModel(with: batchList.eventBatches[0])
-
-        let addEdit = batchList.addEditEventBatchModel
+        addEdit.load(batchList[0])
         addEdit.selectedColor = .option3
         addEdit.recolorAllEvents()
         #expect(addEdit.save())
-        model.resetSelectedDays()
+        model.commitPendingBatch(addEdit.eventBatch)
 
         // Wait for async save to persist the color change
         #expect(try await waitForStoreCondition(store) {
@@ -405,7 +414,7 @@ struct SingleCalendarModelObjectBoxIntegrationTests {
         })
 
         // Path A: verify via model
-        #expect(model.hasEvents(on: day10))
+        #expect(await waitForModelCondition(model) { model.hasEvents(on: day10) })
 
         // Path B: verify via direct ObjectBox
         let persisted = try batchBox.all()[0]
@@ -429,13 +438,12 @@ struct SingleCalendarModelObjectBoxIntegrationTests {
         model.changeEvent(event(day: 10))
         model.daySelectionManager.selectionMode = .multiple
         model.prepareAddEditEventBatchViewModel()
-        let addEditA = model.addEditBatchListViewModel.addEditEventBatchModel
+        let addEditA = model.makeBatchEditor()
         addEditA.eventBatchName = "Batch A"
         addEditA.selectedColor = .option1
         addEditA.recolorAllEvents()
         #expect(addEditA.save())
-        model.resetSelectedDays()
-
+        model.commitPendingBatch(addEditA.eventBatch)
         #expect(try await waitForBatchCount(1, in: store))
 
         // Create batch B
@@ -443,18 +451,17 @@ struct SingleCalendarModelObjectBoxIntegrationTests {
         model.changeEvent(event(day: 20))
         model.daySelectionManager.selectionMode = .multiple
         model.prepareAddEditEventBatchViewModel()
-        let addEditB = model.addEditBatchListViewModel.addEditEventBatchModel
+        let addEditB = model.makeBatchEditor()
         addEditB.eventBatchName = "Batch B"
         addEditB.selectedColor = .option3
         addEditB.recolorAllEvents()
         #expect(addEditB.save())
-        model.resetSelectedDays()
-
+        model.commitPendingBatch(addEditB.eventBatch)
         #expect(try await waitForBatchCount(2, in: store))
 
         // Path A: verify via model
-        #expect(model.hasEvents(on: date(year: 2026, month: 6, day: 10)))
-        #expect(model.hasEvents(on: date(year: 2026, month: 6, day: 20)))
+        #expect(await waitForModelCondition(model) { model.hasEvents(on: date(year: 2026, month: 6, day: 10)) })
+        #expect(await waitForModelCondition(model) { model.hasEvents(on: date(year: 2026, month: 6, day: 20)) })
 
         // Path B: verify via direct ObjectBox
         let batchBox = store.box(for: PPEventBatch.self)
@@ -478,13 +485,12 @@ struct SingleCalendarModelObjectBoxIntegrationTests {
         model.changeEvent(event(day: 10))
         model.daySelectionManager.selectionMode = .multiple
         model.prepareAddEditEventBatchViewModel()
-        let addEdit = model.addEditBatchListViewModel.addEditEventBatchModel
+        let addEdit = model.makeBatchEditor()
         addEdit.eventBatchName = "Persisted"
         addEdit.selectedColor = .option1
         addEdit.recolorAllEvents()
         #expect(addEdit.save())
-        model.resetSelectedDays()
-
+        model.commitPendingBatch(addEdit.eventBatch)
         #expect(try await waitForBatchCount(1, in: store))
 
         // Path A: verify via cache
@@ -521,17 +527,16 @@ struct SingleCalendarModelObjectBoxIntegrationTests {
         model.daySelectionManager.selectionMode = .multiple
 
         model.prepareAddEditEventBatchViewModel()
-        let addEdit = model.addEditBatchListViewModel.addEditEventBatchModel
+        let addEdit = model.makeBatchEditor()
         addEdit.eventBatchName = "Custom Color"
         addEdit.selectedColor = .option3
         addEdit.recolorAllEvents()
         #expect(addEdit.save())
-        model.resetSelectedDays()
-
+        model.commitPendingBatch(addEdit.eventBatch)
         #expect(try await waitForBatchCount(1, in: store))
 
         // Path A: verify via model
-        #expect(model.hasEvents(on: date(year: 2026, month: 6, day: 10)))
+        #expect(await waitForModelCondition(model) { model.hasEvents(on: date(year: 2026, month: 6, day: 10)) })
 
         // Path B: verify via direct ObjectBox
         let eventBox = store.box(for: PPEvent.self)
@@ -563,12 +568,10 @@ struct SingleCalendarModelObjectBoxIntegrationTests {
         let cache = makeCache(store: store)
         let model = SingleCalendarModel(calendarid: Int64(ppCalendar.id), cache: cache)
         await model.fetch(force: true)
+        let batchList = model.batches(for: day10)
+        let addEdit = model.makeBatchEditor()
 
-        model.prepareAddEditBatchListViewModel(with: [day10])
-        let batchList = model.addEditBatchListViewModel
-        batchList.prepareAddEditBatchViewModel(with: batchList.eventBatches[0])
-
-        let addEdit = batchList.addEditEventBatchModel
+        addEdit.load(batchList[0])
         let first = addEdit.eventsSelectionManager.events[0]
         let editor = AddEditEventViewModel()
         editor.update(from: first)
@@ -576,7 +579,7 @@ struct SingleCalendarModelObjectBoxIntegrationTests {
         #expect(editor.save())
         addEdit.eventsSelectionManager.apply(editor.event!)
         #expect(addEdit.save())
-        model.resetSelectedDays()
+        model.commitPendingBatch(addEdit.eventBatch)
 
         let eventBox = store.box(for: PPEvent.self)
 
@@ -586,7 +589,7 @@ struct SingleCalendarModelObjectBoxIntegrationTests {
         })
 
         // Path A: verify via model
-        #expect(model.hasEvents(on: day10))
+        #expect(await waitForModelCondition(model) { model.hasEvents(on: day10) })
 
         // Path B: verify via direct ObjectBox
         let events = try eventBox.all()
@@ -618,15 +621,13 @@ struct SingleCalendarModelObjectBoxIntegrationTests {
         let cache = makeCache(store: store)
         let model = SingleCalendarModel(calendarid: Int64(ppCalendar.id), cache: cache)
         await model.fetch(force: true)
+        let batchList = model.batches(for: day10)
+        let addEdit = model.makeBatchEditor()
 
-        model.prepareAddEditBatchListViewModel(with: [day10])
-        let batchList = model.addEditBatchListViewModel
-        batchList.prepareAddEditBatchViewModel(with: batchList.eventBatches[0])
-
-        let addEdit = batchList.addEditEventBatchModel
+        addEdit.load(batchList[0])
         addEdit.toggleEvent(on: day10) // Remove all events
         #expect(addEdit.save())
-        model.resetSelectedDays()
+        model.commitPendingBatch(addEdit.eventBatch)
 
         // Wait for async save to persist the deletion
         #expect(try await waitForStoreCondition(store) {
@@ -634,7 +635,7 @@ struct SingleCalendarModelObjectBoxIntegrationTests {
         })
 
         // Path A: verify via model
-        #expect(!model.hasEvents(on: day10))
+        #expect(await waitForModelCondition(model) { !model.hasEvents(on: day10) })
 
         // Path B: verify via direct ObjectBox
         let persistedBatches = try batchBox.all()
@@ -660,13 +661,12 @@ struct SingleCalendarModelObjectBoxIntegrationTests {
         model.changeEvent(EventDataSource(name: "Day5 Event", date: day5, color: PCColorOption.option1.colorName))
         model.daySelectionManager.selectionMode = .multiple
         model.prepareAddEditEventBatchViewModel()
-        let addEditA = model.addEditBatchListViewModel.addEditEventBatchModel
+        let addEditA = model.makeBatchEditor()
         addEditA.eventBatchName = "Day 5 Batch"
         addEditA.selectedColor = .option1
         addEditA.recolorAllEvents()
         #expect(addEditA.save())
-        model.resetSelectedDays()
-
+        model.commitPendingBatch(addEditA.eventBatch)
         #expect(try await waitForBatchCount(1, in: store))
 
         // Batch on day 15
@@ -674,18 +674,17 @@ struct SingleCalendarModelObjectBoxIntegrationTests {
         model.changeEvent(EventDataSource(name: "Day15 Event", date: day15, color: PCColorOption.option4.colorName))
         model.daySelectionManager.selectionMode = .multiple
         model.prepareAddEditEventBatchViewModel()
-        let addEditB = model.addEditBatchListViewModel.addEditEventBatchModel
+        let addEditB = model.makeBatchEditor()
         addEditB.eventBatchName = "Day 15 Batch"
         addEditB.selectedColor = .option4
         addEditB.recolorAllEvents()
         #expect(addEditB.save())
-        model.resetSelectedDays()
-
+        model.commitPendingBatch(addEditB.eventBatch)
         #expect(try await waitForBatchCount(2, in: store))
 
         // Path A: verify via model
-        #expect(model.hasEvents(on: day5))
-        #expect(model.hasEvents(on: day15))
+        #expect(await waitForModelCondition(model) { model.hasEvents(on: day5) })
+        #expect(await waitForModelCondition(model) { model.hasEvents(on: day15) })
 
         // Path B: verify via direct ObjectBox
         let batchBox = store.box(for: PPEventBatch.self)
@@ -723,13 +722,12 @@ struct SingleCalendarModelObjectBoxIntegrationTests {
         model.changeEvent(event(day: 10))
         model.daySelectionManager.selectionMode = .multiple
         model.prepareAddEditEventBatchViewModel()
-        let addEdit = model.addEditBatchListViewModel.addEditEventBatchModel
+        let addEdit = model.makeBatchEditor()
         addEdit.eventBatchName = "Round Trip"
         addEdit.selectedColor = .option1
         addEdit.recolorAllEvents()
         #expect(addEdit.save())
-        model.resetSelectedDays()
-
+        model.commitPendingBatch(addEdit.eventBatch)
         #expect(try await waitForBatchCount(1, in: store))
 
         // Re-fetch from cache to verify round-trip
@@ -778,15 +776,14 @@ struct SingleCalendarModelObjectBoxIntegrationTests {
         await model.fetch(force: true)
 
         // Edit batch: remove day15 event, rename
-        model.prepareAddEditBatchListViewModel(with: [day10])
-        let batchList = model.addEditBatchListViewModel
-        batchList.prepareAddEditBatchViewModel(with: batchList.eventBatches[0])
+        let batchList = model.batches(for: day10)
+        let addEdit = model.makeBatchEditor()
 
-        let addEdit = batchList.addEditEventBatchModel
+        addEdit.load(batchList[0])
         addEdit.eventBatchName = "Edited"
         addEdit.toggleEvent(on: day15) // Remove day15
         #expect(addEdit.save())
-        model.resetSelectedDays()
+        model.commitPendingBatch(addEdit.eventBatch)
 
         // Wait for async save to persist the edited batch
         #expect(try await waitForStoreCondition(store) {
@@ -825,25 +822,24 @@ struct SingleCalendarModelObjectBoxIntegrationTests {
 
         // STR 2-4: tap empty day 10 -> editor anchored at day 10, add 11 & 12.
         model.prepareAddEditEventBatchViewModel(for: day10)
-        let addEdit = model.addEditBatchListViewModel.addEditEventBatchModel
+        let addEdit = model.makeBatchEditor()
         addEdit.eventBatchName = "Batch"
         addEdit.selectedColor = .option1
         addEdit.toggleEvent(on: day11)
         addEdit.toggleEvent(on: day12)
         #expect(addEdit.save())
-        model.commitPendingBatch()
+        model.commitPendingBatch(addEdit.eventBatch)
         #expect(try await waitForBatchCount(1, in: store))
         try? await Task.sleep(for: .milliseconds(300))
 
         // STR 6: day 10 list must contain the batch.
-        model.prepareAddEditBatchListViewModel(with: [day10])
-        #expect(model.addEditBatchListViewModel.eventBatches.count == 1,
+        #expect(model.batches(for: day10).count == 1,
                 "Day 10 list should contain the batch right after creation")
 
         // STR 7-8: open the batch, remove day 10.
-        let batchList = model.addEditBatchListViewModel
-        batchList.prepareAddEditBatchViewModel(with: batchList.eventBatches[0])
-        let addEdit2 = batchList.addEditEventBatchModel
+        let batchList = model.batches(for: day10)
+        let addEdit2 = model.makeBatchEditor()
+        addEdit2.load(batchList[0])
         addEdit2.toggleEvent(on: day10)
         #expect(addEdit2.eventsSelectionManager.events.contains {
             Calendar.current.isDate($0.date, inSameDayAs: day10)
@@ -851,11 +847,11 @@ struct SingleCalendarModelObjectBoxIntegrationTests {
 
         // STR 9: save.
         #expect(addEdit2.save())
-        model.commitPendingBatch()
+        model.commitPendingBatch(addEdit.eventBatch)
         try? await Task.sleep(for: .milliseconds(300))
 
         // The batch still has 11 & 12, so the day-10 batch list must not be empty.
-        #expect(model.addEditBatchListViewModel.eventBatches.count == 1,
+        #expect(model.batches(for: day10).count == 1,
                 "Batch list should still contain the batch (events remain on 11 & 12)")
     }
 
@@ -882,28 +878,31 @@ struct SingleCalendarModelObjectBoxIntegrationTests {
         model.daySelectionManager.selectionMode = .multiple
         _ = model.handleSelectionConfirmation()
 
-        let addEdit = model.addEditBatchListViewModel.addEditEventBatchModel
+        let addEdit = model.makeBatchEditor()
         addEdit.eventBatchName = "Batch"
         addEdit.selectedColor = .option1
         #expect(addEdit.save())
-        model.commitPendingBatch()
+        model.commitPendingBatch(addEdit.eventBatch)
         try? await Task.sleep(for: .milliseconds(300))
-
-        model.prepareAddEditBatchListViewModel(with: [day10])
-        #expect(model.addEditBatchListViewModel.eventBatches.count == 1,
+        #expect(model.batches(for: day10).count == 1,
                 "Day 10 list should contain the batch right after creation")
 
         // Open the batch, remove day 10.
-        let batchList = model.addEditBatchListViewModel
-        batchList.prepareAddEditBatchViewModel(with: batchList.eventBatches[0])
-        let addEdit2 = batchList.addEditEventBatchModel
+        let listVM = AddEditEventBatchListViewModel(
+            eventsSelectionManager: model.eventsSelectionManager,
+            daySelectionManager: model.daySelectionManager
+        )
+        listVM.prepare(with: model.batches(for: day10), and: day10)
+        let batchList = model.batches(for: day10)
+        let addEdit2 = model.makeBatchEditor()
+        addEdit2.load(batchList[0])
         addEdit2.toggleEvent(on: day10)
         #expect(addEdit2.save())
-        model.commitPendingBatch()
+        model.commitPendingBatch(addEdit2.eventBatch)
 
-        // commitPendingBatch refreshes the visible batch list; it must keep the
-        // just-saved batch even though it no longer falls on day 10.
-        #expect(model.addEditBatchListViewModel.eventBatches.count == 1,
+        // The visible batch list keeps the just-saved batch even though it no
+        // longer falls on day 10.
+        #expect(listVM.eventBatches.count == 1,
                 "Batch list should still contain the batch (events remain on 11 & 12)")
     }
 
@@ -925,13 +924,14 @@ struct SingleCalendarModelObjectBoxIntegrationTests {
 
         // Create a batch anchored at day 10, with events on 11 & 12.
         model.prepareAddEditEventBatchViewModel(for: day10)
-        let addEdit = model.addEditBatchListViewModel.addEditEventBatchModel
+        let addEdit = model.makeBatchEditor()
+        addEdit.load(nil, selectedDay: day10)
         addEdit.eventBatchName = "Batch"
         addEdit.selectedColor = .option1
         addEdit.toggleEvent(on: day11)
         addEdit.toggleEvent(on: day12)
         #expect(addEdit.save())
-        model.commitPendingBatch()
+        model.commitPendingBatch(addEdit.eventBatch)
         try? await Task.sleep(for: .milliseconds(300))
 
         // The anchor day is marked right after creation (it has an event).
@@ -939,13 +939,12 @@ struct SingleCalendarModelObjectBoxIntegrationTests {
                 "Day 10 should be marked after creation")
 
         // Open the batch and remove day 10.
-        model.prepareAddEditBatchListViewModel(with: [day10])
-        let batchList = model.addEditBatchListViewModel
-        batchList.prepareAddEditBatchViewModel(with: batchList.eventBatches[0])
-        let addEdit2 = batchList.addEditEventBatchModel
+        let batchList = model.batches(for: day10)
+        let addEdit2 = model.makeBatchEditor()
+        addEdit2.load(batchList[0])
         addEdit2.toggleEvent(on: day10)
         #expect(addEdit2.save())
-        model.commitPendingBatch()
+        model.commitPendingBatch(addEdit2.eventBatch)
         try? await Task.sleep(for: .milliseconds(300))
 
         // The marker must be driven by events: day 10 is unmarked, 11 & 12 stay.

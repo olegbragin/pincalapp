@@ -49,11 +49,6 @@ public struct AddEditEventBatchView: View {
         .padding()
         .keyboardAvoidable()
         .toolbarTitleDisplayMode(.inline)
-        .onChange(of: viewModel.selectedColor) {
-            if $0 != $1 {
-                viewModel.recolorAllEvents()
-            }
-        }
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 PCButton {

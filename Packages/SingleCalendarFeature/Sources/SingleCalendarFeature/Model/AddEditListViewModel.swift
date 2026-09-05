@@ -7,6 +7,7 @@
 
 import Foundation
 import CorePersistence
+import DSKit
 import Observation
 
 @MainActor
@@ -58,7 +59,7 @@ public final class AddEditListViewModel {
     }
 
     func recolorAll(to colorName: String) {
-        eventsSelectionManager.recolorAll(to: colorName)
+        eventsSelectionManager.setBatchColor(PCColorOption(colorName))
     }
 
     func reset() {

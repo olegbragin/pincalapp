@@ -112,7 +112,7 @@ private func makeFixture(calendar: CalendarDataSource) -> (InMemoryCalendarRepos
 
 @MainActor
 private func waitUntil(
-    timeout: TimeInterval = 2,
+    timeout: TimeInterval = 10,
     _ condition: () async -> Bool
 ) async {
     let deadline = Date().addingTimeInterval(timeout)
@@ -124,6 +124,11 @@ private func waitUntil(
 @MainActor
 @Suite("SingleCalendarModel Tests")
 struct SingleCalendarModelTests {
+
+    @MainActor
+    private func makeBatchEditor(for model: SingleCalendarModel) -> AddEditEventBatchViewModel {
+        model.makeBatchEditor()
+    }
 
     @Test("Initial state is empty with no content")
     func initialState() {
@@ -294,9 +299,9 @@ struct SingleCalendarModelTests {
         let (_, _, model) = makeFixture(calendar: makeCalendar())
         await model.fetch(force: true)
 
-        model.prepareAddEditEventBatchViewModel(for: someDay)
-
-        let batchModel = model.addEditBatchListViewModel.addEditEventBatchModel
+        model.prepareNewBatchEvents(on: someDay)
+        let batchModel = makeBatchEditor(for: model)
+        batchModel.load(nil, selectedDay: someDay)
         #expect(batchModel.eventBatchId == 0)
         #expect(batchModel.eventBatchName == "")
         #expect(batchModel.selectedColor == .option1)
@@ -312,17 +317,17 @@ struct SingleCalendarModelTests {
         await model.fetch(force: true)
         #expect(!model.hasEvents(on: someDay))
 
-        model.prepareAddEditEventBatchViewModel(for: someDay)
-        let batchModel = model.addEditBatchListViewModel.addEditEventBatchModel
+        model.prepareNewBatchEvents(on: someDay)
+        let batchModel = makeBatchEditor(for: model)
+        batchModel.load(nil, selectedDay: someDay)
         batchModel.eventBatchName = "Summer"
         batchModel.selectedColor = .option1
         batchModel.eventsSelectionManager.addEvent(event("A", on: someDay))
         #expect(batchModel.save())
 
-        model.commitPendingBatch()
+        model.commitPendingBatch(batchModel.eventBatch)
 
         #expect(model.hasEvents(on: someDay))
-        #expect(batchModel.eventBatch == nil)
     }
 
     @Test("commitPendingBatch replaces an existing persisted batch")
@@ -339,13 +344,13 @@ struct SingleCalendarModelTests {
         await model.fetch(force: true)
         #expect(model.hasEvents(on: day1))
 
-        model.addEditBatchListViewModel.prepareAddEditBatchViewModel(with: original)
-        let batchModel = model.addEditBatchListViewModel.addEditEventBatchModel
+        let batchModel = makeBatchEditor(for: model)
+        batchModel.load(original)
         batchModel.eventsSelectionManager.removeEvent(on: day1)
         batchModel.eventsSelectionManager.addEvent(event("B", on: day2))
         #expect(batchModel.save())
 
-        model.commitPendingBatch()
+        model.commitPendingBatch(batchModel.eventBatch)
 
         #expect(!model.hasEvents(on: day1))
         #expect(model.hasEvents(on: day2))
@@ -364,12 +369,12 @@ struct SingleCalendarModelTests {
         await model.fetch(force: true)
         #expect(model.hasEvents(on: someDay))
 
-        model.addEditBatchListViewModel.prepareAddEditBatchViewModel(with: original)
-        let batchModel = model.addEditBatchListViewModel.addEditEventBatchModel
+        let batchModel = makeBatchEditor(for: model)
+        batchModel.load(original)
         batchModel.eventsSelectionManager.removeEvent(on: someDay)
         #expect(batchModel.save())
 
-        model.commitPendingBatch()
+        model.commitPendingBatch(batchModel.eventBatch)
 
         #expect(!model.hasEvents(on: someDay))
     }

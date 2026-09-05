@@ -14,17 +14,33 @@ import Observation
 @MainActor
 @Observable
 public final class AddEditEventBatchViewModel {
-    // Shared session managers — injected, not owned.
+    // Shared session manager — injected, not owned. It owns the events, the
+    // batch color and the calendar (year model); this view model only carries
+    // the batch metadata and reads/writes the session through the manager.
     let eventsSelectionManager: PCEventsSelectionManager
-    let daySelectionManager: PCCalendarDaySelectionManager
 
     var eventBatchId: Int64 = 0
     var eventBatchName: String = ""
-    var selectedColor: PCColorOption?
     var date: Date?
     var timestamp: UUID?
 
     var eventBatch: EventBatchDataSource?
+
+    var daySelectionManager: PCCalendarDaySelectionManager {
+        eventsSelectionManager.daySelectionManager
+    }
+
+    var yearModel: PCCalendarYearModel {
+        eventsSelectionManager.yearModel
+    }
+
+    /// The batch's selected color. It lives in the shared `eventsSelectionManager`
+    /// so the events list, batch editor and event editor all agree on it; setting
+    /// it rewrites every event's color in the batch.
+    var selectedColor: PCColorOption? {
+        get { eventsSelectionManager.selectedColor }
+        set { eventsSelectionManager.setBatchColor(newValue) }
+    }
 
     var defaultColor: PCColorOption? {
         selectedColor ?? PCColorOption(eventsSelectionManager.events.first?.color ?? "")
@@ -34,10 +50,6 @@ public final class AddEditEventBatchViewModel {
         !eventBatchName.isEmpty && selectedColor != nil
     }
 
-    var yearModel = PCCalendarYearModel()
-    private let dataProvider = PCCalendarDataProvider()
-    private var builtCalendarYear: Int?
-
     var preferredTitle: String? {
         title(compact: false)
     }
@@ -46,23 +58,13 @@ public final class AddEditEventBatchViewModel {
         title(compact: true)
     }
 
-    init(
-        eventsSelectionManager: PCEventsSelectionManager,
-        daySelectionManager: PCCalendarDaySelectionManager
-    ) {
+    init(eventsSelectionManager: PCEventsSelectionManager) {
         self.eventsSelectionManager = eventsSelectionManager
-        self.daySelectionManager = daySelectionManager
-        eventsSelectionManager.onEventsChanged = { [weak self] in
-            self?.refreshCalendarDays()
-        }
-        setupCalendar()
+        eventsSelectionManager.setupCalendar()
     }
 
     convenience init(events: [EventDataSource] = []) {
-        self.init(
-            eventsSelectionManager: PCEventsSelectionManager(events: events),
-            daySelectionManager: PCCalendarDaySelectionManager()
-        )
+        self.init(eventsSelectionManager: PCEventsSelectionManager(events: events))
     }
 
     func save() -> Bool {
@@ -85,21 +87,32 @@ public final class AddEditEventBatchViewModel {
 
     func prepare(with events: [EventDataSource]) {
         eventsSelectionManager.prepare(with: events)
-        setupCalendar()
     }
 
-    func setupCalendar() {
-        daySelectionManager.selectionMode = .multiple
-        let year = calendarYear
-        if yearModel.months.isEmpty || builtCalendarYear != year {
-            yearModel.months = dataProvider.months(forYear: year).map {
-                PCCalendarMonthModel(dto: $0, daySelectionManager: daySelectionManager)
-            }
-            yearModel.numberOfCurrentMonth = dataProvider.numberOfCurrentMonth
-            builtCalendarYear = year
+    /// Loads the batch-editing session from an existing batch (or a fresh,
+    /// empty one for a new day) into this session. The caller (the coordinator
+    /// or the batch list) drives preparation; this view model is decoupled from
+    /// the batch list and is connected to it only via the shared manager.
+    func load(_ eventBatch: EventBatchDataSource?, selectedDay: Date? = nil) {
+        if let eventBatch {
+            eventBatchId = eventBatch.id
+            eventBatchName = eventBatch.name
+            date = eventBatch.date
+            timestamp = eventBatch.timestamp
+            prepare(with: eventBatch.events)
+            eventsSelectionManager.setBatchColor(PCColorOption(eventBatch.colorName) ?? .option1)
+        } else {
+            // New batch: the caller already staged the starting events (added
+            // events or a placeholder) in the shared manager, so don't clear them
+            // here — just seed the metadata from the first event.
+            eventBatchId = 0
+            let firstEvent = eventsSelectionManager.events.first
+            eventBatchName = firstEvent?.name ?? ""
+            date = selectedDay
+            timestamp = UUID()
+            eventsSelectionManager.setupCalendar()
+            eventsSelectionManager.setBatchColor(PCColorOption(firstEvent?.color ?? "") ?? .option1)
         }
-        yearModel.scrollTargetDate = eventsSelectionManager.events.map(\.date).min() ?? date
-        updateYearModel()
     }
 
     func toggleEvent(on date: Date) {
@@ -112,87 +125,26 @@ public final class AddEditEventBatchViewModel {
             )
         }
         daySelectionManager.selectedDays = []
-        updateDay(for: date)
     }
 
-    func refreshCalendarDays() {
-        updateYearModel()
-    }
-
-    private var calendarYear: Int {
-        if let firstEventDate = eventsSelectionManager.events.map(\.date).min() {
-            return Calendar.current.component(.year, from: firstEventDate)
+    func setupCalendar() {
+        eventsSelectionManager.setupCalendar()
+        if eventsSelectionManager.yearModel.scrollTargetDate == nil {
+            eventsSelectionManager.yearModel.scrollTargetDate = date
         }
-        if let date {
-            return Calendar.current.component(.year, from: date)
-        }
-        return Calendar.current.component(.year, from: Date())
-    }
-
-    private func updateYearModel() {
-        let colorsByDay = eventColorsByDay()
-        yearModel.months.forEach { month in
-            month.weeks.forEach { week in
-                week.days
-                    .filter(\.isInCurrentMonth)
-                    .forEach { day in
-                        guard let dayDate = day.date else { return }
-                        let colors = colorsByDay[Calendar.autoupdatingCurrent.startOfDay(for: dayDate)] ?? []
-                        guard day.events != colors else { return }
-                        day.events = colors
-                    }
-            }
-        }
-    }
-
-    private func updateDay(for date: Date) {
-        guard let day = dayModel(for: date) else { return }
-        let colors = eventsSelectionManager.events
-            .filter { Calendar.autoupdatingCurrent.isDate($0.date, inSameDayAs: date) }
-            .map(\.color)
-        guard day.events != colors else { return }
-        day.events = colors
-    }
-
-    private func dayModel(for date: Date) -> PCCalendarDayModel? {
-        var fallback: PCCalendarDayModel?
-        for month in yearModel.months {
-            for week in month.weeks {
-                for day in week.days {
-                    guard let dayDate = day.date,
-                          Calendar.autoupdatingCurrent.isDate(dayDate, inSameDayAs: date)
-                    else { continue }
-                    if day.isInCurrentMonth { return day }
-                    fallback = day
-                }
-            }
-        }
-        return fallback
-    }
-
-    private func eventColorsByDay() -> [Date: [String]] {
-        var result: [Date: [String]] = [:]
-        for event in eventsSelectionManager.events {
-            result[Calendar.autoupdatingCurrent.startOfDay(for: event.date), default: []].append(event.color)
-        }
-        return result
     }
 
     func recolorAllEvents() {
         guard let selectedColor else { return }
-        eventsSelectionManager.recolorAll(to: selectedColor.colorName)
-        updateYearModel()
+        eventsSelectionManager.setBatchColor(selectedColor)
     }
 
     func reset() {
         eventBatchId = 0
         eventBatchName = ""
-        selectedColor = nil
         date = nil
         timestamp = nil
         eventBatch = nil
-        daySelectionManager.reset()
-        yearModel.months = []
         eventsSelectionManager.reset()
     }
 

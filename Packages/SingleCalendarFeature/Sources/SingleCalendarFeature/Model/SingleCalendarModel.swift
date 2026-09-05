@@ -33,13 +33,16 @@ public final class SingleCalendarModel {
     public private(set) var label: String = ""
     public private(set) var isArchived: Bool = false
     
-    public let daySelectionManager = PCCalendarDaySelectionManager()
-    
+    // Batch-editing session managers. Injected from outside (app root) and
+    // shared across the main calendar and the batch views; all communication
+    // about the batch session flows through them.
+    public let eventsSelectionManager: PCEventsSelectionManager
+    public let daySelectionManager: PCCalendarDaySelectionManager
+
     public var selectedColor: PCColorOption?
     
     public private(set) var yearModel = PCCalendarYearModel()
-    public private(set) var addEditBatchListViewModel = AddEditEventBatchListViewModel()
-    
+
     public var state: State = .empty
     
     @ObservationIgnored private var cancellable: AnyCancellable?
@@ -58,17 +61,21 @@ public final class SingleCalendarModel {
     }
     
     public func hasEvents(on date: Date) -> Bool {
-        originalBatches.contains { batch in
+        let result = originalBatches.contains { batch in
             batch.events.contains { event in
                 isSameDay(event.date, date)
             } || (batch.date.map { isSameDay($0, date) } ?? false)
         }
+        print("[PC] hasEvents(on: \(date)) = \(result) (originalBatches=\(originalBatches.count))")
+        return result
     }
 
-    /// Decides where navigation should go for a day-selection change and
-    /// prepares the corresponding editor state. Returns `nil` when no
-    /// navigation is needed.
+    /// Decides where navigation should go for a day-selection change. The batch
+    /// list/editor views prepare their own view models; here we only stage the
+    /// events for a new batch into the shared manager when needed. Returns `nil`
+    /// when no navigation is needed.
     public func route(for selectedDays: Set<Date>) -> AppRoute? {
+        print("[PC] route(for:) selectedDays=\(selectedDays) mode=\(daySelectionManager.selectionMode) hasEvents=\(selectedDays.first.map { hasEvents(on: $0) } ?? false)")
         guard !isArchived, let day = selectedDays.first else { return nil }
 
         if daySelectionManager.selectionMode == .multiple {
@@ -78,20 +85,60 @@ public final class SingleCalendarModel {
             return nil
         }
 
-        let out: AppRoute
         if hasEvents(on: day) {
-            prepareAddEditBatchListViewModel(with: selectedDays)
-            out = .dayBatches(day)
+            return .dayBatches(day)
         } else {
-            prepareAddEditEventBatchViewModel(for: day)
-            out = .batchEditor(.newDay(day))
+            prepareNewBatchEvents(on: day)
+            return .batchEditor(.newDay(day))
         }
-        return out
     }
-    
-    public init(calendarid: Int64, cache: CalendarCache) {
+
+    public func batches(for day: Date) -> [EventBatchDataSource] {
+        originalBatches.filter { batch in
+            batch.events.contains { event in
+                isSameDay(event.date, day)
+            } || (batch.date.map { isSameDay($0, day) } ?? false)
+        }
+    }
+
+    public func batch(withId id: Int64) -> EventBatchDataSource? {
+        originalBatches.first { $0.id == id }
+    }
+
+    /// Stages the single placeholder event for a new batch anchored on `date`
+    /// into the shared manager.
+    func prepareNewBatchEvents(on date: Date) {
+        eventsSelectionManager.prepare(with: [
+            EventDataSource(name: "", date: date, color: PCColorOption.option1.colorName)
+        ])
+    }
+
+    /// Stages the events chosen via multi-select into the shared manager.
+    func prepareAddEditEventBatchViewModel() {
+        guard !addedEvents.isEmpty else { return }
+        eventsSelectionManager.prepare(with: addedEvents.sorted { $0.date < $1.date })
+    }
+
+    /// Stages the single placeholder event for a new batch on `date`.
+    func prepareAddEditEventBatchViewModel(for date: Date) {
+        prepareNewBatchEvents(on: date)
+    }
+
+    /// Creates a batch editor view model bound to the shared session manager.
+    public func makeBatchEditor() -> AddEditEventBatchViewModel {
+        AddEditEventBatchViewModel(eventsSelectionManager: eventsSelectionManager)
+    }
+
+    public init(
+        calendarid: Int64,
+        cache: CalendarCache,
+        eventsSelectionManager: PCEventsSelectionManager = PCEventsSelectionManager(),
+        daySelectionManager: PCCalendarDaySelectionManager = PCCalendarDaySelectionManager()
+    ) {
         self.calendarid = calendarid
         self.cache = cache
+        self.eventsSelectionManager = eventsSelectionManager
+        self.daySelectionManager = daySelectionManager
         cancellable = cache.changes
             .receive(on: DispatchQueue.main)
             .sink { [weak self] operation in
@@ -128,6 +175,10 @@ public final class SingleCalendarModel {
         
         label = calendar.name
         isArchived = calendar.isArchived
+        // Mirror the calendar's column count onto the shared batch-editing
+        // session manager so the batch editor's calendar uses the same layout
+        // (and honors `-UITestColumns`), keeping its day cells reliably tappable.
+        eventsSelectionManager.numberOfColumns = Self.initialNumberOfColumns(for: calendar)
         // Build the year model only once. Rebuilding it on every fetch would
         // swap out the PCCalendarDayModel instances the views are bound to,
         // so event updates would not be observed and committed days would
@@ -156,43 +207,23 @@ public final class SingleCalendarModel {
         }
     }
     
-    public func prepareAddEditEventBatchViewModel() {
-        guard !addedEvents.isEmpty else { return }
-        let sortedEvents = addedEvents.sorted { $0.date < $1.date }
-        let addEditModel = addEditBatchListViewModel.addEditEventBatchModel
-        addEditModel.eventBatchId = 0
-        addEditModel.eventBatchName = sortedEvents.first?.name ?? ""
-        addEditModel.selectedColor = PCColorOption(sortedEvents.first?.color ?? "") ?? selectedColor
-        addEditModel.date = nil
-        addEditModel.timestamp = UUID()
-        addEditModel.prepare(with: sortedEvents)
-    }
-    
-    public func prepareAddEditEventBatchViewModel(for date: Date) {
-        let addEditModel = addEditBatchListViewModel.addEditEventBatchModel
-        addEditModel.eventBatchId = 0
-        addEditModel.eventBatchName = ""
-        addEditModel.selectedColor = .option1
-        addEditModel.date = date
-        addEditModel.timestamp = UUID()
-        addEditModel.prepare(with: [
-            EventDataSource(name: "", date: date, color: PCColorOption.option1.colorName)
-        ])
-    }
-    
     public func handleSelectionConfirmation() -> AppRoute? {
         guard !addedEvents.isEmpty else {
             cancelMultipleChanges()
             return nil
         }
         prepareAddEditEventBatchViewModel()
-        guard let day = addedEvents.sorted(by: { $0.date < $1.date }).first?.date else { return nil }
+        guard let day = addedEvents.sorted { $0.date < $1.date }.first?.date else { return nil }
         return .batchEditor(.newDay(day))
     }
-    
-    public func commitPendingBatch() {
-        guard let eventBatch = addEditBatchListViewModel.addEditEventBatchModel.eventBatch else { return }
-        addEditBatchListViewModel.addEditEventBatchModel.eventBatch = nil
+
+    /// Commits a batch that was edited/saved in the batch editor. The editor
+    /// hands the resulting batch up through its `onCommit` closure; the batch
+    /// view models are owned by their views and communicate with this model
+    /// only through the shared managers.
+    public func commitPendingBatch(_ eventBatch: EventBatchDataSource?) {
+        print("[PC] commitPendingBatch mode=\(daySelectionManager.selectionMode) events=\(eventBatch?.events.map { $0.date } ?? []) name=\(eventBatch?.name ?? "")")
+        guard let eventBatch else { return }
         let batchKey = key(for: eventBatch)
         originalBatches.removeAll(where: { key(for: $0) == batchKey })
         if !eventBatch.events.isEmpty {
@@ -200,17 +231,11 @@ public final class SingleCalendarModel {
         }
         updateYearModel(with: originalEvents)
         save(for: calendarid)
-        refreshBatchListIfVisible(keeping: eventBatch)
         if daySelectionManager.selectionMode == .multiple {
             daySelectionManager.toggleSelectionMode()
             addedEvents = []
             selectedColor = nil
         }
-    }
-
-    private func refreshBatchListIfVisible(keeping batch: EventBatchDataSource) {
-        guard let selectedDay = addEditBatchListViewModel.selectedDay else { return }
-        prepareAddEditBatchListViewModel(with: [selectedDay], keeping: batch)
     }
     
     public func cancelMultipleChanges() {
@@ -220,31 +245,9 @@ public final class SingleCalendarModel {
         selectedColor = nil
     }
     
-    public func prepareAddEditBatchListViewModel(with selectedDays: Set<Date>, keeping keepBatch: EventBatchDataSource? = nil) {
-        guard let selectedDay = selectedDays.first else {
-            addEditBatchListViewModel.reset()
-            return
-        }
-        var dayBatches = originalBatches.filter { batch in
-            batch.events.contains { event in
-                isSameDay(event.date, selectedDay)
-            } || (batch.date.map { isSameDay($0, selectedDay) } ?? false)
-        }
-        // After an edit the batch may no longer fall on the day the list was
-        // opened from (e.g. its anchor/event days changed). Keep the batch the
-        // user just saved visible — provided it still exists — so the list does
-        // not look empty right after saving.
-        if let keepBatch,
-           originalBatches.contains(where: { key(for: $0) == key(for: keepBatch) }),
-           !dayBatches.contains(where: { key(for: $0) == key(for: keepBatch) }) {
-            dayBatches.append(keepBatch)
-        }
-        addEditBatchListViewModel.prepare(with: dayBatches, and: selectedDay)
-    }
-    
     public func onBatchListDismissed() {
         daySelectionManager.selectedDays = []
-        addEditBatchListViewModel.reset()
+        eventsSelectionManager.reset()
     }
     
     public func deleteBatches(_ batches: [EventBatchDataSource], for calendarId: Int64) {
@@ -253,29 +256,23 @@ public final class SingleCalendarModel {
         }
         updateYearModel(with: originalEvents)
         save(for: calendarId)
-        prepareAddEditBatchListViewModel(with: daySelectionManager.selectedDays)
     }
     
     public func reset() {
         label = ""
         state = .empty
-        addEditBatchListViewModel.reset()
+        eventsSelectionManager.reset()
     }
     
     public func resetSelectedDays() {
         daySelectionManager.selectedDays = []
+        eventsSelectionManager.reset()
         if daySelectionManager.selectionMode == .multiple {
-            commitPendingBatch()
-            if daySelectionManager.selectionMode == .multiple {
-                daySelectionManager.toggleSelectionMode()
-            }
+            daySelectionManager.toggleSelectionMode()
             addedEvents = []
             selectedColor = nil
             updateYearModel(with: originalEvents)
-        } else {
-            commitPendingBatch()
         }
-        addEditBatchListViewModel.addEditEventBatchModel.reset()
     }
     
     enum BatchMergeKey: Hashable {

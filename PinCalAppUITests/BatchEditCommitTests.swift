@@ -181,19 +181,29 @@ final class BatchEditCommitTests: XCTestCase {
 
     @MainActor
     private func selectEventColor(_ colorName: String, in app: XCUIApplication) {
-        let picker = app.buttons["color-picker-compact"]
-        XCTAssertTrue(picker.waitForExistence(timeout: 5), "Color picker should be visible")
-        picker.tap()
+        // Both the batch editor (behind) and the event editor expose a
+        // `color-picker-compact`. Tap the topmost hittable one — the event
+        // editor's — so the sheet that opens belongs to the screen being edited.
+        let pickerQuery = app.buttons.matching(identifier: "color-picker-compact")
+        XCTAssertTrue(pickerQuery.firstMatch.waitForExistence(timeout: 5), "Color picker should be visible")
+        let deadline = Date().addingTimeInterval(5)
+        var target: XCUIElement?
+        while target == nil, Date() < deadline {
+            target = pickerQuery.allElementsBoundByIndex.reversed().first { $0.isHittable }
+            if target == nil { Thread.sleep(forTimeInterval: 0.2) }
+        }
+        (target ?? pickerQuery.firstMatch).tap()
         let option = app.buttons["color-option-\(colorName)"]
         XCTAssertTrue(option.waitForExistence(timeout: 5), "Color option \(colorName) should be visible in sheet")
         option.tap()
         // Sheet dismisses; verify picker value updated
-        XCTAssertTrue(picker.waitForExistence(timeout: 5))
+        XCTAssertTrue(pickerQuery.firstMatch.waitForExistence(timeout: 5))
         // Small delay for binding to propagate
         Thread.sleep(forTimeInterval: 0.3)
     }
 
-    /// Changing event color (not just name) must persist after batch Save and calendar round-trip.
+    /// Changing the batch color (which is applied to, and rewrites, every event
+    /// in the batch) must persist after batch Save and calendar round-trip.
     @MainActor
     func testChangingEventColorPersistsAfterBatchSave() throws {
         let app = KeyboardAvoidanceTestSupport.launchSeededApp()
@@ -204,25 +214,15 @@ final class BatchEditCommitTests: XCTestCase {
         XCTAssertTrue(batchRow.waitForExistence(timeout: 5))
         batchRow.tap()
 
-        let eventRow = app.buttons.containing(NSPredicate(format: "label CONTAINS %@", "Event1")).firstMatch
-        XCTAssertTrue(eventRow.waitForExistence(timeout: 5))
-        eventRow.tap()
-
-        let nameField = app.textFields["event-name-field"]
-        XCTAssertTrue(nameField.waitForExistence(timeout: 5))
-        // Verify initial color is option1 via picker value
+        // The batch editor exposes the batch color picker. The batch color is
+        // the source of truth and rewrites every event's color in the batch.
         let picker = app.buttons["color-picker-compact"]
         XCTAssertTrue(picker.waitForExistence(timeout: 5))
-        XCTAssertEqual(picker.value as? String ?? "", "eventColorOption1", "Initial event color should be option1")
+        XCTAssertEqual(picker.value as? String ?? "", "eventColorOption1", "Initial batch color should be option1")
 
-        // Change to option2
         selectEventColor("eventColorOption2", in: app)
 
-        let eventSaveButton = app.buttons["Save"].firstMatch
-        XCTAssertTrue(eventSaveButton.waitForExistence(timeout: 3))
-        eventSaveButton.tap()
-
-        let batchSaveButton = app.buttons["Save"].firstMatch
+        let batchSaveButton = app.buttons["batch-save-button"]
         XCTAssertTrue(batchSaveButton.waitForExistence(timeout: 5))
         batchSaveButton.tap()
 
@@ -232,15 +232,16 @@ final class BatchEditCommitTests: XCTestCase {
         XCTAssertTrue(batchRow.waitForExistence(timeout: 5))
         batchRow.tap()
 
+        // The event now carries the batch color.
         let reopenedEventRow = app.buttons.containing(NSPredicate(format: "label CONTAINS %@", "Event1")).firstMatch
         XCTAssertTrue(reopenedEventRow.waitForExistence(timeout: 5))
         reopenedEventRow.tap()
 
-        XCTAssertTrue(nameField.waitForExistence(timeout: 5))
+        XCTAssertTrue(app.textFields["event-name-field"].waitForExistence(timeout: 5))
         XCTAssertEqual(picker.value as? String ?? "", "eventColorOption2", "Persisted color must be option2 after save and reopen via calendar")
     }
 
-    /// Changing event color must also persist when reopening batch immediately without returning to calendar root.
+    /// Changing the batch color must also persist when reopening batch immediately without returning to calendar root.
     @MainActor
     func testChangingEventColorPersistsWhenReopeningBatchImmediately() throws {
         let app = KeyboardAvoidanceTestSupport.launchSeededApp()
@@ -251,21 +252,13 @@ final class BatchEditCommitTests: XCTestCase {
         XCTAssertTrue(batchRow.waitForExistence(timeout: 5))
         batchRow.tap()
 
-        let eventRow = app.buttons.containing(NSPredicate(format: "label CONTAINS %@", "Event1")).firstMatch
-        XCTAssertTrue(eventRow.waitForExistence(timeout: 5))
-        eventRow.tap()
-
         let picker = app.buttons["color-picker-compact"]
         XCTAssertTrue(picker.waitForExistence(timeout: 5))
         XCTAssertEqual(picker.value as? String ?? "", "eventColorOption1")
 
         selectEventColor("eventColorOption3", in: app)
 
-        let eventSaveButton = app.buttons["Save"].firstMatch
-        XCTAssertTrue(eventSaveButton.waitForExistence(timeout: 3))
-        eventSaveButton.tap()
-
-        let batchSaveButton = app.buttons["Save"].firstMatch
+        let batchSaveButton = app.buttons["batch-save-button"]
         XCTAssertTrue(batchSaveButton.waitForExistence(timeout: 5))
         batchSaveButton.tap()
         XCTAssertFalse(batchSaveButton.waitForExistence(timeout: 2), "Batch editor should be dismissed after Save")
@@ -279,5 +272,48 @@ final class BatchEditCommitTests: XCTestCase {
 
         XCTAssertTrue(picker.waitForExistence(timeout: 5))
         XCTAssertEqual(picker.value as? String ?? "", "eventColorOption3", "Persisted color must be option3 after immediate reopen")
+    }
+
+    /// STR: deleting an event from the batch editor's events list must also
+    /// unmark the corresponding day in the calendar shown at the top.
+    @MainActor
+    func testDeletingEventFromBatchListUnmarksCalendar() throws {
+        let app = KeyboardAvoidanceTestSupport.launchSeededApp()
+        KeyboardAvoidanceTestSupport.openCalendarDetail(app, named: "UI Test Calendar")
+
+        KeyboardAvoidanceTestSupport.tapDay(day: 10, in: app)
+        let batchRow = app.staticTexts["Women Cycle"]
+        XCTAssertTrue(batchRow.waitForExistence(timeout: 5))
+        batchRow.tap()
+
+        let saveButton = app.buttons["batch-save-button"]
+        XCTAssertTrue(saveButton.waitForExistence(timeout: 5), "Batch editor should open")
+
+        // The batch editor's calendar marks days that have events.
+        let day10 = KeyboardAvoidanceTestSupport.dayIdentifier(day: 10)
+        let day12 = KeyboardAvoidanceTestSupport.dayIdentifier(day: 12)
+        let editorCalendar = app.descendants(matching: .any).matching(identifier: "batch-editor-calendar").firstMatch
+        let day10Cell = editorCalendar.descendants(matching: .any).matching(identifier: day10).firstMatch
+        let day12Cell = editorCalendar.descendants(matching: .any).matching(identifier: day12).firstMatch
+        XCTAssertTrue(day10Cell.waitForExistence(timeout: 5))
+        XCTAssertTrue(day12Cell.waitForExistence(timeout: 5))
+        XCTAssertTrue(day10Cell.label.lowercased().contains("events"), "Day 10 should be marked")
+        XCTAssertTrue(day12Cell.label.lowercased().contains("events"), "Day 12 should be marked")
+
+        // Delete the first event row (on day 10, first in the sorted list).
+        let removeControl = app.images.matching(identifier: "minus.circle.fill").firstMatch
+        XCTAssertTrue(removeControl.waitForExistence(timeout: 5), "Edit-mode delete control should exist")
+        removeControl.tap()
+        let deleteButton = app.buttons["Delete"].firstMatch
+        XCTAssertTrue(deleteButton.waitForExistence(timeout: 5), "Delete button should appear")
+        deleteButton.tap()
+
+        // Day 10 must now be unmarked in the top calendar.
+        let deadline = Date().addingTimeInterval(5)
+        while Date() < deadline && day10Cell.label.lowercased().contains("events") {
+            Thread.sleep(forTimeInterval: 0.2)
+        }
+        XCTAssertFalse(day10Cell.label.lowercased().contains("events"),
+                       "Day 10 should be unmarked after its event was deleted; label = \(day10Cell.label)")
     }
 }
