@@ -9,6 +9,7 @@ import SwiftUI
 import AppNavigation
 import CorePersistence
 import DSKit
+import CoreDomain
 
 public struct AddEditEventBatchListView: View {
     @Environment(RootNavigation.self) var navigation

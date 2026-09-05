@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import CoreDomain
 
 public struct PCCalendarWeekView: View {
     // Для тактильной отдачи

@@ -444,4 +444,31 @@ final class PinCalAppUITests: XCTestCase {
         XCTAssertFalse(dayAfter.label.lowercased().contains("event"),
                        "Batch deleted via the events list should leave day 10 unmarked; label = \(dayAfter.label)")
     }
+
+    // MARK: - Leaving the calendar in multiselect mode resets on reopen
+
+    /// STR: open calendar -> switch to multiselect -> tap back -> reopen the
+    /// calendar. It must be back in single-select mode (the toolbar button shows
+    /// "Multiselect", not "Save").
+    @MainActor
+    func testLeavingCalendarInMultiselectModeResetsOnReopen() throws {
+        let app = KeyboardAvoidanceTestSupport.launchSeededApp()
+        KeyboardAvoidanceTestSupport.openCalendarDetail(app, named: "UI Test Calendar")
+
+        let multiselectButton = app.buttons["Multiselect"]
+        XCTAssertTrue(multiselectButton.waitForExistence(timeout: 5), "Multiselect button should be visible")
+        multiselectButton.tap()
+
+        // Leave the screen via the back button.
+        KeyboardAvoidanceTestSupport.tapBackButton(in: app)
+
+        // Reopen the calendar.
+        KeyboardAvoidanceTestSupport.openCalendarDetail(app, named: "UI Test Calendar")
+
+        // Must be in single-select mode: "Multiselect" button, no "Save".
+        let reopenedMultiselect = app.buttons["Multiselect"]
+        XCTAssertTrue(reopenedMultiselect.waitForExistence(timeout: 5),
+                      "After reopening, the calendar should be in single-select mode")
+        XCTAssertFalse(app.buttons["Save"].exists, "Save button indicates multiselect mode; should be single")
+    }
 }

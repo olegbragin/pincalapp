@@ -7,7 +7,6 @@
 
 import SwiftUI
 import DSKit
-import CorePersistence
 import AppNavigation
 
 public struct AddEditListView: View {

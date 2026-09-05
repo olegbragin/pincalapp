@@ -6,8 +6,7 @@
 //
 
 import Foundation
-import SwiftUI
-import CoreDomain
+import Observation
 
 @MainActor
 @Observable

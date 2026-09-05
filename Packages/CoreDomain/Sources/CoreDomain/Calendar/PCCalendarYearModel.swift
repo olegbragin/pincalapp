@@ -5,7 +5,9 @@
 //  Created by Oleg Bragin on 01.02.2026.
 //
 
-import SwiftUI
+import Foundation
+import Observation
+import CoreGraphics
 
 @MainActor
 @Observable

@@ -23,8 +23,8 @@ public final class SingleCalendarModel {
         case loading
     }
     
-    private let dataProvider = PCCalendarDataProvider()
     private let cache: CalendarCache
+    private let dataProvider: PCCalendarDataProvider
     
     private(set) var originalBatches: [EventBatchDataSource] = []
     private var addedEvents: Set<EventDataSource> = []
@@ -55,7 +55,7 @@ public final class SingleCalendarModel {
         guard !daySelectionManager.selectedDays.isEmpty else { return [] }
         return originalEvents.filter { event in
             daySelectionManager.selectedDays.contains { date in
-                isSameDay(event.date, date)
+                dataProvider.isSameDay(event.date, date)
             }
         }
     }
@@ -63,10 +63,9 @@ public final class SingleCalendarModel {
     public func hasEvents(on date: Date) -> Bool {
         let result = originalBatches.contains { batch in
             batch.events.contains { event in
-                isSameDay(event.date, date)
-            } || (batch.date.map { isSameDay($0, date) } ?? false)
+                dataProvider.isSameDay(event.date, date)
+            } || (batch.date.map { dataProvider.isSameDay($0, date) } ?? false)
         }
-        print("[PC] hasEvents(on: \(date)) = \(result) (originalBatches=\(originalBatches.count))")
         return result
     }
 
@@ -75,7 +74,6 @@ public final class SingleCalendarModel {
     /// events for a new batch into the shared manager when needed. Returns `nil`
     /// when no navigation is needed.
     public func route(for selectedDays: Set<Date>) -> AppRoute? {
-        print("[PC] route(for:) selectedDays=\(selectedDays) mode=\(daySelectionManager.selectionMode) hasEvents=\(selectedDays.first.map { hasEvents(on: $0) } ?? false)")
         guard !isArchived, let day = selectedDays.first else { return nil }
 
         if daySelectionManager.selectionMode == .multiple {
@@ -96,8 +94,8 @@ public final class SingleCalendarModel {
     public func batches(for day: Date) -> [EventBatchDataSource] {
         originalBatches.filter { batch in
             batch.events.contains { event in
-                isSameDay(event.date, day)
-            } || (batch.date.map { isSameDay($0, day) } ?? false)
+                dataProvider.isSameDay(event.date, day)
+            } || (batch.date.map { dataProvider.isSameDay($0, day) } ?? false)
         }
     }
 
@@ -132,11 +130,13 @@ public final class SingleCalendarModel {
     public init(
         calendarid: Int64,
         cache: CalendarCache,
+        dataProvider: PCCalendarDataProvider = PCCalendarDataProvider(),
         eventsSelectionManager: PCEventsSelectionManager = PCEventsSelectionManager(),
         daySelectionManager: PCCalendarDaySelectionManager = PCCalendarDaySelectionManager()
     ) {
         self.calendarid = calendarid
         self.cache = cache
+        self.dataProvider = dataProvider
         self.eventsSelectionManager = eventsSelectionManager
         self.daySelectionManager = daySelectionManager
         cancellable = cache.changes
@@ -184,11 +184,12 @@ public final class SingleCalendarModel {
         // so event updates would not be observed and committed days would
         // silently stop rendering. Event changes are applied in-place below.
         if yearModel.months.isEmpty {
-            yearModel.months = dataProvider.months(forYear: calendar.year).map {
-                PCCalendarMonthModel(dto: $0, daySelectionManager: daySelectionManager)
-            }
-            yearModel.numberOfCurrentMonth = dataProvider.numberOfCurrentMonth
-            yearModel.set(initialNumberOfColumns: Self.initialNumberOfColumns(for: calendar))
+            let columns = Self.initialNumberOfColumns(for: calendar)
+            yearModel = dataProvider.makeYearModel(
+                year: calendar.year,
+                numberOfColumns: columns,
+                daySelectionManager: daySelectionManager
+            )
         }
         
         originalBatches = calendar.eventBatches
@@ -243,7 +244,6 @@ public final class SingleCalendarModel {
     /// view models are owned by their views and communicate with this model
     /// only through the shared managers.
     public func commitPendingBatch(_ eventBatch: EventBatchDataSource?) {
-        print("[PC] commitPendingBatch mode=\(daySelectionManager.selectionMode) events=\(eventBatch?.events.map { $0.date } ?? []) name=\(eventBatch?.name ?? "")")
         guard let eventBatch else { return }
         let batchKey = key(for: eventBatch)
         originalBatches.removeAll(where: { key(for: $0) == batchKey })
@@ -312,15 +312,6 @@ public final class SingleCalendarModel {
         return .unsaved(batch.hashValue)
     }
     
-    private func isSameDay(_ lhs: Date, _ rhs: Date) -> Bool {
-        let lhsComponents = dataProvider.dateComponents(forDate: lhs)
-        let rhsComponents = dataProvider.dateComponents(forDate: rhs)
-        return
-            lhsComponents.day == rhsComponents.day &&
-            lhsComponents.month == rhsComponents.month &&
-            lhsComponents.year == rhsComponents.year
-    }
-    
     private func updateYearModel(with events: Set<EventDataSource>) {
         let eventColorsByDay = colorsByStartOfDay(from: events)
         yearModel.months.forEach { month in
@@ -331,7 +322,7 @@ public final class SingleCalendarModel {
                     }
                     .forEach { day in
                         guard let dayDate = day.date else { return }
-                        let key = Calendar.autoupdatingCurrent.startOfDay(for: dayDate)
+                        let key = dataProvider.startOfDay(for: dayDate)
                         let newEvents = eventColorsByDay[key] ?? []
                         guard day.events != newEvents else { return }
                         day.events = newEvents
@@ -342,7 +333,7 @@ public final class SingleCalendarModel {
     
     private func updateDayModel(at date: Date, with events: Set<EventDataSource>) {
         guard let day = dayModel(for: date) else { return }
-        let key = Calendar.autoupdatingCurrent.startOfDay(for: date)
+        let key = dataProvider.startOfDay(for: date)
         let newEvents = colorsByStartOfDay(from: events)[key] ?? []
         guard day.events != newEvents else { return }
         day.events = newEvents
@@ -353,7 +344,7 @@ public final class SingleCalendarModel {
         for month in yearModel.months {
             for week in month.weeks {
                 for day in week.days {
-                    guard let dayDate = day.date, isSameDay(dayDate, date) else { continue }
+                    guard let dayDate = day.date, dataProvider.isSameDay(dayDate, date) else { continue }
                     if day.isInCurrentMonth { return day }
                     fallback = day
                 }
@@ -365,7 +356,7 @@ public final class SingleCalendarModel {
     private func colorsByStartOfDay(from events: Set<EventDataSource>) -> [Date: [String]] {
         var result: [Date: [String]] = [:]
         for event in events {
-            result[Calendar.autoupdatingCurrent.startOfDay(for: event.date), default: []].append(event.color)
+            result[dataProvider.startOfDay(for: event.date), default: []].append(event.color)
         }
         return result
     }

@@ -10,6 +10,7 @@ import Observation
 import SwiftUI
 import CorePersistence
 import DSKit
+import CoreDomain
 
 @MainActor
 @Observable

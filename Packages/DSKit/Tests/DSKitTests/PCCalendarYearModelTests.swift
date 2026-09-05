@@ -7,7 +7,8 @@
 
 import Testing
 import Foundation
-@testable import DSKit
+import CoreDomain
+import DSKit
 
 @MainActor
 struct PCCalendarYearModelTests {

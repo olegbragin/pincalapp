@@ -33,9 +33,41 @@ public struct PCCalendarDataProvider {
             )
         }
     }
+
+    /// Builds a fully-configured year model for the given year, current month and
+    /// column count. This centralises year-model creation so callers don't each
+    /// wire up the months themselves.
+    @MainActor
+    public func makeYearModel(
+        year: Int,
+        numberOfColumns: Int,
+        daySelectionManager: PCCalendarDaySelectionManager
+    ) -> PCCalendarYearModel {
+        let model = PCCalendarYearModel(
+            numberOfCurrentMonth: numberOfCurrentMonth,
+            numberOfColumns: numberOfColumns
+        )
+        model.months = months(forYear: year).map {
+            PCCalendarMonthModel(dto: $0, daySelectionManager: daySelectionManager)
+        }
+        return model
+    }
     
     public func dateComponents(forDate date: Date) -> DateComponents {
         calendar.dateComponents(in: calendar.timeZone, from: date)
+    }
+
+    public func startOfDay(for date: Date) -> Date {
+        calendar.startOfDay(for: date)
+    }
+
+    public func isSameDay(_ lhs: Date, _ rhs: Date) -> Bool {
+        let lhsComponents = dateComponents(forDate: lhs)
+        let rhsComponents = dateComponents(forDate: rhs)
+        return
+            lhsComponents.day == rhsComponents.day &&
+            lhsComponents.month == rhsComponents.month &&
+            lhsComponents.year == rhsComponents.year
     }
 
     private func weeks(

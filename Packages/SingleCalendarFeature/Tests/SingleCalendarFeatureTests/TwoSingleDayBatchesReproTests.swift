@@ -11,6 +11,7 @@ import Testing
 import Foundation
 import ObjectBox
 import DSKit
+import CoreDomain
 @testable import CorePersistence
 @testable import SingleCalendarFeature
 

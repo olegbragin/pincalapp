@@ -96,6 +96,17 @@ public struct SingleCalendarView: View {
         }
         .onDisappear {
             flushColumnCountSave()
+            // Leaving the calendar detail (back to the list, or switching
+            // calendars) must exit any active multiselect session so a later
+            // reopen starts fresh. `onChange(of: isAtRoot)` never fires here
+            // because the calendar is opened via `detailCalendarID` (not pushed
+            // onto the navigation path), so `isAtRoot` stays `true`.
+            // Guard on `isAtRoot`: `onDisappear` also fires when a destination
+            // (e.g. the batch editor) is pushed on top of the root, and we must
+            // not reset the shared session while a batch edit is in progress.
+            if navigation.isAtRoot {
+                viewModel.resetSelectedDays()
+            }
         }
         .onChange(of: navigation.isAtRoot) { _, isAtRoot in
             if isAtRoot {

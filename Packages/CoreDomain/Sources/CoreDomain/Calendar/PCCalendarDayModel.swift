@@ -6,7 +6,7 @@
 //
 
 import Foundation
-import CoreDomain
+import Observation
 
 @MainActor
 @Observable

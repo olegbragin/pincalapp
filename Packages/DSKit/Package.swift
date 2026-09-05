@@ -36,7 +36,8 @@ let package = Package(
         .testTarget(
             name: "DSKitTests",
             dependencies: [
-                "DSKit"
+                "DSKit",
+                "CoreDomain"
             ],
             path: "Tests/DSKitTests"
         )

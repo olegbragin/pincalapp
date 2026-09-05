@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import CoreDomain
 
 public struct PCCalendarMonthView: View {
     @Bindable var viewModel: PCCalendarMonthModel

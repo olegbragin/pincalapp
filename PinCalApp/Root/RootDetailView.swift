@@ -3,6 +3,7 @@ import CorePersistence
 import DSKit
 import AppNavigation
 import SingleCalendarFeature
+import CoreDomain
 
 /// App-root session object. Owns the shared batch-editing managers, which are
 /// injected into `SingleCalendarModel` and the batch views so all three models

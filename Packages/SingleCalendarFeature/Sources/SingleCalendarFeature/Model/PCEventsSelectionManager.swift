@@ -145,10 +145,13 @@ public final class PCEventsSelectionManager {
         yearModel.numberOfColumns = numberOfColumns
         let year = calendarYear
         if yearModel.months.isEmpty || builtCalendarYear != year {
-            yearModel.months = dataProvider.months(forYear: year).map {
-                PCCalendarMonthModel(dto: $0, daySelectionManager: daySelectionManager)
-            }
-            yearModel.numberOfCurrentMonth = dataProvider.numberOfCurrentMonth
+            let model = dataProvider.makeYearModel(
+                year: year,
+                numberOfColumns: numberOfColumns,
+                daySelectionManager: daySelectionManager
+            )
+            yearModel.months = model.months
+            yearModel.numberOfCurrentMonth = model.numberOfCurrentMonth
             builtCalendarYear = year
         }
         yearModel.scrollTargetDate = events.map(\.date).min()
