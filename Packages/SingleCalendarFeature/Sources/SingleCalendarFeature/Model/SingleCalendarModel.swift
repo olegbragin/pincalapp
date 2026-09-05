@@ -188,12 +188,33 @@ public final class SingleCalendarModel {
                 PCCalendarMonthModel(dto: $0, daySelectionManager: daySelectionManager)
             }
             yearModel.numberOfCurrentMonth = dataProvider.numberOfCurrentMonth
-            yearModel.set(initialNumberOfColumns: calendar.numberOfColumns)
+            yearModel.set(initialNumberOfColumns: Self.initialNumberOfColumns(for: calendar))
         }
         
         originalBatches = calendar.eventBatches
         updateYearModel(with: originalEvents)
         state = .content
+    }
+
+    /// Resolves the year-grid column count for this calendar.
+    ///
+    /// UI tests can force a specific column count (e.g. a single column so the
+    /// day cells are large and reliably tappable) by passing
+    /// `-UITestColumns <n>` as a launch argument. It is ignored outside UI tests
+    /// and does not affect the app's pinch-to-zoom (the `maximumNumberOfColumns`
+    /// cap is unchanged).
+    private static func initialNumberOfColumns(for calendar: CalendarDataSource) -> Int {
+        forcedColumnsForUITests ?? calendar.numberOfColumns
+    }
+
+    private static var forcedColumnsForUITests: Int? {
+        let arguments = ProcessInfo.processInfo.arguments
+        guard
+            let flagIndex = arguments.firstIndex(of: "-UITestColumns"),
+            arguments.indices.contains(flagIndex + 1),
+            let value = Int(arguments[flagIndex + 1])
+        else { return nil }
+        return value
     }
     
     public func save(for calendarId: Int64) {
@@ -213,7 +234,7 @@ public final class SingleCalendarModel {
             return nil
         }
         prepareAddEditEventBatchViewModel()
-        guard let day = addedEvents.sorted { $0.date < $1.date }.first?.date else { return nil }
+        guard let day = addedEvents.sorted(by: { $0.date < $1.date }).first?.date else { return nil }
         return .batchEditor(.newDay(day))
     }
 

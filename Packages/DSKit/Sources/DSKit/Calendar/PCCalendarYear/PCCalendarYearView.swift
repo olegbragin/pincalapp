@@ -19,8 +19,6 @@ public struct PCCalendarYearView: View {
     // Временный масштаб во время жеста (сбрасывается после)
     @GestureState private var tempMagnification: CGFloat = 1.0
     
-    @State private var initialScrollIndex: Int?
-    
     private static let monthColumnSpacing: CGFloat = 8
     private static let minMonthCellSize: CGFloat = 28
     private static let minMonthWidth: CGFloat = minMonthCellSize * 7
@@ -37,44 +35,40 @@ public struct PCCalendarYearView: View {
     public var body: some View {
         GeometryReader { proxy in
             let cellSize = max(1, (proxy.size.width - Self.monthColumnSpacing * CGFloat(viewModel.internalNumberOfColumns - 1)) / CGFloat(viewModel.internalNumberOfColumns) / 7)
-            ScrollView {
-                LazyVGrid(
-                    columns: gridColumns,
-                    spacing: 16
-                ) {
-                    ForEach(viewModel.months.indices, id: \.self) { index in
-                        let month = viewModel.months[index]
-                        PCCalendarMonthView(
-                            viewModel: month,
-                            cellSize: cellSize
-                        )
-                        .id(index)
+            ScrollViewReader { scrollProxy in
+                ScrollView {
+                    LazyVGrid(
+                        columns: gridColumns,
+                        spacing: 16
+                    ) {
+                        ForEach(viewModel.months.indices, id: \.self) { index in
+                            let month = viewModel.months[index]
+                            PCCalendarMonthView(
+                                viewModel: month,
+                                cellSize: cellSize
+                            )
+                            .id(index)
+                        }
                     }
+                    .scrollTargetLayout()
                 }
-                .scrollTargetLayout()
-            }
-            .scrollPosition(id: $initialScrollIndex, anchor: .top)
-            .onAppear {
-                viewModel.maximumNumberOfColumns = Self.maxColumns(forWidth: proxy.size.width)
-                setInitialScrollIndex()
-            }
-            .onChange(of: proxy.size.width) { _, newWidth in
-                viewModel.maximumNumberOfColumns = Self.maxColumns(forWidth: newWidth)
-            }
-            .onChange(of: viewModel.numberOfColumns) {
-                initialScrollIndex = targetMonthIndex
-            }
-            .onChange(of: proxy.size) { oldSize, newSize in
-                guard oldSize != newSize else { return }
-                let target = initialScrollIndex ?? targetMonthIndex
-                guard let target else { return }
-                initialScrollIndex = nil
-                Task { @MainActor in
-                    initialScrollIndex = target
+                .onAppear {
+                    viewModel.maximumNumberOfColumns = Self.maxColumns(forWidth: proxy.size.width)
+                    scrollToTargetMonth(using: scrollProxy)
                 }
+                .onChange(of: proxy.size.width) { _, newWidth in
+                    viewModel.maximumNumberOfColumns = Self.maxColumns(forWidth: newWidth)
+                }
+                .onChange(of: viewModel.numberOfColumns) {
+                    scrollToTargetMonth(using: scrollProxy)
+                }
+                .onChange(of: proxy.size) { oldSize, newSize in
+                    guard oldSize != newSize else { return }
+                    scrollToTargetMonth(using: scrollProxy)
+                }
+                .highPriorityGesture(pinchToZoomGesture)
+                .animation(.easeOut(duration: 0.3), value: viewModel.numberOfColumns)
             }
-            .highPriorityGesture(pinchToZoomGesture)
-            .animation(.easeOut(duration: 0.3), value: viewModel.numberOfColumns)
         }
     }
     
@@ -104,9 +98,9 @@ public struct PCCalendarYearView: View {
         return columns
     }
     
-    private func setInitialScrollIndex() {
-        guard initialScrollIndex == nil else { return }
-        initialScrollIndex = targetMonthIndex
+    private func scrollToTargetMonth(using proxy: ScrollViewProxy) {
+        guard let target = targetMonthIndex else { return }
+        proxy.scrollTo(target, anchor: .top)
     }
     
     private var targetMonthIndex: Int? {
