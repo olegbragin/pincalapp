@@ -298,7 +298,7 @@ struct TwoSingleDayBatchesReproTests {
         #expect(eventDates[1] == day12)
 
         // Verify no duplicate keys in originalBatches
-        let keys = finalBatches.map { reopenedModel.key(for: $0) }
+        let keys = finalBatches.map { reopenedModel.eventsSelectionManager.key(for: $0) }
         let uniqueKeys = Set(keys)
         #expect(keys.count == uniqueKeys.count,
                 "Duplicate batch keys detected in originalBatches: \(keys)")

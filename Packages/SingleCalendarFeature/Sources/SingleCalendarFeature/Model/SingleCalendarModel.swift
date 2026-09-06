@@ -26,7 +26,10 @@ public final class SingleCalendarModel {
     private let cache: CalendarCache
     private let dataProvider: PCCalendarDataProvider
     
-    private(set) var originalBatches: [EventBatchDataSource] = []
+    private(set) var originalBatches: [EventBatchDataSource] {
+        get { eventsSelectionManager.batches }
+        set { eventsSelectionManager.batches = newValue }
+    }
     private var addedEvents: Set<EventDataSource> = []
     
     public private(set) var calendarid: Int64
@@ -100,7 +103,16 @@ public final class SingleCalendarModel {
     }
 
     public func batch(withId id: Int64) -> EventBatchDataSource? {
-        originalBatches.first { $0.id == id }
+        eventsSelectionManager.batch(withId: id)
+    }
+
+    /// Resolves the batch to hand to the batch editor for a navigation source.
+    /// Returns `nil` for a brand-new day (the editor seeds from the session).
+    public func batch(for source: BatchEditorSource) -> EventBatchDataSource? {
+        if case .existingBatch(let id) = source {
+            return batch(withId: id)
+        }
+        return nil
     }
 
     /// Stages the single placeholder event for a new batch anchored on `date`
@@ -124,7 +136,7 @@ public final class SingleCalendarModel {
 
     /// Creates a batch editor view model bound to the shared session manager.
     public func makeBatchEditor() -> AddEditEventBatchViewModel {
-        AddEditEventBatchViewModel(eventsSelectionManager: eventsSelectionManager)
+        AddEditEventBatchViewModel(eventsSelectionManager: eventsSelectionManager, calendarId: calendarid)
     }
 
     public init(
@@ -191,7 +203,7 @@ public final class SingleCalendarModel {
         // `-UITestColumns`), keeping its day cells reliably tappable.
         eventsSelectionManager.numberOfColumns = yearModel.numberOfColumns
         
-        originalBatches = calendar.eventBatches
+        eventsSelectionManager.setCalendar(id: calendarid, batches: calendar.eventBatches)
         updateYearModel(with: originalEvents)
         state = .content
     }
@@ -217,17 +229,11 @@ public final class SingleCalendarModel {
         return .batchEditor(.newDay(day))
     }
 
-    /// Commits a batch that was edited/saved in the batch editor. The editor
-    /// hands the resulting batch up through its `onCommit` closure; the batch
-    /// view models are owned by their views and communicate with this model
-    /// only through the shared managers.
+    /// Commits a batch that was edited/saved in the batch editor. The manager
+    /// owns the calendar's batch list and the persistence; this model only
+    /// updates its own calendar state (year model + multi-select session).
     public func commitPendingBatch(_ eventBatch: EventBatchDataSource?) {
-        guard let eventBatch else { return }
-        let batchKey = key(for: eventBatch)
-        originalBatches.removeAll(where: { key(for: $0) == batchKey })
-        if !eventBatch.events.isEmpty {
-            originalBatches.append(eventBatch)
-        }
+        eventsSelectionManager.commit(eventBatch)
         updateYearModel(with: originalEvents)
         save(for: calendarid)
         if daySelectionManager.selectionMode == .multiple {
@@ -251,7 +257,7 @@ public final class SingleCalendarModel {
     
     public func deleteBatches(_ batches: [EventBatchDataSource], for calendarId: Int64) {
         for batch in batches {
-            originalBatches.removeAll(where: { key(for: $0) == key(for: batch) })
+            originalBatches.removeAll(where: { eventsSelectionManager.key(for: $0) == eventsSelectionManager.key(for: batch) })
         }
         updateYearModel(with: originalEvents)
         save(for: calendarId)
@@ -272,22 +278,6 @@ public final class SingleCalendarModel {
             selectedColor = nil
             updateYearModel(with: originalEvents)
         }
-    }
-    
-    enum BatchMergeKey: Hashable {
-        case persisted(Int64)
-        case pending(UUID)
-        case unsaved(Int)
-    }
-    
-    func key(for batch: EventBatchDataSource) -> BatchMergeKey {
-        if batch.id != 0 {
-            return .persisted(batch.id)
-        }
-        if let timestamp = batch.timestamp {
-            return .pending(timestamp)
-        }
-        return .unsaved(batch.hashValue)
     }
     
     private func updateYearModel(with events: Set<EventDataSource>) {

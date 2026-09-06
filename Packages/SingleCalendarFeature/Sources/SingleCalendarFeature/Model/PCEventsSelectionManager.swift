@@ -12,11 +12,12 @@ import DSKit
 import Observation
 
 /// Shared, observable store for a batch-editing session. It owns the events
-/// being edited, the batch's selected color, and the calendar (year model) shown
-/// in the batch editor. All three models that participate in batch editing
-/// (SingleCalendarModel, the batch list, the batch editor) depend on this
-/// manager and communicate through it. Day selection is handled separately by
-/// the injected `PCCalendarDaySelectionManager`.
+/// being edited, the batch's selected color, the calendar (year model) shown in
+/// the batch editor, and (as the source of truth) the calendar's batches. All
+/// three models that participate in batch editing (SingleCalendarModel, the
+/// batch list, the batch editor) depend on this manager and communicate through
+/// it. Day selection is handled separately by the injected
+/// `PCCalendarDaySelectionManager`.
 @MainActor
 @Observable
 public final class PCEventsSelectionManager {
@@ -34,6 +35,18 @@ public final class PCEventsSelectionManager {
     let daySelectionManager: PCCalendarDaySelectionManager
     private var builtCalendarYear: Int?
 
+    /// The calendar whose batches are being edited. Set by `SingleCalendarModel`
+    /// when a calendar is opened, so the manager can resolve and commit batches.
+    private(set) var calendarId: Int64 = 0
+
+    /// The calendar's batches — the single source of truth for batch editing.
+    /// `SingleCalendarModel` reads/writes these through the manager.
+    var batches: [EventBatchDataSource] = []
+
+    /// Used to persist committed batches. Injected from the session; `nil` in
+    /// unit tests that don't touch persistence.
+    private let cache: CalendarCache?
+
     /// Number of columns the batch editor's calendar should show. It mirrors
     /// the owning calendar's column count (and the `-UITestColumns` launch
     /// argument) so the batch editor's day cells match the main calendar and
@@ -44,16 +57,30 @@ public final class PCEventsSelectionManager {
     /// Invoked whenever a mutation that should refresh other listeners happens.
     var onEventsChanged: (() -> Void)?
 
+    /// Invoked when a single event is applied (e.g. saved from the event editor).
+    /// Lets the batch editor persist the batch right after an event edit.
+    var onEventApplied: (() -> Void)?
+
     public init(
         events: [EventDataSource] = [],
+        cache: CalendarCache? = nil,
         dataProvider: PCCalendarDataProvider = PCCalendarDataProvider(),
         daySelectionManager: PCCalendarDaySelectionManager = PCCalendarDaySelectionManager(),
         numberOfColumns: Int = 3
     ) {
         self.events = events
+        self.cache = cache
         self.dataProvider = dataProvider
         self.daySelectionManager = daySelectionManager
         self.numberOfColumns = numberOfColumns
+    }
+
+    /// Configures the manager for the calendar being edited. `SingleCalendarModel`
+    /// calls this whenever a calendar is fetched so the manager can resolve and
+    /// commit batches for that calendar.
+    func setCalendar(id: Int64, batches: [EventBatchDataSource]) {
+        self.calendarId = id
+        self.batches = batches
     }
 
     func prepare(with events: [EventDataSource]) {
@@ -128,6 +155,24 @@ public final class PCEventsSelectionManager {
         }
         updateYearModel()
         onEventsChanged?()
+        onEventApplied?()
+    }
+
+    /// Resolves a batch by its persisted id.
+    func batch(withId id: Int64) -> EventBatchDataSource? {
+        batches.first { $0.id == id }
+    }
+
+    /// Commits an edited batch into the calendar's batch list and persists it.
+    /// Replaces an existing batch (matched by its merge key) or appends a new one.
+    func commit(_ eventBatch: EventBatchDataSource?) {
+        guard let eventBatch else { return }
+        let batchKey = key(for: eventBatch)
+        batches.removeAll(where: { key(for: $0) == batchKey })
+        if !eventBatch.events.isEmpty {
+            batches.append(eventBatch)
+        }
+        persistBatches()
     }
 
     func reset() {
@@ -170,6 +215,33 @@ public final class PCEventsSelectionManager {
                         day.events = colors
                     }
             }
+        }
+    }
+
+    enum BatchMergeKey: Hashable {
+        case persisted(Int64)
+        case pending(UUID)
+        case unsaved(Int)
+    }
+
+    func key(for batch: EventBatchDataSource) -> BatchMergeKey {
+        if batch.id != 0 {
+            return .persisted(batch.id)
+        }
+        if let timestamp = batch.timestamp {
+            return .pending(timestamp)
+        }
+        return .unsaved(batch.hashValue)
+    }
+
+    private func persistBatches() {
+        guard let cache, calendarId != 0 else { return }
+        let calendarIdSnapshot = calendarId
+        let batchesSnapshot = batches
+        Task {
+            guard var calendar = try? await cache.getCalendar(id: calendarIdSnapshot) else { return }
+            calendar.eventBatches = batchesSnapshot
+            try? await cache.updateCalendar(calendar)
         }
     }
 

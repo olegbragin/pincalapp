@@ -64,8 +64,7 @@ public struct SingleCalendarView: View {
                         eventsSelectionManager: viewModel.eventsSelectionManager,
                         calendarId: viewModel.calendarid,
                         source: source,
-                        resolveBatch: { viewModel.batch(withId: $0) },
-                        onCommit: { viewModel.commitPendingBatch($0) }
+                        eventBatch: viewModel.batch(for: source)
                     )
                 case .eventEditor(let source):
                     AddEditEventView(

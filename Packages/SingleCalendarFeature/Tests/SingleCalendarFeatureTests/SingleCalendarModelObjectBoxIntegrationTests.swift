@@ -88,6 +88,41 @@ struct SingleCalendarModelObjectBoxIntegrationTests {
         return check()
     }
 
+    @Test func editingEventInBatchPersistsWhenBatchSaved() async throws {
+        let store = try makeStore()
+        defer { store.close() }
+        let ppCalendar = makeCalendar(in: store)
+        let cache = makeCache(store: store)
+        let model = SingleCalendarModel(calendarid: Int64(ppCalendar.id), cache: cache)
+        await model.fetch(force: true)
+
+        let someDay = date(year: 2026, month: 6, day: 1)
+        model.prepareNewBatchEvents(on: someDay)
+        let editor = model.makeBatchEditor()
+        editor.setup()
+        editor.eventBatchName = "Swim"
+        editor.selectedColor = .option1
+        #expect(editor.save())
+        model.commitPendingBatch(editor.eventBatch)
+        #expect(try await waitForBatchCount(1, in: store))
+
+        let batch = model.batch(for: .existingBatch(editor.eventBatch!.id))
+        #expect(batch != nil)
+        let editor2 = model.makeBatchEditor()
+        editor2.setup()
+        editor2.load(batch)
+        #expect(editor2.eventsSelectionManager.events.count == 1)
+
+        let event = editor2.eventsSelectionManager.events[0]
+        let eventEditor = AddEditEventViewModel(eventsSelectionManager: model.eventsSelectionManager, event: event)
+        eventEditor.eventName = "Lap"
+        eventEditor.selectedDate = someDay
+        #expect(eventEditor.save())
+
+        let updated = model.batch(for: .existingBatch(batch!.id))
+        #expect(updated?.events.first?.name == "Lap")
+    }
+
     // MARK: - Batch persistence via SingleCalendarModel + direct ObjectBox verification
 
     @Test func commitBatchPersistsViaModelAndVerifiableInStorage() async throws {

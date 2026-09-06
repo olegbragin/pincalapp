@@ -15,9 +15,15 @@ import Observation
 @Observable
 public final class AddEditEventBatchViewModel {
     // Shared session manager — injected, not owned. It owns the events, the
-    // batch color and the calendar (year model); this view model only carries
-    // the batch metadata and reads/writes the session through the manager.
+    // batch color, the calendar (year model) and the calendar's batches; this
+    // view model only carries the batch metadata and reads/writes the session
+    // through the manager.
     let eventsSelectionManager: PCEventsSelectionManager
+    let calendarId: Int64
+
+    private let initialEventBatch: EventBatchDataSource?
+    private let initialSelectedDay: Date?
+    private var didSetup = false
 
     var eventBatchId: Int64 = 0
     var eventBatchName: String = ""
@@ -58,8 +64,16 @@ public final class AddEditEventBatchViewModel {
         title(compact: true)
     }
 
-    init(eventsSelectionManager: PCEventsSelectionManager) {
+    init(
+        eventsSelectionManager: PCEventsSelectionManager = PCEventsSelectionManager(),
+        calendarId: Int64 = 0,
+        eventBatch: EventBatchDataSource? = nil,
+        selectedDay: Date? = nil
+    ) {
         self.eventsSelectionManager = eventsSelectionManager
+        self.calendarId = calendarId
+        self.initialEventBatch = eventBatch
+        self.initialSelectedDay = selectedDay
         eventsSelectionManager.setupCalendar()
     }
 
@@ -67,14 +81,35 @@ public final class AddEditEventBatchViewModel {
         self.init(eventsSelectionManager: PCEventsSelectionManager(events: events))
     }
 
+    /// Loads the batch and wires up the persist-on-apply hook. Called once from
+    /// the owning view (via `.task`) rather than in `init`, so the observed
+    /// mutations in `load` don't run during a SwiftUI view update (which caused
+    /// an infinite re-render loop when a batch editor was created).
+    func setup() {
+        guard !didSetup else { return }
+        didSetup = true
+        load(initialEventBatch, selectedDay: initialSelectedDay)
+        // Persist the batch whenever an event is applied (saved from the child
+        // event editor), so an edited event isn't lost if the user doesn't press
+        // the batch Save button again.
+        eventsSelectionManager.onEventApplied = { [weak self] in
+            self?.persistBatch()
+        }
+    }
+
     func save() -> Bool {
         // Ensure any pending event edit (saved in child editor but not yet
         // applied via navigationDestination onChange) is flushed.
-        guard
-            !eventBatchName.isEmpty,
-            let selectedColor
-        else { return false }
-        eventBatch = EventBatchDataSource(
+        guard canSave else { return false }
+        persistBatch()
+        return true
+    }
+
+    /// Builds the batch from the current session and commits it (persisting via
+    /// the manager). Idempotent — safe to call repeatedly.
+    private func persistBatch() {
+        guard canSave, let selectedColor else { return }
+        let eventBatch = EventBatchDataSource(
             id: eventBatchId,
             name: eventBatchName,
             colorName: selectedColor.colorName,
@@ -82,7 +117,8 @@ public final class AddEditEventBatchViewModel {
             date: date,
             timestamp: timestamp
         )
-        return true
+        self.eventBatch = eventBatch
+        eventsSelectionManager.commit(eventBatch)
     }
 
     func prepare(with events: [EventDataSource]) {

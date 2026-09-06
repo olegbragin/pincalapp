@@ -28,13 +28,14 @@ struct AddEditEventBatchViewModelTests {
     @Test("canSave requires a name and a color")
     func canSaveRequirements() {
         let vm = AddEditEventBatchViewModel()
+        vm.setup()
         #expect(!vm.canSave)
 
         vm.eventBatchName = "Summer"
-        #expect(!vm.canSave)
-
-        vm.selectedColor = .option1
         #expect(vm.canSave)
+
+        vm.selectedColor = nil
+        #expect(!vm.canSave)
     }
 
     @Test("save returns false when invalid")

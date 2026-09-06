@@ -33,6 +33,7 @@ final class PCCalendarSession {
         let daySelectionManager = PCCalendarDaySelectionManager()
         self.daySelectionManager = daySelectionManager
         self.eventsSelectionManager = PCEventsSelectionManager(
+            cache: cache,
             dataProvider: dataProvider,
             daySelectionManager: daySelectionManager
         )
