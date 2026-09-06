@@ -256,9 +256,7 @@ public final class SingleCalendarModel {
     }
     
     public func deleteBatches(_ batches: [EventBatchDataSource], for calendarId: Int64) {
-        for batch in batches {
-            originalBatches.removeAll(where: { eventsSelectionManager.key(for: $0) == eventsSelectionManager.key(for: batch) })
-        }
+        eventsSelectionManager.deleteBatches(batches)
         updateYearModel(with: originalEvents)
         save(for: calendarId)
     }

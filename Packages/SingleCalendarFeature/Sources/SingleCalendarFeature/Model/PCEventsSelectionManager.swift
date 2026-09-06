@@ -175,6 +175,14 @@ public final class PCEventsSelectionManager {
         persistBatches()
     }
 
+    /// Removes the given batches from the calendar's batch list and persists it.
+    func deleteBatches(_ batches: [EventBatchDataSource]) {
+        for batch in batches {
+            self.batches.removeAll(where: { key(for: $0) == key(for: batch) })
+        }
+        persistBatches()
+    }
+
     func reset() {
         events = []
         selectedColor = nil

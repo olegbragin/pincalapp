@@ -40,6 +40,11 @@ public final class AddEditEventBatchListViewModel {
         indexPaths.sorted(by: >).forEach { eventBatches.remove(at: $0) }
         eventBatchesToDelete = removedBatches
     }
+
+    /// Deletes the given batches through the shared manager (which persists).
+    func deleteBatches(_ batches: [EventBatchDataSource]) {
+        eventsSelectionManager.deleteBatches(batches)
+    }
     
     func prepare(with eventBatches: [EventBatchDataSource], and selectedDay: Date?) {
         self.selectedDay = selectedDay

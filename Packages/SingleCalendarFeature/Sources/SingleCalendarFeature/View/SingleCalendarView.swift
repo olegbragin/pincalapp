@@ -56,8 +56,7 @@ public struct SingleCalendarView: View {
                         daySelectionManager: viewModel.daySelectionManager,
                         calendarId: viewModel.calendarid,
                         loadBatches: { viewModel.batches(for: day) },
-                        selectedDay: day,
-                        onDeleteBatches: { viewModel.deleteBatches($0, for: viewModel.calendarid) }
+                        selectedDay: day
                     )
                 case .batchEditor(let source):
                     AddEditEventBatchScreen(
