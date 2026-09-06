@@ -17,14 +17,12 @@ public struct AddEditEventBatchListView: View {
     @State private var viewModel: AddEditEventBatchListViewModel
 
     private let calendarId: Int64
-    private let loadBatches: () -> [EventBatchDataSource]
     private let selectedDay: Date?
 
     public init(
         eventsSelectionManager: PCEventsSelectionManager,
         daySelectionManager: PCCalendarDaySelectionManager,
         calendarId: Int64,
-        loadBatches: @escaping () -> [EventBatchDataSource],
         selectedDay: Date?
     ) {
         _viewModel = State(initialValue: AddEditEventBatchListViewModel(
@@ -32,7 +30,6 @@ public struct AddEditEventBatchListView: View {
             daySelectionManager: daySelectionManager
         ))
         self.calendarId = calendarId
-        self.loadBatches = loadBatches
         self.selectedDay = selectedDay
     }
 
@@ -82,12 +79,12 @@ public struct AddEditEventBatchListView: View {
         }
         .background(Color.dsKit.colorBackgroundMain)
         .onAppear {
-            viewModel.prepare(with: loadBatches(), and: selectedDay)
+            viewModel.prepare(with: viewModel.eventsSelectionManager.batches(for: selectedDay ?? Date()), and: selectedDay)
         }
         .onChange(of: viewModel.eventBatchesToDelete) { _, newValue in
             guard !newValue.isEmpty else { return }
             viewModel.deleteBatches(newValue)
-            viewModel.prepare(with: loadBatches(), and: selectedDay)
+            viewModel.prepare(with: viewModel.eventsSelectionManager.batches(for: selectedDay ?? Date()), and: selectedDay)
             if viewModel.eventBatches.isEmpty {
                 navigation.goTo(.calendar(calendarId, toRoot: true))
             }

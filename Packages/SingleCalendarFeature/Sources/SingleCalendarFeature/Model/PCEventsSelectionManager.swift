@@ -163,6 +163,15 @@ public final class PCEventsSelectionManager {
         batches.first { $0.id == id }
     }
 
+    /// Returns the batches that fall on the given day.
+    func batches(for day: Date) -> [EventBatchDataSource] {
+        batches.filter { batch in
+            batch.events.contains { event in
+                dataProvider.isSameDay(event.date, day)
+            } || (batch.date.map { dataProvider.isSameDay($0, day) } ?? false)
+        }
+    }
+
     /// Commits an edited batch into the calendar's batch list and persists it.
     /// Replaces an existing batch (matched by its merge key) or appends a new one.
     func commit(_ eventBatch: EventBatchDataSource?) {

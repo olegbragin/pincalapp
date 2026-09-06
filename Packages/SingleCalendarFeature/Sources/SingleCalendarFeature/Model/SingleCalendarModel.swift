@@ -95,11 +95,7 @@ public final class SingleCalendarModel {
     }
 
     public func batches(for day: Date) -> [EventBatchDataSource] {
-        originalBatches.filter { batch in
-            batch.events.contains { event in
-                dataProvider.isSameDay(event.date, day)
-            } || (batch.date.map { dataProvider.isSameDay($0, day) } ?? false)
-        }
+        eventsSelectionManager.batches(for: day)
     }
 
     public func batch(withId id: Int64) -> EventBatchDataSource? {

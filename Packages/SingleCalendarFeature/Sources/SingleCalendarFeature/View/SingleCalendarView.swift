@@ -55,7 +55,6 @@ public struct SingleCalendarView: View {
                         eventsSelectionManager: viewModel.eventsSelectionManager,
                         daySelectionManager: viewModel.daySelectionManager,
                         calendarId: viewModel.calendarid,
-                        loadBatches: { viewModel.batches(for: day) },
                         selectedDay: day
                     )
                 case .batchEditor(let source):
