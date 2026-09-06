@@ -1,4 +1,5 @@
 import SwiftUI
+import CoreDomain
 
 public extension Color {
     enum dsKit {

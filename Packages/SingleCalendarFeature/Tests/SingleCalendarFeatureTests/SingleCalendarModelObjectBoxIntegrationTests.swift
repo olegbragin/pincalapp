@@ -12,6 +12,7 @@ import Foundation
 import ObjectBox
 import Combine
 import DSKit
+import CoreDomain
 @testable import CorePersistence
 @testable import SingleCalendarFeature
 
@@ -577,7 +578,7 @@ struct SingleCalendarModelObjectBoxIntegrationTests {
         editor.update(from: first)
         editor.selectedColor = .option2
         #expect(editor.save())
-        addEdit.eventsSelectionManager.apply(editor.event!)
+        addEdit.eventsSelectionManager.apply(editor.event)
         #expect(addEdit.save())
         model.commitPendingBatch(addEdit.eventBatch)
 

@@ -1,6 +1,7 @@
 import Foundation
 import Testing
 import DSKit
+import CoreDomain
 @testable import SingleCalendarFeature
 
 @MainActor
@@ -17,7 +18,7 @@ struct AddEditEventViewModelTests {
         vm.selectedColor = .option1
 
         #expect(vm.save() == false)
-        #expect(vm.event == nil)
+        #expect(vm.event.name.isEmpty)
     }
 
     @Test("save fails without a color")
@@ -26,7 +27,7 @@ struct AddEditEventViewModelTests {
         vm.eventName = "Event"
 
         #expect(vm.save() == false)
-        #expect(vm.event == nil)
+        #expect(vm.event.color.isEmpty)
     }
 
     @Test("save builds an event from current fields")
@@ -42,12 +43,11 @@ struct AddEditEventViewModelTests {
         #expect(vm.save() == true)
 
         let event = vm.event
-        #expect(event != nil)
-        #expect(event?.id == 5)
-        #expect(event?.name == "Party")
-        #expect(event?.date == date)
-        #expect(event?.color == PCColorOption.option2.colorName)
-        #expect(event?.timestamp != nil)
+        #expect(event.id == 5)
+        #expect(event.name == "Party")
+        #expect(event.date == date)
+        #expect(event.color == PCColorOption.option2.colorName)
+        #expect(event.timestamp != nil)
     }
 
     @Test("reset clears all fields")
@@ -61,7 +61,7 @@ struct AddEditEventViewModelTests {
 
         #expect(vm.eventName == "")
         #expect(vm.selectedColor == nil)
-        #expect(vm.event == nil)
+        #expect(vm.event.id == 0)
         #expect(vm.eventId == 0)
         #expect(vm.timestamp == nil)
     }

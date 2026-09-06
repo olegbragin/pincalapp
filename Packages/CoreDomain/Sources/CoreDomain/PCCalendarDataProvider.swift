@@ -9,17 +9,24 @@ import Foundation
 
 public struct PCCalendarDataProvider {
     private var calendar: Calendar
+
+    /// Resolves the effective column count for a year model. Injected so callers
+    /// (e.g. UI-test launch arguments) can override the calendar's natural count
+    /// without the data provider knowing about test infrastructure.
+    private let columnCountResolver: (Int) -> Int
     
     public var numberOfCurrentMonth: Int {
         calendar.component(.month, from: Date())
     }
     
     public init(
-        calendar: Calendar = .autoupdatingCurrent
+        calendar: Calendar = .autoupdatingCurrent,
+        columnCountResolver: @escaping (Int) -> Int = { $0 }
     ) {
         self.calendar = calendar
         self.calendar.timeZone = .current
         self.calendar.locale = .current
+        self.columnCountResolver = columnCountResolver
     }
     
     public func months(forYear year: Int) -> [PCCalendarMonthDataSource] {
@@ -45,7 +52,7 @@ public struct PCCalendarDataProvider {
     ) -> PCCalendarYearDataSource {
         let model = PCCalendarYearDataSource(
             numberOfCurrentMonth: numberOfCurrentMonth,
-            numberOfColumns: numberOfColumns
+            numberOfColumns: columnCountResolver(numberOfColumns)
         )
         model.months = months(forYear: year).map {
             PCCalendarMonthModel(dto: $0, daySelectionManager: daySelectionManager)
@@ -59,6 +66,10 @@ public struct PCCalendarDataProvider {
 
     public func startOfDay(for date: Date) -> Date {
         calendar.startOfDay(for: date)
+    }
+
+    public func year(of date: Date) -> Int {
+        calendar.component(.year, from: date)
     }
 
     public func isSameDay(_ lhs: Date, _ rhs: Date) -> Bool {

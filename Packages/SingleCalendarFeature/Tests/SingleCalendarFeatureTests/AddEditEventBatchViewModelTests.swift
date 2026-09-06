@@ -2,6 +2,7 @@ import Foundation
 import Testing
 import CorePersistence
 import DSKit
+import CoreDomain
 @testable import SingleCalendarFeature
 
 @MainActor

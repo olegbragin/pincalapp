@@ -28,10 +28,8 @@ public final class PCEventsSelectionManager {
     /// and the events list always agree.
     let yearModel: PCCalendarYearDataSource = PCCalendarYearDataSource()
 
-    /// Calendar used for all "is the same day" comparisons. Injected so the
-    /// manager doesn't silently depend on the process calendar.
-    private let calendar: Calendar
-
+    /// Calendar/date logic lives in the data provider so the manager doesn't
+    /// silently depend on the process calendar.
     private let dataProvider: PCCalendarDataProvider
     let daySelectionManager: PCCalendarDaySelectionManager
     private var builtCalendarYear: Int?
@@ -48,13 +46,11 @@ public final class PCEventsSelectionManager {
 
     public init(
         events: [EventDataSource] = [],
-        calendar: Calendar = .autoupdatingCurrent,
         dataProvider: PCCalendarDataProvider = PCCalendarDataProvider(),
         daySelectionManager: PCCalendarDaySelectionManager = PCCalendarDaySelectionManager(),
         numberOfColumns: Int = 3
     ) {
         self.events = events
-        self.calendar = calendar
         self.dataProvider = dataProvider
         self.daySelectionManager = daySelectionManager
         self.numberOfColumns = numberOfColumns
@@ -94,7 +90,7 @@ public final class PCEventsSelectionManager {
 
     func hasEvent(on date: Date) -> Bool {
         events.contains {
-            calendar.isDate($0.date, inSameDayAs: date)
+            dataProvider.isSameDay($0.date, date)
         }
     }
 
@@ -107,7 +103,7 @@ public final class PCEventsSelectionManager {
 
     func removeEvent(on date: Date) {
         events.removeAll {
-            calendar.isDate($0.date, inSameDayAs: date)
+            dataProvider.isSameDay($0.date, date)
         }
         updateYearModel()
         onEventsChanged?()
@@ -169,7 +165,7 @@ public final class PCEventsSelectionManager {
                     .filter(\.isInCurrentMonth)
                     .forEach { day in
                         guard let dayDate = day.date else { return }
-                        let colors = colorsByDay[calendar.startOfDay(for: dayDate)] ?? []
+                        let colors = colorsByDay[dataProvider.startOfDay(for: dayDate)] ?? []
                         guard day.events != colors else { return }
                         day.events = colors
                     }
@@ -179,15 +175,15 @@ public final class PCEventsSelectionManager {
 
     private var calendarYear: Int {
         if let firstEventDate = events.map(\.date).min() {
-            return calendar.component(.year, from: firstEventDate)
+            return dataProvider.year(of: firstEventDate)
         }
-        return calendar.component(.year, from: Date())
+        return dataProvider.year(of: Date())
     }
 
     private func eventColorsByDay() -> [Date: [String]] {
         var result: [Date: [String]] = [:]
         for event in events {
-            result[calendar.startOfDay(for: event.date), default: []].append(event.color)
+            result[dataProvider.startOfDay(for: event.date), default: []].append(event.color)
         }
         return result
     }

@@ -9,6 +9,7 @@ import Testing
 import Foundation
 import ObjectBox
 import DSKit
+import CoreDomain
 @testable import CorePersistence
 @testable import SingleCalendarFeature
 
@@ -85,7 +86,7 @@ struct EventBatchCreationTests {
         editor.update(from: edited)
         editor.selectedColor = .option3
         #expect(editor.save())
-        viewModel.apply(with: editor.event!)
+        viewModel.apply(with: editor.event)
         
         let colors = viewModel.events.map(\.color)
         #expect(colors[0] == "eventColorOption3")
@@ -197,7 +198,7 @@ struct EventBatchCreationTests {
         editor.update(from: first)
         editor.selectedColor = .option3
         #expect(editor.save())
-        viewModel.eventsSelectionManager.apply(editor.event!)
+        viewModel.eventsSelectionManager.apply(editor.event)
         
         #expect(viewModel.save())
         
@@ -379,7 +380,7 @@ struct EventBatchCreationTests {
         editor.update(from: first)
         editor.selectedColor = .option3
         #expect(editor.save())
-        addEdit.eventsSelectionManager.apply(editor.event!)
+        addEdit.eventsSelectionManager.apply(editor.event)
         
         #expect(addEdit.save())
         model.commitPendingBatch(addEdit.eventBatch)

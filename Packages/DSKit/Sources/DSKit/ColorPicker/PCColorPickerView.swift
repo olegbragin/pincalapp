@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import CoreDomain
 
 public struct PCColorPickerView: View {
     public enum Style {

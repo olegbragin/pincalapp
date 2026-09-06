@@ -5,7 +5,8 @@
 //  Created by Oleg Bragin on 05.09.2026.
 //
 
-import SwiftUI
+import Foundation
+import Observation
 import CorePersistence
 import CoreDomain
 import SingleCalendarFeature
@@ -25,15 +26,32 @@ final class PCCalendarSession {
     let daySelectionManager: PCCalendarDaySelectionManager
     let eventsSelectionManager: PCEventsSelectionManager
 
-    init(
-        cache: CalendarCache,
-        dataProvider: PCCalendarDataProvider,
-        daySelectionManager: PCCalendarDaySelectionManager,
-        eventsSelectionManager: PCEventsSelectionManager
-    ) {
+    init(cache: CalendarCache) {
         self.cache = cache
+        let dataProvider = PCCalendarDataProvider(columnCountResolver: Self.makeColumnCountResolver())
         self.dataProvider = dataProvider
+        let daySelectionManager = PCCalendarDaySelectionManager()
         self.daySelectionManager = daySelectionManager
-        self.eventsSelectionManager = eventsSelectionManager
+        self.eventsSelectionManager = PCEventsSelectionManager(
+            dataProvider: dataProvider,
+            daySelectionManager: daySelectionManager
+        )
+    }
+
+    /// Resolves the year-grid column count. UI tests can force a specific count
+    /// (e.g. a single column so the day cells are large and reliably tappable)
+    /// via `-UITestColumns <n>`; otherwise the calendar's natural count is used.
+    private static func makeColumnCountResolver() -> (Int) -> Int {
+        { requested in forcedColumnsForUITests ?? requested }
+    }
+
+    private static var forcedColumnsForUITests: Int? {
+        let arguments = ProcessInfo.processInfo.arguments
+        guard
+            let flagIndex = arguments.firstIndex(of: "-UITestColumns"),
+            arguments.indices.contains(flagIndex + 1),
+            let value = Int(arguments[flagIndex + 1])
+        else { return nil }
+        return value
     }
 }

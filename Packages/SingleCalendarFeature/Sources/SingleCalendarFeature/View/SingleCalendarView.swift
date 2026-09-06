@@ -68,18 +68,9 @@ public struct SingleCalendarView: View {
                         onCommit: { viewModel.commitPendingBatch($0) }
                     )
                 case .eventEditor(let source):
-                    let selectionManager = viewModel.eventsSelectionManager
                     AddEditEventView(
-                        event: EventDataSource(
-                            id: source.id,
-                            name: source.name,
-                            date: source.date,
-                            color: source.color,
-                            timestamp: source.timestamp
-                        ),
-                        onCommit: { committed in
-                            selectionManager.apply(committed)
-                        }
+                        eventsSelectionManager: viewModel.eventsSelectionManager,
+                        source: source
                     )
                 case .calendar:
                     EmptyView()
