@@ -7,14 +7,13 @@
 
 import Testing
 import Foundation
-import CoreDomain
 import DSKit
 
 @MainActor
 struct PCCalendarYearModelTests {
 
     @Test func setInitialNumberOfColumnsSyncsBothProperties() {
-        let model = PCCalendarYearDataSource()
+        let model = PCCalendarYearModel()
 
         model.set(initialNumberOfColumns: 5)
 
@@ -23,7 +22,7 @@ struct PCCalendarYearModelTests {
     }
 
     @Test func maximumNumberOfColumnsClampsCurrentColumns() {
-        let model = PCCalendarYearDataSource()
+        let model = PCCalendarYearModel()
         model.set(initialNumberOfColumns: 5)
 
         model.maximumNumberOfColumns = 4
@@ -33,7 +32,7 @@ struct PCCalendarYearModelTests {
     }
 
     @Test func raisingMaximumNumberOfColumnsPreservesCurrentColumns() {
-        let model = PCCalendarYearDataSource()
+        let model = PCCalendarYearModel()
         model.set(initialNumberOfColumns: 3)
 
         model.maximumNumberOfColumns = 6

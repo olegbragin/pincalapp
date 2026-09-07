@@ -20,12 +20,12 @@ public final class PCCalendarDayModel: Identifiable {
     
     public var events: [String] = []
     
-    public init(dto: PCCalendarDayDataSource, gridMonth: Int) {
-        self.text = "\(dto.number)"
-        self.isToday = dto.isToday
-        self.isInCurrentMonth = dto.isInCurrentMonth
-        self.date = dto.date
-        let dateString = Self.dayIDFormatter.string(from: dto.date)
+    public init(date: Date, number: Int, isInCurrentMonth: Bool, isToday: Bool, gridMonth: Int) {
+        self.text = "\(number)"
+        self.isToday = isToday
+        self.isInCurrentMonth = isInCurrentMonth
+        self.date = date
+        let dateString = Self.dayIDFormatter.string(from: date)
         self.accessibilityID = "day-\(String(format: "%02d", gridMonth))-\(dateString)"
     }
     

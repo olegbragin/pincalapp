@@ -9,6 +9,7 @@ import Foundation
 import Observation
 import CorePersistence
 import CoreDomain
+import DSKit
 import SingleCalendarFeature
 
 /// App-root session object. Bundles the app-wide dependencies that are shared
@@ -23,19 +24,23 @@ import SingleCalendarFeature
 final class PCCalendarSession {
     let cache: CalendarCache
     let dataProvider: PCCalendarDataProvider
+    let columnCountResolver: (Int) -> Int
     let daySelectionManager: PCCalendarDaySelectionManager
     let eventsSelectionManager: PCEventsSelectionManager
 
     init(cache: CalendarCache) {
         self.cache = cache
-        let dataProvider = PCCalendarDataProvider(columnCountResolver: Self.makeColumnCountResolver())
+        let resolver = Self.makeColumnCountResolver()
+        self.columnCountResolver = resolver
+        let dataProvider = PCCalendarDataProvider()
         self.dataProvider = dataProvider
         let daySelectionManager = PCCalendarDaySelectionManager()
         self.daySelectionManager = daySelectionManager
         self.eventsSelectionManager = PCEventsSelectionManager(
             cache: cache,
             dataProvider: dataProvider,
-            daySelectionManager: daySelectionManager
+            daySelectionManager: daySelectionManager,
+            columnCountResolver: resolver
         )
     }
 

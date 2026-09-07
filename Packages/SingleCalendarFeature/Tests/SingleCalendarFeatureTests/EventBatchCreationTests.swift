@@ -249,7 +249,7 @@ struct EventBatchCreationTests {
     @Test func setupCalendarSetsScrollTargetToEarliestEvent() {
         let viewModel = AddEditEventBatchViewModel(events: [event(day: 20), event(day: 10)])
         
-        #expect(viewModel.yearModel.scrollTargetDate.map { Calendar.current.component(.day, from: $0) } == 10)
+        #expect(viewModel.yearModel.scrollTargetMonth == 6)
     }
     
     @Test func setupCalendarFallsBackScrollTargetToSelectedDay() {
@@ -257,7 +257,7 @@ struct EventBatchCreationTests {
         viewModel.date = date(year: 2026, month: 1, day: 1)
         viewModel.setupCalendar()
         
-        #expect(viewModel.yearModel.scrollTargetDate.map { Calendar.current.component(.day, from: $0) } == 1)
+        #expect(viewModel.yearModel.scrollTargetMonth == 1)
     }
     
     // MARK: - SingleCalendarModel

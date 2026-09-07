@@ -13,7 +13,6 @@ let package = Package(
     dependencies: [
         .package(path: "../CorePersistence"),
         .package(path: "../DSKit"),
-        .package(path: "../CoreDomain"),
         .package(path: "../AppNavigation")
     ],
     targets: [
@@ -22,7 +21,6 @@ let package = Package(
             dependencies: [
                 "CorePersistence",
                 "DSKit",
-                "CoreDomain",
                 "AppNavigation"
             ],
             path: "Sources/CalendarListFeature"
@@ -31,8 +29,7 @@ let package = Package(
             name: "CalendarListFeatureTests",
             dependencies: [
                 "CalendarListFeature",
-                "CorePersistence",
-                "CoreDomain"
+                "CorePersistence"
             ],
             path: "Tests/CalendarListFeatureTests"
         )

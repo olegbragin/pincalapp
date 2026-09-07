@@ -16,17 +16,13 @@ let package = Package(
         .package(
             url: "https://github.com/apple/swift-collections.git",
             from: "1.5.0"
-        ),
-        .package(
-            path: "../CoreDomain"
         )
     ],
     targets: [
         .target(
             name: "DSKit",
             dependencies: [
-                .product(name: "OrderedCollections", package: "swift-collections"),
-                "CoreDomain"
+                .product(name: "OrderedCollections", package: "swift-collections")
             ],
             path: "Sources/DSKit",
             resources: [
@@ -36,8 +32,7 @@ let package = Package(
         .testTarget(
             name: "DSKitTests",
             dependencies: [
-                "DSKit",
-                "CoreDomain"
+                "DSKit"
             ],
             path: "Tests/DSKitTests"
         )

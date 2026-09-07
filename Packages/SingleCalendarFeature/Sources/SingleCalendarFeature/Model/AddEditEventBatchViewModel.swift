@@ -41,7 +41,7 @@ public final class AddEditEventBatchViewModel {
         eventsSelectionManager.daySelectionManager
     }
 
-    var yearModel: PCCalendarYearDataSource {
+    var yearModel: PCCalendarYearModel {
         eventsSelectionManager.yearModel
     }
 
@@ -171,8 +171,8 @@ public final class AddEditEventBatchViewModel {
 
     func setupCalendar() {
         eventsSelectionManager.setupCalendar()
-        if eventsSelectionManager.yearModel.scrollTargetDate == nil {
-            eventsSelectionManager.yearModel.scrollTargetDate = date
+        if eventsSelectionManager.yearModel.scrollTargetMonth == nil {
+            eventsSelectionManager.setScrollTargetMonth(to: date)
         }
     }
 

@@ -29,6 +29,19 @@ struct PCCalendarDataProviderTests {
         }
     }
 
+    @Test("Years matrix returns one year per value, each with 12 months")
+    func yearsMatrix() {
+        let provider = PCCalendarDataProvider(calendar: calendar)
+
+        let years = provider.years(forYearRange: 2026...2027)
+
+        #expect(years.count == 2)
+        #expect(years.map(\.number) == [2026, 2027])
+        for year in years {
+            #expect(year.months.count == 12)
+        }
+    }
+
     @Test("Weekday symbols are ordered starting from the calendar first weekday")
     func weekdaySymbolsStartFromFirstWeekday() {
         let provider = PCCalendarDataProvider(calendar: calendar)

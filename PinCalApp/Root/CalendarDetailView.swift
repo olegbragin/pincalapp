@@ -33,7 +33,8 @@ struct CalendarDetailView: View {
                     cache: session.cache,
                     dataProvider: session.dataProvider,
                     eventsSelectionManager: session.eventsSelectionManager,
-                    daySelectionManager: session.daySelectionManager
+                    daySelectionManager: session.daySelectionManager,
+                    columnCountResolver: session.columnCountResolver
                 )
             }
             await model?.fetch(force: true)

@@ -27,7 +27,7 @@ public final class PCEventsSelectionManager {
     /// The calendar shown in the batch editor. Kept here so every mutation that
     /// changes the events also refreshes the day markers, and so the calendar
     /// and the events list always agree.
-    let yearModel: PCCalendarYearDataSource = PCCalendarYearDataSource()
+    let yearModel: PCCalendarYearModel = PCCalendarYearModel()
 
     /// Calendar/date logic lives in the data provider so the manager doesn't
     /// silently depend on the process calendar.
@@ -61,18 +61,25 @@ public final class PCEventsSelectionManager {
     /// Lets the batch editor persist the batch right after an event edit.
     var onEventApplied: (() -> Void)?
 
+    /// Resolves the effective column count for a year model. Injected so callers
+    /// (e.g. UI-test launch arguments) can override the calendar's natural count
+    /// without the data provider knowing about test infrastructure.
+    private let columnCountResolver: (Int) -> Int
+
     public init(
         events: [EventDataSource] = [],
         cache: CalendarCache? = nil,
         dataProvider: PCCalendarDataProvider = PCCalendarDataProvider(),
         daySelectionManager: PCCalendarDaySelectionManager = PCCalendarDaySelectionManager(),
-        numberOfColumns: Int = 3
+        numberOfColumns: Int = 3,
+        columnCountResolver: @escaping (Int) -> Int = { $0 }
     ) {
         self.events = events
         self.cache = cache
         self.dataProvider = dataProvider
         self.daySelectionManager = daySelectionManager
         self.numberOfColumns = numberOfColumns
+        self.columnCountResolver = columnCountResolver
     }
 
     /// Configures the manager for the calendar being edited. `SingleCalendarModel`
@@ -203,17 +210,25 @@ public final class PCEventsSelectionManager {
         yearModel.numberOfColumns = numberOfColumns
         let year = calendarYear
         if yearModel.months.isEmpty || builtCalendarYear != year {
-            let model = dataProvider.makeYearModel(
-                year: year,
+            let model = PCCalendarModelBuilder.makeYearModel(
+                from: dataProvider.yearData(for: year),
+                daySelectionManager: daySelectionManager,
+                numberOfCurrentMonth: dataProvider.numberOfCurrentMonth,
                 numberOfColumns: numberOfColumns,
-                daySelectionManager: daySelectionManager
+                columnCountResolver: columnCountResolver
             )
             yearModel.months = model.months
             yearModel.numberOfCurrentMonth = model.numberOfCurrentMonth
             builtCalendarYear = year
         }
-        yearModel.scrollTargetDate = events.map(\.date).min()
+        yearModel.scrollTargetMonth = events.map(\.date).min().map { dataProvider.month(of: $0) }
         updateYearModel()
+    }
+
+    /// Resolves the month for a date via the data provider and sets it as the
+    /// calendar's scroll target (used as a fallback when there are no events).
+    func setScrollTargetMonth(to date: Date?) {
+        yearModel.scrollTargetMonth = date.map { dataProvider.month(of: $0) }
     }
 
     /// Rebuilds the day markers from the current events. Because the day views

@@ -6,7 +6,6 @@
 //
 
 import SwiftUI
-import CoreDomain
 
 public struct PCCalendarWeekHeaderView: View {
     @Bindable var viewModel: PCCalendarWeekHeaderModel

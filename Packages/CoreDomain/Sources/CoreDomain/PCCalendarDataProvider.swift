@@ -10,23 +10,16 @@ import Foundation
 public struct PCCalendarDataProvider {
     private var calendar: Calendar
 
-    /// Resolves the effective column count for a year model. Injected so callers
-    /// (e.g. UI-test launch arguments) can override the calendar's natural count
-    /// without the data provider knowing about test infrastructure.
-    private let columnCountResolver: (Int) -> Int
-    
     public var numberOfCurrentMonth: Int {
         calendar.component(.month, from: Date())
     }
     
     public init(
-        calendar: Calendar = .autoupdatingCurrent,
-        columnCountResolver: @escaping (Int) -> Int = { $0 }
+        calendar: Calendar = .autoupdatingCurrent
     ) {
         self.calendar = calendar
         self.calendar.timeZone = .current
         self.calendar.locale = .current
-        self.columnCountResolver = columnCountResolver
     }
     
     public func months(forYear year: Int) -> [PCCalendarMonthDataSource] {
@@ -41,25 +34,15 @@ public struct PCCalendarDataProvider {
         }
     }
 
-    /// Builds a fully-configured year model for the given year, current month and
-    /// column count. This centralises year-model creation so callers don't each
-    /// wire up the months themselves.
-    @MainActor
-    public func makeYearModel(
-        year: Int,
-        numberOfColumns: Int,
-        daySelectionManager: PCCalendarDaySelectionManager
-    ) -> PCCalendarYearDataSource {
-        let model = PCCalendarYearDataSource(
-            numberOfCurrentMonth: numberOfCurrentMonth,
-            numberOfColumns: columnCountResolver(numberOfColumns)
-        )
-        model.months = months(forYear: year).map {
-            PCCalendarMonthModel(dto: $0, daySelectionManager: daySelectionManager)
-        }
-        return model
+    /// The complete calendar matrix: years -> months -> weeks -> days.
+    public func years(forYearRange range: ClosedRange<Int>) -> [PCCalendarYearDataSource] {
+        range.map { yearData(for: $0) }
     }
-    
+
+    public func yearData(for year: Int) -> PCCalendarYearDataSource {
+        PCCalendarYearDataSource(number: year, months: months(forYear: year))
+    }
+
     public func dateComponents(forDate date: Date) -> DateComponents {
         calendar.dateComponents(in: calendar.timeZone, from: date)
     }
@@ -70,6 +53,10 @@ public struct PCCalendarDataProvider {
 
     public func year(of date: Date) -> Int {
         calendar.component(.year, from: date)
+    }
+
+    public func month(of date: Date) -> Int {
+        calendar.component(.month, from: date)
     }
 
     public func isSameDay(_ lhs: Date, _ rhs: Date) -> Bool {

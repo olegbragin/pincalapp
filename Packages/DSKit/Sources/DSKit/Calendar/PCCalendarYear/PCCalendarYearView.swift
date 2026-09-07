@@ -6,14 +6,13 @@
 //
 
 import SwiftUI
-import CoreDomain
 import OrderedCollections
 
 public struct PCCalendarYearView: View {
-    @Bindable var viewModel: PCCalendarYearDataSource
+    @Bindable var viewModel: PCCalendarYearModel
     var onLongPress: (() -> Void)?
 
-    public init(viewModel: PCCalendarYearDataSource, onLongPress: (() -> Void)? = nil) {
+    public init(viewModel: PCCalendarYearModel, onLongPress: (() -> Void)? = nil) {
         self.viewModel = viewModel
         self.onLongPress = onLongPress
     }
@@ -108,16 +107,8 @@ public struct PCCalendarYearView: View {
     }
     
     private func scrollToTargetMonth(using proxy: ScrollViewProxy) {
-        guard let target = targetMonthIndex else { return }
+        guard let target = viewModel.targetMonthIndex else { return }
         proxy.scrollTo(target, anchor: .top)
-    }
-    
-    private var targetMonthIndex: Int? {
-        if let target = viewModel.scrollTargetDate {
-            let monthNumber = Calendar.autoupdatingCurrent.component(.month, from: target)
-            return viewModel.months.firstIndex { $0.number == monthNumber }
-        }
-        return viewModel.indexOfCurrentMonth
     }
 }
 
@@ -127,14 +118,29 @@ public struct PCCalendarYearView: View {
 
 @MainActor
 private func yearViewPreview() -> some View {
-    let dataProvider = PCCalendarDataProvider()
-    let year = Calendar.autoupdatingCurrent.component(.year, from: Date())
-    let yearModel = PCCalendarYearDataSource(
-        numberOfCurrentMonth: dataProvider.numberOfCurrentMonth,
-        numberOfColumns: 2
-    )
-    yearModel.months = dataProvider.months(forYear: year).map {
-        PCCalendarMonthModel(dto: $0, daySelectionManager: PCCalendarDaySelectionManager())
+    let daySelectionManager = PCCalendarDaySelectionManager()
+    let yearModel = PCCalendarYearModel(numberOfCurrentMonth: 1, numberOfColumns: 2)
+    let base = Date(timeIntervalSince1970: 1_700_000_000)
+    yearModel.months = (1...3).map { monthNumber in
+        let weeks = (0..<6).map { weekIndex in
+            let days = (0..<7).map { dayIndex in
+                let index = weekIndex * 7 + dayIndex
+                return PCCalendarDayModel(
+                    date: base.addingTimeInterval(TimeInterval(index * 86400)),
+                    number: (index % 31) + 1,
+                    isInCurrentMonth: true,
+                    isToday: false,
+                    gridMonth: monthNumber
+                )
+            }
+            return PCCalendarWeekModel(days: days, daySelectionManager: daySelectionManager)
+        }
+        return PCCalendarMonthModel(
+            number: monthNumber,
+            label: "Month \(monthNumber)",
+            weekDaySymbols: ["S", "M", "T", "W", "T", "F", "S"],
+            weeks: weeks
+        )
     }
     return PCCalendarYearView(viewModel: yearModel)
 }

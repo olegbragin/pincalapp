@@ -6,7 +6,6 @@
 //
 
 import SwiftUI
-import CoreDomain
 
 public struct PCColorOptionSheet: View {
     @Binding var selectedColor: PCColorOption?

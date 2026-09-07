@@ -44,7 +44,7 @@ public final class SingleCalendarModel {
 
     public var selectedColor: PCColorOption?
     
-    public private(set) var yearModel = PCCalendarYearDataSource()
+    public private(set) var yearModel = PCCalendarYearModel()
 
     public var state: State = .empty
     
@@ -135,18 +135,25 @@ public final class SingleCalendarModel {
         AddEditEventBatchViewModel(eventsSelectionManager: eventsSelectionManager, calendarId: calendarid)
     }
 
+    /// Resolves the effective column count for a year model. Injected so callers
+    /// (e.g. UI-test launch arguments) can override the calendar's natural count
+    /// without the data provider knowing about test infrastructure.
+    private let columnCountResolver: (Int) -> Int
+
     public init(
         calendarid: Int64,
         cache: CalendarCache,
         dataProvider: PCCalendarDataProvider = PCCalendarDataProvider(),
         eventsSelectionManager: PCEventsSelectionManager = PCEventsSelectionManager(),
-        daySelectionManager: PCCalendarDaySelectionManager = PCCalendarDaySelectionManager()
+        daySelectionManager: PCCalendarDaySelectionManager = PCCalendarDaySelectionManager(),
+        columnCountResolver: @escaping (Int) -> Int = { $0 }
     ) {
         self.calendarid = calendarid
         self.cache = cache
         self.dataProvider = dataProvider
         self.eventsSelectionManager = eventsSelectionManager
         self.daySelectionManager = daySelectionManager
+        self.columnCountResolver = columnCountResolver
         cancellable = cache.changes
             .receive(on: DispatchQueue.main)
             .sink { [weak self] operation in
@@ -188,10 +195,12 @@ public final class SingleCalendarModel {
         // so event updates would not be observed and committed days would
         // silently stop rendering. Event changes are applied in-place below.
         if yearModel.months.isEmpty {
-            yearModel = dataProvider.makeYearModel(
-                year: calendar.year,
+            yearModel = PCCalendarModelBuilder.makeYearModel(
+                from: dataProvider.yearData(for: calendar.year),
+                daySelectionManager: daySelectionManager,
+                numberOfCurrentMonth: dataProvider.numberOfCurrentMonth,
                 numberOfColumns: calendar.numberOfColumns,
-                daySelectionManager: daySelectionManager
+                columnCountResolver: columnCountResolver
             )
         }
         // Mirror the resolved column count onto the shared batch-editing session

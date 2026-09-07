@@ -6,7 +6,6 @@
 //
 
 import SwiftUI
-import CoreDomain
 
 public struct PCCalendarWeekView: View {
     @Bindable var viewModel: PCCalendarWeekModel
@@ -29,24 +28,19 @@ public struct PCCalendarWeekView: View {
 }
 
 #Preview {
-    Grid {
+    let daySelectionManager = PCCalendarDaySelectionManager()
+    let days = [
+        PCCalendarDayModel(date: Date(), number: 44, isInCurrentMonth: true, isToday: false, gridMonth: 1),
+        PCCalendarDayModel(date: Date(), number: 43, isInCurrentMonth: true, isToday: false, gridMonth: 1),
+        PCCalendarDayModel(date: Date(), number: 44, isInCurrentMonth: true, isToday: false, gridMonth: 1),
+        PCCalendarDayModel(date: Date(), number: 43, isInCurrentMonth: true, isToday: false, gridMonth: 1),
+        PCCalendarDayModel(date: Date(), number: 45, isInCurrentMonth: true, isToday: false, gridMonth: 1),
+        PCCalendarDayModel(date: Date(), number: 44, isInCurrentMonth: true, isToday: false, gridMonth: 1),
+        PCCalendarDayModel(date: Date(), number: 45, isInCurrentMonth: true, isToday: true, gridMonth: 1),
+    ]
+    return Grid {
         PCCalendarWeekView(
-            viewModel: .init(
-                dto: .init(
-                    number: 4,
-                    days: [
-                        .init(date: Date(), number: 44, isInCurrentMonth: true, isToday: false),
-                        .init(date: Date(), number: 43, isInCurrentMonth: true, isToday: false),
-                        .init(date: Date(), number: 44, isInCurrentMonth: true, isToday: false),
-                        .init(date: Date(), number: 43, isInCurrentMonth: true, isToday: false),
-                        .init(date: Date(), number: 45, isInCurrentMonth: true, isToday: false),
-                        .init(date: Date(), number: 44, isInCurrentMonth: true, isToday: false),
-                        .init(date: Date(), number: 45, isInCurrentMonth: true, isToday: true),
-                    ],
-                ),
-                monthNumber: 1,
-                daySelectionManager: PCCalendarDaySelectionManager()
-            ),
+            viewModel: PCCalendarWeekModel(days: days, daySelectionManager: daySelectionManager),
             cellSize: 50
         )
     }
