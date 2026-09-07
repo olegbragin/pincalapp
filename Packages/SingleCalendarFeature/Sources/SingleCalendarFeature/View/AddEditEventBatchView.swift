@@ -10,14 +10,11 @@ import DSKit
 
 public struct AddEditEventBatchView: View {
     @Bindable public var viewModel: AddEditEventBatchViewModel
-    
-    public var onSave: () -> Void = {}
 
     public static let saveButtonAccessibilityIdentifier = "batch-save-button"
     
-    public init(viewModel: AddEditEventBatchViewModel, onSave: @escaping () -> Void = {}) {
+    public init(viewModel: AddEditEventBatchViewModel) {
         self.viewModel = viewModel
-        self.onSave = onSave
     }
     
     public var body: some View {
@@ -52,9 +49,7 @@ public struct AddEditEventBatchView: View {
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 PCButton {
-                    Task {
-                        onSave()
-                    }
+                    _ = viewModel.save()
                 } label: {
                     Image(systemName: "checkmark")
                         .accessibilityLabel("Save")

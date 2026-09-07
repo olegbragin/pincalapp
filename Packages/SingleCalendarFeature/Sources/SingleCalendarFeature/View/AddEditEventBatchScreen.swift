@@ -44,9 +44,9 @@ public struct AddEditEventBatchScreen: View {
     public var body: some View {
         GeometryReader { geometry in
             if geometry.size.width > geometry.size.height {
-                BatchEditorHorizontalLayout(viewModel: viewModel, onSave: save)
+                BatchEditorHorizontalLayout(viewModel: viewModel)
             } else {
-                BatchEditorVerticalLayout(viewModel: viewModel, onSave: save)
+                BatchEditorVerticalLayout(viewModel: viewModel)
             }
         }
         .toolbar {
@@ -68,10 +68,8 @@ public struct AddEditEventBatchScreen: View {
                 viewModel.toggleEvent(on: selectedDay)
             }
         }
-    }
-
-    private func save() {
-        if viewModel.save() {
+        .onChange(of: viewModel.didSave) { _, didSave in
+            guard didSave else { return }
             let batchDeleted = viewModel.eventBatch?.events.isEmpty == true
             if batchDeleted {
                 // Every event was removed, so the batch no longer exists.

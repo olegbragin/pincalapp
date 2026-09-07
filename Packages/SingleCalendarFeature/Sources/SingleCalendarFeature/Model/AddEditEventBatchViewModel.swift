@@ -25,6 +25,11 @@ public final class AddEditEventBatchViewModel {
     private let initialSelectedDay: Date?
     private var didSetup = false
 
+    /// Set when the user explicitly saves via the save button. The owning screen
+    /// observes this to run its post-save navigation (dismiss / go-to-root);
+    /// auto-persists from the event editor (`onEventApplied`) do not set it.
+    private(set) var didSave = false
+
     var eventBatchId: Int64 = 0
     var eventBatchName: String = ""
     var date: Date?
@@ -102,6 +107,7 @@ public final class AddEditEventBatchViewModel {
         // applied via navigationDestination onChange) is flushed.
         guard canSave else { return false }
         persistBatch()
+        didSave = true
         return true
     }
 
