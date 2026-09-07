@@ -18,6 +18,7 @@ public struct PCSafeRefreshableModifier: ViewModifier {
     @State private var dragOffset: CGFloat = 0
 
     public func body(content: Content) -> some View {
+        #if os(iOS)
         if #available(iOS 26, *) {
             content
                 .offset(y: dragOffset)
@@ -60,6 +61,10 @@ public struct PCSafeRefreshableModifier: ViewModifier {
             content
                 .refreshable { await refreshAction() }
         }
+        #else
+        content
+            .refreshable { await refreshAction() }
+        #endif
     }
 
     private func triggerRefresh() async {

@@ -56,7 +56,9 @@ public struct AddEditListView: View {
         .listStyle(.plain)
         .scrollContentBackground(.hidden)
         .scrollDismissesKeyboard(.interactively)
+        #if os(iOS)
         .environment(\.editMode, .constant(.active))
+        #endif
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 

@@ -65,7 +65,7 @@ public struct CalendarListView: View {
                 .frame(maxWidth: .infinity)
                 .padding(.bottom, 8)
         }
-        .background(Color(.systemGroupedBackground))
+        .background(PCSystemColor.systemGroupedBackground)
         .ignoresSafeArea(edges: .bottom)
         .overlay(alignment: .bottomTrailing) {
             if !viewModel.isAnyCardEditing, mode == .active {
@@ -87,13 +87,13 @@ public struct CalendarListView: View {
                 .transition(.scale.combined(with: .opacity))
             }
         }
-        .navigationBarTitleDisplayMode(.inline)
+        .pcNavigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .principal) {
                 Text(mode == .active ? "My calendars" : "Archived")
                     .font(.headline)
             }
-            ToolbarItem(placement: .navigationBarTrailing) {
+            ToolbarItem(placement: .pcTrailing) {
                 Button {
                     withAnimation(.easeInOut(duration: 0.3)) {
                         viewModel.displayMode = viewModel.displayMode.toggled

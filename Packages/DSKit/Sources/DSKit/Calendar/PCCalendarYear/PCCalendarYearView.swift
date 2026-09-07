@@ -75,6 +75,7 @@ public struct PCCalendarYearView: View {
                         },
                     isEnabled: onLongPress != nil
                 )
+                .sensoryFeedback(.success, trigger: viewModel.numberOfColumns)
                 .animation(.easeOut(duration: 0.3), value: viewModel.numberOfColumns)
             }
         }

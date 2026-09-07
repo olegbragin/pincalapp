@@ -62,10 +62,10 @@ public struct AddEditEventView: View {
         .scrollDismissesKeyboard(.interactively)
         .toolbarTitleDisplayMode(.inline)
         .toolbar {
-            ToolbarItem(placement: .title) {
+            ToolbarItem(placement: .pcTitle) {
                 Text(viewModel.selectedDate, style: .date)
             }
-            ToolbarItem(placement: .topBarTrailing) {
+            ToolbarItem(placement: .pcTrailing) {
                 Button {
                     Task {
                         if viewModel.save() {

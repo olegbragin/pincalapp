@@ -57,7 +57,7 @@ public struct AddEditEventBatchScreen: View {
                 )
             }
         }
-        .toolbarBackground(Color.dsKit.colorBackgroundMain, for: .navigationBar)
+        .toolbarBackground(Color.dsKit.colorBackgroundMain, for: .pcNavigationBar)
         .ignoresSafeArea(edges: .bottom)
         .background(Color.dsKit.colorBackgroundMain)
         .task {

@@ -50,8 +50,8 @@ public struct SingleCalendarView: View {
             }
             .padding(6)
             .navigationTitle(viewModel.label)
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbarBackground(Color.dsKit.colorBackgroundMain, for: .navigationBar)
+            .pcNavigationBarTitleDisplayMode(.inline)
+            .toolbarBackground(Color.dsKit.colorBackgroundMain, for: .pcNavigationBar)
             .toolbar { toolbarContent }
             .id(viewModel.calendarid)
             .navigationDestination(for: AppRoute.self) { route in

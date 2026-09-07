@@ -47,7 +47,7 @@ public struct AddEditEventBatchView: View {
         .keyboardAvoidable()
         .toolbarTitleDisplayMode(.inline)
         .toolbar {
-            ToolbarItem(placement: .topBarTrailing) {
+            ToolbarItem(placement: .pcTrailing) {
                 PCButton {
                     _ = viewModel.save()
                 } label: {

@@ -70,10 +70,12 @@ public struct AddEditEventBatchListView: View {
         .listStyle(.plain)
         .scrollContentBackground(.hidden)
         .background(Color.dsKit.colorBackgroundMain)
+        #if os(iOS)
         .environment(\.editMode, .constant(.active))
-        .toolbarBackground(Color.dsKit.colorBackgroundMain, for: .navigationBar)
+        #endif
+        .toolbarBackground(Color.dsKit.colorBackgroundMain, for: .pcNavigationBar)
         .toolbar {
-            ToolbarItem(placement: .title) {
+            ToolbarItem(placement: .pcTitle) {
                 Text(viewModel.selectedDay ?? Date(), style: .date)
             }
         }
