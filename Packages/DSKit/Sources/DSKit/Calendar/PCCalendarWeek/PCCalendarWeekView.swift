@@ -9,9 +9,6 @@ import SwiftUI
 import CoreDomain
 
 public struct PCCalendarWeekView: View {
-    // Для тактильной отдачи
-    private static let hapticFeedback = UINotificationFeedbackGenerator()
-    
     @Bindable var viewModel: PCCalendarWeekModel
     var cellSize: CGFloat
     
@@ -26,19 +23,6 @@ public struct PCCalendarWeekView: View {
                 .onTapGesture {
                     viewModel.select(day: day)
                 }
-                .simultaneousGesture(
-                    LongPressGesture()
-                        .onEnded { _ in
-                            viewModel.daySelectionManager.selectionMode = .multiple
-                            Self.hapticFeedback.notificationOccurred(.success)
-                        },
-                    isEnabled: viewModel.daySelectionManager.selectionMode == .single
-                )
-            }
-        }
-        .onChange(of: viewModel.daySelectionManager.selectionMode) { oldValue, newValue in
-            if oldValue != newValue, newValue == .multiple {
-                Self.hapticFeedback.notificationOccurred(.success)
             }
         }
     }

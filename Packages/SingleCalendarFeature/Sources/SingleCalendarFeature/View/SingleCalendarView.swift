@@ -24,12 +24,18 @@ public struct SingleCalendarView: View {
         ZStack {
             SingleCalendarStateView(state: viewModel.state) {
                 AnyView(
-                    SingleCalendarCalendarContent(
-                        isMultiSelect: viewModel.daySelectionManager.selectionMode == .multiple,
-                        selectedColor: $viewModel.selectedColor,
-                        isColorPickerDisabled: viewModel.isColorPickerDisabled,
-                        yearModel: viewModel.yearModel
-                    )
+                    VStack(spacing: 0) {
+                        if viewModel.daySelectionManager.selectionMode == .multiple {
+                            PCExpandedColorPicker(selectedColor: $viewModel.selectedColor)
+                                .disabled(viewModel.isColorPickerDisabled)
+                        }
+                        PCCalendarYearView(
+                            viewModel: viewModel.yearModel,
+                            onLongPress: {
+                                viewModel.daySelectionManager.selectionMode = .multiple
+                            }
+                        )
+                    }
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .onChange(of: viewModel.yearModel.numberOfColumns) {
                         if $0 != $1 {
@@ -79,6 +85,9 @@ public struct SingleCalendarView: View {
             }
         }
         .ignoresSafeArea(edges: .bottom)
+        .sensoryFeedback(.success, trigger: viewModel.daySelectionManager.selectionMode) { oldValue, newValue in
+            oldValue != newValue && newValue == .multiple
+        }
         .task(id: viewModel.calendarid) {
             await viewModel.fetch()
         }

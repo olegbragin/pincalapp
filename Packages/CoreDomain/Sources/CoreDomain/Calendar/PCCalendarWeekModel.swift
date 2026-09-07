@@ -15,8 +15,6 @@ public final class PCCalendarWeekModel: Identifiable {
     public let days: [PCCalendarDayModel]
     public let daySelectionManager: PCCalendarDaySelectionManager
     
-    public var isLongPressed: Bool = false
-    
     public init(dto: PCCalendarWeekDataSource, monthNumber: Int, daySelectionManager: PCCalendarDaySelectionManager) {
         self.daySelectionManager = daySelectionManager
         self.days = dto.days.map {

@@ -32,8 +32,6 @@ public final class PCCalendarYearDataSource {
     public var scrollTargetDate: Date?
     public var scrollPosition: CGFloat = 0
     
-    public var isLongPressEnabled: Bool = false
-    
     public var indexOfCurrentMonth: Int? {
         return months.firstIndex { $0.number == numberOfCurrentMonth }
     }

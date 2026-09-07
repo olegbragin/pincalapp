@@ -18,8 +18,6 @@ public final class PCCalendarMonthModel: Identifiable {
     public let weekHeaderModel: PCCalendarWeekHeaderModel
     public let weeks: [PCCalendarWeekModel]
     
-    public var isLongPressed: Bool = false
-        
     public init(dto: PCCalendarMonthDataSource, daySelectionManager: PCCalendarDaySelectionManager) {
         self.id = dto.number
         self.label = dto.label

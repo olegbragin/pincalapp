@@ -11,9 +11,11 @@ import OrderedCollections
 
 public struct PCCalendarYearView: View {
     @Bindable var viewModel: PCCalendarYearDataSource
+    var onLongPress: (() -> Void)?
 
-    public init(viewModel: PCCalendarYearDataSource) {
+    public init(viewModel: PCCalendarYearDataSource, onLongPress: (() -> Void)? = nil) {
         self.viewModel = viewModel
+        self.onLongPress = onLongPress
     }
     
     // Временный масштаб во время жеста (сбрасывается после)
@@ -67,6 +69,13 @@ public struct PCCalendarYearView: View {
                     scrollToTargetMonth(using: scrollProxy)
                 }
                 .highPriorityGesture(pinchToZoomGesture)
+                .simultaneousGesture(
+                    LongPressGesture()
+                        .onEnded { _ in
+                            onLongPress?()
+                        },
+                    isEnabled: onLongPress != nil
+                )
                 .animation(.easeOut(duration: 0.3), value: viewModel.numberOfColumns)
             }
         }
