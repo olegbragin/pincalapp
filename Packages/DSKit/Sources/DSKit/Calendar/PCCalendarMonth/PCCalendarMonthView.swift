@@ -34,13 +34,10 @@ public struct PCCalendarMonthView: View {
 #Preview {
     PCCalendarMonthView(
         viewModel: .init(
-            dto: .init(
-                number: 1,
-                label: "Jan",
-                weekDaySymbols: ["S"],
-                weeks: []
-            ),
-            daySelectionManager: PCCalendarDaySelectionManager()
+            number: 1,
+            label: "Jan",
+            weekDaySymbols: ["S"],
+            weeks: []
         ),
         cellSize: 50
     )

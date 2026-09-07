@@ -69,23 +69,29 @@ struct AddEditEventBatchListViewModelTests {
         #expect(vm.eventBatches.count == 1)
         #expect(vm.eventBatchesSelectedToDelete.isEmpty)
         #expect(!vm.isEditing)
-        #expect(vm.addEditEventBatchModel.eventBatch == nil)
     }
 
-    @Test("prepareAddEditBatchViewModel seeds the editor with a batch")
-    func prepareAddEditBatchViewModel() {
+    @Test("batch list and editor stay connected through the shared managers")
+    func connectsToEditorViaSharedManagers() {
         let someDay = day(2026, 6, 1)
-        let existing = batch(9, "Existing", on: someDay)
         let vm = AddEditEventBatchListViewModel()
 
-        vm.prepareAddEditBatchViewModel(with: existing)
+        // The editor is created with the same manager instances the list owns.
+        let editor = AddEditEventBatchViewModel(eventsSelectionManager: vm.eventsSelectionManager)
+        editor.load(batch(9, "Existing", on: someDay))
 
-        let editor = vm.addEditEventBatchModel
         #expect(editor.eventBatchId == 9)
         #expect(editor.eventBatchName == "Existing")
         #expect(editor.selectedColor != nil)
         #expect(editor.date == nil)
         #expect(editor.eventsSelectionManager.events.count == 1)
+
+        // Mutating the editor's event store is visible through the list's own
+        // manager instance — they are the same object, so the two stay in sync.
+        editor.eventsSelectionManager.addEvent(
+            EventDataSource(name: "Added", date: someDay, color: "eventColorOption1")
+        )
+        #expect(vm.eventsSelectionManager.events.count == 2)
     }
 
     @Test("reset clears batches and editor state")

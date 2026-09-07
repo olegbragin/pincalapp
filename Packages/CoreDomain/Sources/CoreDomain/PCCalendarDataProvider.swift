@@ -9,7 +9,7 @@ import Foundation
 
 public struct PCCalendarDataProvider {
     private var calendar: Calendar
-    
+
     public var numberOfCurrentMonth: Int {
         calendar.component(.month, from: Date())
     }
@@ -33,9 +33,39 @@ public struct PCCalendarDataProvider {
             )
         }
     }
-    
+
+    /// The complete calendar matrix: years -> months -> weeks -> days.
+    public func years(forYearRange range: ClosedRange<Int>) -> [PCCalendarYearDataSource] {
+        range.map { yearData(for: $0) }
+    }
+
+    public func yearData(for year: Int) -> PCCalendarYearDataSource {
+        PCCalendarYearDataSource(number: year, months: months(forYear: year))
+    }
+
     public func dateComponents(forDate date: Date) -> DateComponents {
         calendar.dateComponents(in: calendar.timeZone, from: date)
+    }
+
+    public func startOfDay(for date: Date) -> Date {
+        calendar.startOfDay(for: date)
+    }
+
+    public func year(of date: Date) -> Int {
+        calendar.component(.year, from: date)
+    }
+
+    public func month(of date: Date) -> Int {
+        calendar.component(.month, from: date)
+    }
+
+    public func isSameDay(_ lhs: Date, _ rhs: Date) -> Bool {
+        let lhsComponents = dateComponents(forDate: lhs)
+        let rhsComponents = dateComponents(forDate: rhs)
+        return
+            lhsComponents.day == rhsComponents.day &&
+            lhsComponents.month == rhsComponents.month &&
+            lhsComponents.year == rhsComponents.year
     }
 
     private func weeks(

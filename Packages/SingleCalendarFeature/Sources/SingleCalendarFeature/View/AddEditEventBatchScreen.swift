@@ -8,27 +8,45 @@
 import SwiftUI
 import DSKit
 import AppNavigation
+import CorePersistence
 
 public struct AddEditEventBatchScreen: View {
-    @Bindable public var viewModel: AddEditEventBatchViewModel
-    public var calendarId: Int64
+    @State private var viewModel: AddEditEventBatchViewModel
 
-    public var onCommit: (() -> Void)? = nil
+    public var calendarId: Int64
+    private let source: BatchEditorSource
+
     @Environment(\.dismiss) private var dismiss
     @Environment(RootNavigation.self) private var navigation
 
-    public init(viewModel: AddEditEventBatchViewModel, calendarId: Int64, onCommit: (() -> Void)? = nil) {
-        self.viewModel = viewModel
+    public init(
+        eventsSelectionManager: PCEventsSelectionManager,
+        calendarId: Int64,
+        source: BatchEditorSource,
+        eventBatch: EventBatchDataSource?
+    ) {
+        let selectedDay: Date?
+        if case .newDay(let day) = source {
+            selectedDay = day
+        } else {
+            selectedDay = nil
+        }
+        _viewModel = State(initialValue: AddEditEventBatchViewModel(
+            eventsSelectionManager: eventsSelectionManager,
+            calendarId: calendarId,
+            eventBatch: eventBatch,
+            selectedDay: selectedDay
+        ))
         self.calendarId = calendarId
-        self.onCommit = onCommit
+        self.source = source
     }
 
     public var body: some View {
         GeometryReader { geometry in
             if geometry.size.width > geometry.size.height {
-                BatchEditorHorizontalLayout(viewModel: viewModel, onSave: save)
+                BatchEditorHorizontalLayout(viewModel: viewModel)
             } else {
-                BatchEditorVerticalLayout(viewModel: viewModel, onSave: save)
+                BatchEditorVerticalLayout(viewModel: viewModel)
             }
         }
         .toolbar {
@@ -39,20 +57,20 @@ public struct AddEditEventBatchScreen: View {
                 )
             }
         }
-        .toolbarBackground(Color.dsKit.colorBackgroundMain, for: .navigationBar)
+        .toolbarBackground(Color.dsKit.colorBackgroundMain, for: .pcNavigationBar)
         .ignoresSafeArea(edges: .bottom)
         .background(Color.dsKit.colorBackgroundMain)
+        .task {
+            viewModel.setup()
+        }
         .onChange(of: viewModel.daySelectionManager.selectedDays) { _, newValue in
             if let selectedDay = newValue.first {
                 viewModel.toggleEvent(on: selectedDay)
             }
         }
-    }
-
-    private func save() {
-        if viewModel.save() {
+        .onChange(of: viewModel.didSave) { _, didSave in
+            guard didSave else { return }
             let batchDeleted = viewModel.eventBatch?.events.isEmpty == true
-            onCommit?()
             if batchDeleted {
                 // Every event was removed, so the batch no longer exists.
                 // Return straight to the single calendar view.
@@ -67,8 +85,10 @@ public struct AddEditEventBatchScreen: View {
 #Preview {
     NavigationStack {
         AddEditEventBatchScreen(
-            viewModel: .init(events: [.init(name: "1", date: Date(), color: "eventColorOption1")]),
-            calendarId: 0
+            eventsSelectionManager: PCEventsSelectionManager(),
+            calendarId: 0,
+            source: .existingBatch(1),
+            eventBatch: nil
         )
     }
     .environment(RootNavigation())

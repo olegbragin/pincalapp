@@ -10,6 +10,7 @@ import Observation
 import SwiftUI
 import CorePersistence
 import DSKit
+import CoreDomain
 
 @MainActor
 @Observable
@@ -17,26 +18,32 @@ public final class AddEditEventBatchListViewModel {
     private(set) var eventBatches = [EventBatchDataSource]()
     private(set) var selectedDay: Date?
 
+    // Shared connection to the batch editor. Both the batch list and the batch
+    // editor view models observe/mutate these managers, so they stay in sync
+    // without either owning the other.
     let eventsSelectionManager: PCEventsSelectionManager
     let daySelectionManager: PCCalendarDaySelectionManager
-    var addEditEventBatchModel: AddEditEventBatchViewModel
     var eventBatchesToDelete = [EventBatchDataSource]()
     var eventBatchesSelectedToDelete = [EventBatchDataSource]()
     var isEditing = false
 
-    init() {
-        eventsSelectionManager = PCEventsSelectionManager()
-        daySelectionManager = PCCalendarDaySelectionManager()
-        addEditEventBatchModel = .init(
-            eventsSelectionManager: eventsSelectionManager,
-            daySelectionManager: daySelectionManager
-        )
+    init(
+        eventsSelectionManager: PCEventsSelectionManager = PCEventsSelectionManager(),
+        daySelectionManager: PCCalendarDaySelectionManager = PCCalendarDaySelectionManager()
+    ) {
+        self.eventsSelectionManager = eventsSelectionManager
+        self.daySelectionManager = daySelectionManager
     }
 
     func removeBatches(at indexPaths: IndexSet) {
         let removedBatches = indexPaths.map { eventBatches[$0] }
         indexPaths.sorted(by: >).forEach { eventBatches.remove(at: $0) }
         eventBatchesToDelete = removedBatches
+    }
+
+    /// Deletes the given batches through the shared manager (which persists).
+    func deleteBatches(_ batches: [EventBatchDataSource]) {
+        eventsSelectionManager.deleteBatches(batches)
     }
     
     func prepare(with eventBatches: [EventBatchDataSource], and selectedDay: Date?) {
@@ -45,15 +52,6 @@ public final class AddEditEventBatchListViewModel {
             ($0.events.map(\.date).min() ?? .distantPast) < ($1.events.map(\.date).min() ?? .distantPast)
         }
         isEditing = true
-    }
-    
-    func prepareAddEditBatchViewModel(with eventBatch: EventBatchDataSource?) {
-        addEditEventBatchModel.eventBatchId = eventBatch?.id ?? 0
-        addEditEventBatchModel.eventBatchName = eventBatch?.name ?? ""
-        addEditEventBatchModel.selectedColor = PCColorOption(eventBatch?.colorName ?? "") ?? .option1
-        addEditEventBatchModel.date = eventBatch?.date ?? (eventBatch == nil ? selectedDay : nil)
-        addEditEventBatchModel.timestamp = eventBatch?.timestamp ?? UUID()
-        addEditEventBatchModel.prepare(with: eventBatch?.events ?? [])
     }
     
     func commitDelete() {
@@ -66,14 +64,12 @@ public final class AddEditEventBatchListViewModel {
         eventBatches.append(contentsOf: eventBatchesSelectedToDelete)
         eventBatchesSelectedToDelete = []
         isEditing = false
-        addEditEventBatchModel.reset()
     }
     
     func reset() {
         eventBatches = []
         eventBatchesSelectedToDelete = []
         isEditing = false
-        addEditEventBatchModel.reset()
     }
 }
 

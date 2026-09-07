@@ -49,3 +49,9 @@ extension EventDataSource: Equatable {
         lhs.timestamp == rhs.timestamp
     }
 }
+
+extension EventDataSource {
+    public static var `default`: EventDataSource {
+        EventDataSource(id: 0, name: "", date: .now, color: "")
+    }
+}

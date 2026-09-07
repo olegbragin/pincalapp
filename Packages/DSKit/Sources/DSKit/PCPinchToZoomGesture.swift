@@ -6,9 +6,6 @@
  //
 
 import SwiftUI
-#if os(iOS)
-import UIKit
-#endif
 
 public struct PCPinchToZoomGesture: Gesture {
     @State private var viewModel: PCPinchToZoomGestureModel
@@ -22,28 +19,12 @@ public struct PCPinchToZoomGesture: Gesture {
         onPinchedToZoomOut: @escaping () -> Void
     ) {
         self._tempMagnification = tempMagnification
-#if os(iOS)
-        let feedback = UINotificationFeedbackGenerator()
-        self._viewModel = State(
-            initialValue: PCPinchToZoomGestureModel(
-                onPinchedToZoomIn: {
-                    feedback.notificationOccurred(.success)
-                    onPinchedToZoomIn()
-                },
-                onPinchedToZoomOut: {
-                    feedback.notificationOccurred(.success)
-                    onPinchedToZoomOut()
-                }
-            )
-        )
-#else
         self._viewModel = State(
             initialValue: PCPinchToZoomGestureModel(
                 onPinchedToZoomIn: onPinchedToZoomIn,
                 onPinchedToZoomOut: onPinchedToZoomOut
             )
         )
-#endif
     }
 
     public var body: some Gesture {

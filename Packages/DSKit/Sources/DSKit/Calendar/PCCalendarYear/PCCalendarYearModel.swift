@@ -5,7 +5,9 @@
 //  Created by Oleg Bragin on 01.02.2026.
 //
 
-import SwiftUI
+import Foundation
+import Observation
+import CoreGraphics
 
 @MainActor
 @Observable
@@ -15,6 +17,7 @@ public final class PCCalendarYearModel {
     public var numberOfColumns: Int {
         didSet { internalNumberOfColumns = numberOfColumns }
     }
+    
     public var maximumNumberOfColumns: Int = 3 {
         didSet {
             guard maximumNumberOfColumns != oldValue else { return }
@@ -24,14 +27,24 @@ public final class PCCalendarYearModel {
             }
         }
     }
-    public var numberOfCurrentMonth: Int = 0
-    public var scrollTargetDate: Date?
-    public var scrollPosition: CGFloat = 0
     
-    public var isLongPressEnabled: Bool = false
+    public var numberOfCurrentMonth: Int = 0
+    /// The month (1...12) the calendar should scroll to. Set by the feature layer,
+    /// which owns the calendar/date logic; the view just reads `targetMonthIndex`.
+    public var scrollTargetMonth: Int?
+    public var scrollPosition: CGFloat = 0
     
     public var indexOfCurrentMonth: Int? {
         return months.firstIndex { $0.number == numberOfCurrentMonth }
+    }
+
+    /// The index of the month to scroll to: the explicitly-set target month, or
+    /// the current month when none is set.
+    public var targetMonthIndex: Int? {
+        if let scrollTargetMonth {
+            return months.firstIndex { $0.number == scrollTargetMonth }
+        }
+        return indexOfCurrentMonth
     }
 
     public var months: [PCCalendarMonthModel] = []
@@ -43,7 +56,7 @@ public final class PCCalendarYearModel {
         self.numberOfColumns = numberOfColumns
         self.numberOfCurrentMonth = numberOfCurrentMonth
     }
-    
+
     public func set(initialNumberOfColumns: Int) {
         self.numberOfColumns = initialNumberOfColumns
     }

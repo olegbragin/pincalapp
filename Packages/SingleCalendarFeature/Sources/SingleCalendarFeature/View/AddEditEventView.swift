@@ -8,21 +8,24 @@
 import SwiftUI
 import DSKit
 import CorePersistence
+import AppNavigation
 
 public struct AddEditEventView: View {
-    @State private var viewModel = AddEditEventViewModel()
-    public var onCommit: ((EventDataSource) -> Void)?
-
-    public init(event: EventDataSource, onCommit: ((EventDataSource) -> Void)? = nil) {
-        self.onCommit = onCommit
-        _viewModel = State(initialValue: {
-            let vm = AddEditEventViewModel()
-            vm.update(from: event)
-            return vm
-        }())
-    }
-    
     @Environment(\.dismiss) private var dismiss
+    @State private var viewModel: AddEditEventViewModel
+
+    public init(eventsSelectionManager: PCEventsSelectionManager, source: EventEditorSource) {
+        _viewModel = State(initialValue: AddEditEventViewModel(
+            eventsSelectionManager: eventsSelectionManager,
+            event: EventDataSource(
+                id: source.id,
+                name: source.name,
+                date: source.date,
+                color: source.color,
+                timestamp: source.timestamp
+            )
+        ))
+    }
     
     public var body: some View {
         ScrollView {
@@ -59,14 +62,13 @@ public struct AddEditEventView: View {
         .scrollDismissesKeyboard(.interactively)
         .toolbarTitleDisplayMode(.inline)
         .toolbar {
-            ToolbarItem(placement: .title) {
-                Text(viewModel.selectedDayToShowEvents ?? Date(), style: .date)
+            ToolbarItem(placement: .pcTitle) {
+                Text(viewModel.selectedDate, style: .date)
             }
-            ToolbarItem(placement: .topBarTrailing) {
+            ToolbarItem(placement: .pcTrailing) {
                 Button {
                     Task {
-                        if viewModel.save(), let event = viewModel.event {
-                            onCommit?(event)
+                        if viewModel.save() {
                             dismiss()
                         }
                     }
@@ -74,6 +76,7 @@ public struct AddEditEventView: View {
                     Image(systemName: "checkmark")
                 }
                 .accessibilityLabel("Save")
+                .disabled(!viewModel.canSave)
             }
         }
     }

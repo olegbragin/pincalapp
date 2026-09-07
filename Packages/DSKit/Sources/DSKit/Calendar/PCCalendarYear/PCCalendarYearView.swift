@@ -6,70 +6,78 @@
 //
 
 import SwiftUI
-import CoreDomain
 import OrderedCollections
 
 public struct PCCalendarYearView: View {
     @Bindable var viewModel: PCCalendarYearModel
+    var onLongPress: (() -> Void)?
 
-    public init(viewModel: PCCalendarYearModel) {
+    public init(viewModel: PCCalendarYearModel, onLongPress: (() -> Void)? = nil) {
         self.viewModel = viewModel
+        self.onLongPress = onLongPress
     }
     
     // Временный масштаб во время жеста (сбрасывается после)
     @GestureState private var tempMagnification: CGFloat = 1.0
-    
-    @State private var initialScrollIndex: Int?
     
     private static let monthColumnSpacing: CGFloat = 8
     private static let minMonthCellSize: CGFloat = 28
     private static let minMonthWidth: CGFloat = minMonthCellSize * 7
     
     private static func maxColumns(forWidth width: CGFloat) -> Int {
+        // Allow the column count to scale down with the available width. The
+        // previous hard `3` floor forced tiny, hard-to-tap day cells (≈17pt)
+        // whenever the split-view detail column was narrow, and the reported
+        // frames of those micro-cells didn't line up with the actual hit
+        // regions — making day taps land on the wrong (adjacent-month) cell.
         max(3, Int(floor(width / minMonthWidth)))
     }
     
     public var body: some View {
         GeometryReader { proxy in
             let cellSize = max(1, (proxy.size.width - Self.monthColumnSpacing * CGFloat(viewModel.internalNumberOfColumns - 1)) / CGFloat(viewModel.internalNumberOfColumns) / 7)
-            ScrollView {
-                LazyVGrid(
-                    columns: gridColumns,
-                    spacing: 16
-                ) {
-                    ForEach(viewModel.months.indices, id: \.self) { index in
-                        let month = viewModel.months[index]
-                        PCCalendarMonthView(
-                            viewModel: month,
-                            cellSize: cellSize
-                        )
-                        .id(index)
+            ScrollViewReader { scrollProxy in
+                ScrollView {
+                    LazyVGrid(
+                        columns: gridColumns,
+                        spacing: 16
+                    ) {
+                        ForEach(viewModel.months.indices, id: \.self) { index in
+                            let month = viewModel.months[index]
+                            PCCalendarMonthView(
+                                viewModel: month,
+                                cellSize: cellSize
+                            )
+                            .id(index)
+                        }
                     }
+                    .scrollTargetLayout()
                 }
-                .scrollTargetLayout()
-            }
-            .scrollPosition(id: $initialScrollIndex, anchor: .top)
-            .onAppear {
-                viewModel.maximumNumberOfColumns = Self.maxColumns(forWidth: proxy.size.width)
-                setInitialScrollIndex()
-            }
-            .onChange(of: proxy.size.width) { _, newWidth in
-                viewModel.maximumNumberOfColumns = Self.maxColumns(forWidth: newWidth)
-            }
-            .onChange(of: viewModel.numberOfColumns) {
-                initialScrollIndex = targetMonthIndex
-            }
-            .onChange(of: proxy.size) { oldSize, newSize in
-                guard oldSize != newSize else { return }
-                let target = initialScrollIndex ?? targetMonthIndex
-                guard let target else { return }
-                initialScrollIndex = nil
-                Task { @MainActor in
-                    initialScrollIndex = target
+                .onAppear {
+                    viewModel.maximumNumberOfColumns = Self.maxColumns(forWidth: proxy.size.width)
+                    scrollToTargetMonth(using: scrollProxy)
                 }
+                .onChange(of: proxy.size.width) { _, newWidth in
+                    viewModel.maximumNumberOfColumns = Self.maxColumns(forWidth: newWidth)
+                }
+                .onChange(of: viewModel.numberOfColumns) {
+                    scrollToTargetMonth(using: scrollProxy)
+                }
+                .onChange(of: proxy.size) { oldSize, newSize in
+                    guard oldSize != newSize else { return }
+                    scrollToTargetMonth(using: scrollProxy)
+                }
+                .highPriorityGesture(pinchToZoomGesture)
+                .simultaneousGesture(
+                    LongPressGesture()
+                        .onEnded { _ in
+                            onLongPress?()
+                        },
+                    isEnabled: onLongPress != nil
+                )
+                .sensoryFeedback(.success, trigger: viewModel.numberOfColumns)
+                .animation(.easeOut(duration: 0.3), value: viewModel.numberOfColumns)
             }
-            .highPriorityGesture(pinchToZoomGesture)
-            .animation(.easeOut(duration: 0.3), value: viewModel.numberOfColumns)
         }
     }
     
@@ -99,17 +107,9 @@ public struct PCCalendarYearView: View {
         return columns
     }
     
-    private func setInitialScrollIndex() {
-        guard initialScrollIndex == nil else { return }
-        initialScrollIndex = targetMonthIndex
-    }
-    
-    private var targetMonthIndex: Int? {
-        if let target = viewModel.scrollTargetDate {
-            let monthNumber = Calendar.autoupdatingCurrent.component(.month, from: target)
-            return viewModel.months.firstIndex { $0.number == monthNumber }
-        }
-        return viewModel.indexOfCurrentMonth
+    private func scrollToTargetMonth(using proxy: ScrollViewProxy) {
+        guard let target = viewModel.targetMonthIndex else { return }
+        proxy.scrollTo(target, anchor: .top)
     }
 }
 
@@ -119,14 +119,29 @@ public struct PCCalendarYearView: View {
 
 @MainActor
 private func yearViewPreview() -> some View {
-    let dataProvider = PCCalendarDataProvider()
-    let year = Calendar.autoupdatingCurrent.component(.year, from: Date())
-    let yearModel = PCCalendarYearModel(
-        numberOfCurrentMonth: dataProvider.numberOfCurrentMonth,
-        numberOfColumns: 2
-    )
-    yearModel.months = dataProvider.months(forYear: year).map {
-        PCCalendarMonthModel(dto: $0, daySelectionManager: PCCalendarDaySelectionManager())
+    let daySelectionManager = PCCalendarDaySelectionManager()
+    let yearModel = PCCalendarYearModel(numberOfCurrentMonth: 1, numberOfColumns: 2)
+    let base = Date(timeIntervalSince1970: 1_700_000_000)
+    yearModel.months = (1...3).map { monthNumber in
+        let weeks = (0..<6).map { weekIndex in
+            let days = (0..<7).map { dayIndex in
+                let index = weekIndex * 7 + dayIndex
+                return PCCalendarDayModel(
+                    date: base.addingTimeInterval(TimeInterval(index * 86400)),
+                    number: (index % 31) + 1,
+                    isInCurrentMonth: true,
+                    isToday: false,
+                    gridMonth: monthNumber
+                )
+            }
+            return PCCalendarWeekModel(days: days, daySelectionManager: daySelectionManager)
+        }
+        return PCCalendarMonthModel(
+            number: monthNumber,
+            label: "Month \(monthNumber)",
+            weekDaySymbols: ["S", "M", "T", "W", "T", "F", "S"],
+            weeks: weeks
+        )
     }
     return PCCalendarYearView(viewModel: yearModel)
 }

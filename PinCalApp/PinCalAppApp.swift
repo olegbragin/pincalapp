@@ -3,24 +3,23 @@ import CorePersistence
 
 @main
 struct PinCalAppApp: App {
-    @State private var cache: CalendarCache
+    @State private var session: PCCalendarSession
 
     init() {
+        #if os(iOS)
         UITableView.appearance().backgroundColor = .clear
         UITableViewCell.appearance().backgroundColor = .clear
+        #endif
 
-        let storage: CalendarRepository
-        if UITestStoreFactory.shouldSeedForUITests() {
-            storage = ObjectBoxCalendarStorage(store: UITestStoreFactory.makeSeededStore())
-        } else {
-            storage = ObjectBoxCalendarStorage(store: ObjectBoxFactory.makePersistentStore())
-        }
-        _cache = State(initialValue: CalendarCache(repository: storage))
+        let storage = CalendarRepositoryFactory.makeDefault()
+        _session = State(initialValue: PCCalendarSession(cache: CalendarCache(repository: storage)))
     }
 
     var body: some Scene {
         WindowGroup {
-            RootView(cache: cache)
+            RootView()
+                .environment(session)
+                .environment(\.calendarCache, session.cache)
         }
     }
 }

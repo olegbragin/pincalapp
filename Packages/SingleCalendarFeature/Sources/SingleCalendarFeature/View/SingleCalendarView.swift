@@ -24,12 +24,18 @@ public struct SingleCalendarView: View {
         ZStack {
             SingleCalendarStateView(state: viewModel.state) {
                 AnyView(
-                    SingleCalendarCalendarContent(
-                        isMultiSelect: viewModel.daySelectionManager.selectionMode == .multiple,
-                        selectedColor: $viewModel.selectedColor,
-                        isColorPickerDisabled: viewModel.isColorPickerDisabled,
-                        yearModel: viewModel.yearModel
-                    )
+                    VStack(spacing: 0) {
+                        if viewModel.daySelectionManager.selectionMode == .multiple {
+                            PCExpandedColorPicker(selectedColor: $viewModel.selectedColor)
+                                .disabled(viewModel.isColorPickerDisabled)
+                        }
+                        PCCalendarYearView(
+                            viewModel: viewModel.yearModel,
+                            onLongPress: {
+                                viewModel.daySelectionManager.selectionMode = .multiple
+                            }
+                        )
+                    }
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .onChange(of: viewModel.yearModel.numberOfColumns) {
                         if $0 != $1 {
@@ -40,49 +46,34 @@ public struct SingleCalendarView: View {
                         guard let route = viewModel.route(for: newValue) else { return }
                         navigation.goTo(route)
                     }
-                    .onChange(of: viewModel.addEditBatchListViewModel.eventBatchesToDelete) {
-                        if $0 != $1 {
-                            viewModel.deleteBatches($1, for: viewModel.calendarid)
-                            // Once every batch for the day is gone, go straight
-                            // back to the single calendar view.
-                            if viewModel.addEditBatchListViewModel.eventBatches.isEmpty {
-                                navigation.goTo(.calendar(viewModel.calendarid, toRoot: true))
-                            }
-                        }
-                    }
                 )
             }
             .padding(6)
             .navigationTitle(viewModel.label)
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbarBackground(Color.dsKit.colorBackgroundMain, for: .navigationBar)
+            .pcNavigationBarTitleDisplayMode(.inline)
+            .toolbarBackground(Color.dsKit.colorBackgroundMain, for: .pcNavigationBar)
             .toolbar { toolbarContent }
             .id(viewModel.calendarid)
             .navigationDestination(for: AppRoute.self) { route in
                 switch route {
-                case .dayBatches:
+                case .dayBatches(let day):
                     AddEditEventBatchListView(
-                        viewModel: viewModel.addEditBatchListViewModel
-                    )
-                case .batchEditor:
-                    AddEditEventBatchScreen(
-                        viewModel: viewModel.addEditBatchListViewModel.addEditEventBatchModel,
+                        eventsSelectionManager: viewModel.eventsSelectionManager,
+                        daySelectionManager: viewModel.daySelectionManager,
                         calendarId: viewModel.calendarid,
-                        onCommit: { viewModel.commitPendingBatch() }
+                        selectedDay: day
+                    )
+                case .batchEditor(let source):
+                    AddEditEventBatchScreen(
+                        eventsSelectionManager: viewModel.eventsSelectionManager,
+                        calendarId: viewModel.calendarid,
+                        source: source,
+                        eventBatch: viewModel.batch(for: source)
                     )
                 case .eventEditor(let source):
-                    let selectionManager = viewModel.addEditBatchListViewModel.addEditEventBatchModel.eventsSelectionManager
                     AddEditEventView(
-                        event: EventDataSource(
-                            id: source.id,
-                            name: source.name,
-                            date: source.date,
-                            color: source.color,
-                            timestamp: source.timestamp
-                        ),
-                        onCommit: { committed in
-                            selectionManager.apply(committed)
-                        }
+                        eventsSelectionManager: viewModel.eventsSelectionManager,
+                        source: source
                     )
                 case .calendar:
                     EmptyView()
@@ -94,11 +85,25 @@ public struct SingleCalendarView: View {
             }
         }
         .ignoresSafeArea(edges: .bottom)
+        .sensoryFeedback(.success, trigger: viewModel.daySelectionManager.selectionMode) { oldValue, newValue in
+            oldValue != newValue && newValue == .multiple
+        }
         .task(id: viewModel.calendarid) {
             await viewModel.fetch()
         }
         .onDisappear {
             flushColumnCountSave()
+            // Leaving the calendar detail (back to the list, or switching
+            // calendars) must exit any active multiselect session so a later
+            // reopen starts fresh. `onChange(of: isAtRoot)` never fires here
+            // because the calendar is opened via `detailCalendarID` (not pushed
+            // onto the navigation path), so `isAtRoot` stays `true`.
+            // Guard on `isAtRoot`: `onDisappear` also fires when a destination
+            // (e.g. the batch editor) is pushed on top of the root, and we must
+            // not reset the shared session while a batch edit is in progress.
+            if navigation.isAtRoot {
+                viewModel.resetSelectedDays()
+            }
         }
         .onChange(of: navigation.isAtRoot) { _, isAtRoot in
             if isAtRoot {

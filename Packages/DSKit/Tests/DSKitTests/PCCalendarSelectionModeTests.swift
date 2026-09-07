@@ -1,5 +1,5 @@
 import Testing
-import CoreDomain
+import DSKit
 
 @Suite("PCCalendarSelectionMode Tests")
 struct PCCalendarSelectionModeTests {

@@ -1,11 +1,9 @@
 import SwiftUI
-import CorePersistence
 import DSKit
 import AppNavigation
 
 struct RootDetailView: View {
     @Environment(RootNavigation.self) private var navigation
-    let cache: CalendarCache
 
     var body: some View {
         @Bindable var bindableNavigation = navigation
@@ -15,7 +13,7 @@ struct RootDetailView: View {
                     .fill(Color.dsKit.colorBackgroundMain)
                     .ignoresSafeArea()
                 if let id = navigation.detailCalendarID {
-                    CalendarDetailView(calendarId: id, cache: cache)
+                    CalendarDetailView(calendarId: id)
                 } else {
                     ContentUnavailableView(
                         "Select a calendar",

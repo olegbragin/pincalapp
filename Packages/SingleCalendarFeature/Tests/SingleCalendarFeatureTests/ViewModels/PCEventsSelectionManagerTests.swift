@@ -96,10 +96,10 @@ struct PCEventsSelectionManagerTests {
         #expect(changes == 1)
     }
 
-    @Test("recolorAll recolors every event")
+    @Test("setBatchColor recolors every event")
     func recolorAll() {
         let m = PCEventsSelectionManager(events: [event(day: 1), event(day: 2)])
-        m.recolorAll(to: "eventColorOption4")
+        m.setBatchColor(.option4)
         #expect(m.events.allSatisfy { $0.color == "eventColorOption4" })
     }
 

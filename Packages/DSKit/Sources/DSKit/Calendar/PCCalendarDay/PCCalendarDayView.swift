@@ -126,12 +126,10 @@ public struct PCCalendarDayView: View {
 #Preview {
     PCCalendarDayView(
         model: .init(
-            dto: .init(
-                date: Date(),
-                number: 2,
-                isInCurrentMonth: true,
-                isToday: true
-            ),
+            date: Date(),
+            number: 2,
+            isInCurrentMonth: true,
+            isToday: true,
             gridMonth: 2
         ),
         cellSize: 50

@@ -444,4 +444,113 @@ final class PinCalAppUITests: XCTestCase {
         XCTAssertFalse(dayAfter.label.lowercased().contains("event"),
                        "Batch deleted via the events list should leave day 10 unmarked; label = \(dayAfter.label)")
     }
+
+    // MARK: - Leaving the calendar in multiselect mode resets on reopen
+
+    /// STR: open calendar -> switch to multiselect -> tap back -> reopen the
+    /// calendar. It must be back in single-select mode (the toolbar button shows
+    /// "Multiselect", not "Save").
+    @MainActor
+    func testLeavingCalendarInMultiselectModeResetsOnReopen() throws {
+        let app = KeyboardAvoidanceTestSupport.launchSeededApp()
+        KeyboardAvoidanceTestSupport.openCalendarDetail(app, named: "UI Test Calendar")
+
+        let multiselectButton = app.buttons["Multiselect"]
+        XCTAssertTrue(multiselectButton.waitForExistence(timeout: 5), "Multiselect button should be visible")
+        multiselectButton.tap()
+
+        // Leave the screen via the back button.
+        KeyboardAvoidanceTestSupport.tapBackButton(in: app)
+
+        // Reopen the calendar.
+        KeyboardAvoidanceTestSupport.openCalendarDetail(app, named: "UI Test Calendar")
+
+        // Must be in single-select mode: "Multiselect" button, no "Save".
+        let reopenedMultiselect = app.buttons["Multiselect"]
+        XCTAssertTrue(reopenedMultiselect.waitForExistence(timeout: 5),
+                      "After reopening, the calendar should be in single-select mode")
+        XCTAssertFalse(app.buttons["Save"].exists, "Save button indicates multiselect mode; should be single")
+    }
+
+    @MainActor
+    func testEditingEventInBatchPersists() throws {
+        let app = XCUIApplication()
+        app.launchArguments = ["-UITestSeedData"]
+        app.launch()
+
+        openCalendarsList(app)
+        app.staticTexts["UI Test Calendar"].firstMatch.tap()
+
+        // Tap an empty day to create a new event batch.
+        let day5 = dayIdentifier(day: 5)
+        let day5Element = app.descendants(matching: .any).matching(identifier: day5).firstMatch
+        XCTAssertTrue(day5Element.waitForExistence(timeout: 5), "Calendar should load")
+        day5Element.tap()
+
+        // Batch editor opens for a new day. Enter a batch name and save.
+        let batchNameField = app.textFields["batch-name-field"]
+        XCTAssertTrue(batchNameField.waitForExistence(timeout: 5), "Batch editor should open")
+        batchNameField.tap()
+        batchNameField.typeText("Swim")
+        app.buttons["batch-save-button"].tap()
+
+        // Back on the calendar. Tap the day again to open the batch list, then the batch.
+        let day5Again = app.descendants(matching: .any).matching(identifier: day5).firstMatch
+        XCTAssertTrue(day5Again.waitForExistence(timeout: 5), "Day should be visible after saving")
+        day5Again.tap()
+        let swimBatch = app.staticTexts["Swim"]
+        XCTAssertTrue(swimBatch.waitForExistence(timeout: 5), "Batch list should show the new batch")
+        swimBatch.tap()
+
+        // Batch editor opens. Tap the event to open the event editor.
+        let eventCell = app.cells.firstMatch
+        XCTAssertTrue(eventCell.waitForExistence(timeout: 5), "Batch editor should list the event")
+        eventCell.tap()
+
+        // Event editor opens. Enter the event name and save.
+        let eventNameField = app.textFields["event-name-field"]
+        XCTAssertTrue(eventNameField.waitForExistence(timeout: 5), "Event editor should open")
+        eventNameField.tap()
+        eventNameField.typeText("Lap")
+        app.buttons["Save"].tap()
+
+        // Back in the batch editor. Save the batch (persists it), which dismisses
+        // back to the batch list.
+        app.buttons["batch-save-button"].tap()
+
+        // Reopen the batch from the batch list and verify the event name persisted.
+        let swimBatchAgain = app.staticTexts["Swim"]
+        XCTAssertTrue(swimBatchAgain.waitForExistence(timeout: 5), "Batch list should show Swim after dismissing")
+        swimBatchAgain.tap()
+
+        let eventCellAgain = app.cells.firstMatch
+        XCTAssertTrue(eventCellAgain.waitForExistence(timeout: 5), "Batch editor should reopen")
+        eventCellAgain.tap()
+
+        let eventNameFieldAgain = app.textFields["event-name-field"]
+        XCTAssertTrue(eventNameFieldAgain.waitForExistence(timeout: 5), "Event editor should reopen")
+        XCTAssertEqual(eventNameFieldAgain.value as? String, "Lap", "Event name should be persisted")
+    }
+
+    @MainActor
+    func testTappingExistingEventOpensEditor() throws {
+        let app = XCUIApplication()
+        app.launchArguments = ["-UITestSeedData"]
+        app.launch()
+
+        openCalendarsList(app)
+        app.staticTexts["UI Test Calendar"].firstMatch.tap()
+
+        let day10 = dayIdentifier(day: 10)
+        app.descendants(matching: .any).matching(identifier: day10).firstMatch.tap()
+        let womenCycle = app.staticTexts["Women Cycle"]
+        XCTAssertTrue(womenCycle.waitForExistence(timeout: 5), "Batch list should show Women Cycle")
+        womenCycle.tap()
+
+        let eventCell = app.cells.firstMatch
+        XCTAssertTrue(eventCell.waitForExistence(timeout: 5), "Batch editor should list the event")
+        eventCell.tap()
+
+        XCTAssertTrue(app.textFields["event-name-field"].waitForExistence(timeout: 5), "Event editor should open")
+    }
 }

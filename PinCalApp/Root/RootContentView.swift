@@ -1,11 +1,9 @@
 import SwiftUI
-import CorePersistence
 import CalendarListFeature
 import AppNavigation
 
 struct RootContentView: View {
     @Environment(RootNavigation.self) var navigation
-    let cache: CalendarCache
 
     var selectedCalendarID: Int64? {
         navigation.detailCalendarID
@@ -16,7 +14,6 @@ struct RootContentView: View {
         case .calendarList, .none:
             CalendarListView(
                 mode: .active,
-                cache: cache,
                 selectedCalendarID: selectedCalendarID,
                 onSelectCalendar: { id in
                     navigation.goTo(.calendar(id, toRoot: false))
@@ -25,7 +22,6 @@ struct RootContentView: View {
         case .archived:
             CalendarListView(
                 mode: .archived,
-                cache: cache,
                 selectedCalendarID: selectedCalendarID,
                 onSelectCalendar: { id in
                     navigation.goTo(.calendar(id, toRoot: false))

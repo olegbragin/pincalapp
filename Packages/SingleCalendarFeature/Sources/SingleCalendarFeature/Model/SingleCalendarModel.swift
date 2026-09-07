@@ -23,23 +23,29 @@ public final class SingleCalendarModel {
         case loading
     }
     
-    private let dataProvider = PCCalendarDataProvider()
     private let cache: CalendarCache
+    private let dataProvider: PCCalendarDataProvider
     
-    private(set) var originalBatches: [EventBatchDataSource] = []
+    private(set) var originalBatches: [EventBatchDataSource] {
+        get { eventsSelectionManager.batches }
+        set { eventsSelectionManager.batches = newValue }
+    }
     private var addedEvents: Set<EventDataSource> = []
     
     public private(set) var calendarid: Int64
     public private(set) var label: String = ""
     public private(set) var isArchived: Bool = false
     
-    public let daySelectionManager = PCCalendarDaySelectionManager()
-    
+    // Batch-editing session managers. Injected from outside (app root) and
+    // shared across the main calendar and the batch views; all communication
+    // about the batch session flows through them.
+    public let eventsSelectionManager: PCEventsSelectionManager
+    public let daySelectionManager: PCCalendarDaySelectionManager
+
     public var selectedColor: PCColorOption?
     
     public private(set) var yearModel = PCCalendarYearModel()
-    public private(set) var addEditBatchListViewModel = AddEditEventBatchListViewModel()
-    
+
     public var state: State = .empty
     
     @ObservationIgnored private var cancellable: AnyCancellable?
@@ -52,22 +58,24 @@ public final class SingleCalendarModel {
         guard !daySelectionManager.selectedDays.isEmpty else { return [] }
         return originalEvents.filter { event in
             daySelectionManager.selectedDays.contains { date in
-                isSameDay(event.date, date)
+                dataProvider.isSameDay(event.date, date)
             }
         }
     }
     
     public func hasEvents(on date: Date) -> Bool {
-        originalBatches.contains { batch in
+        let result = originalBatches.contains { batch in
             batch.events.contains { event in
-                isSameDay(event.date, date)
-            } || (batch.date.map { isSameDay($0, date) } ?? false)
+                dataProvider.isSameDay(event.date, date)
+            } || (batch.date.map { dataProvider.isSameDay($0, date) } ?? false)
         }
+        return result
     }
 
-    /// Decides where navigation should go for a day-selection change and
-    /// prepares the corresponding editor state. Returns `nil` when no
-    /// navigation is needed.
+    /// Decides where navigation should go for a day-selection change. The batch
+    /// list/editor views prepare their own view models; here we only stage the
+    /// events for a new batch into the shared manager when needed. Returns `nil`
+    /// when no navigation is needed.
     public func route(for selectedDays: Set<Date>) -> AppRoute? {
         guard !isArchived, let day = selectedDays.first else { return nil }
 
@@ -78,20 +86,74 @@ public final class SingleCalendarModel {
             return nil
         }
 
-        let out: AppRoute
         if hasEvents(on: day) {
-            prepareAddEditBatchListViewModel(with: selectedDays)
-            out = .dayBatches(day)
+            return .dayBatches(day)
         } else {
-            prepareAddEditEventBatchViewModel(for: day)
-            out = .batchEditor(.newDay(day))
+            prepareNewBatchEvents(on: day)
+            return .batchEditor(.newDay(day))
         }
-        return out
     }
-    
-    public init(calendarid: Int64, cache: CalendarCache) {
+
+    public func batches(for day: Date) -> [EventBatchDataSource] {
+        eventsSelectionManager.batches(for: day)
+    }
+
+    public func batch(withId id: Int64) -> EventBatchDataSource? {
+        eventsSelectionManager.batch(withId: id)
+    }
+
+    /// Resolves the batch to hand to the batch editor for a navigation source.
+    /// Returns `nil` for a brand-new day (the editor seeds from the session).
+    public func batch(for source: BatchEditorSource) -> EventBatchDataSource? {
+        if case .existingBatch(let id) = source {
+            return batch(withId: id)
+        }
+        return nil
+    }
+
+    /// Stages the single placeholder event for a new batch anchored on `date`
+    /// into the shared manager.
+    func prepareNewBatchEvents(on date: Date) {
+        eventsSelectionManager.prepare(with: [
+            EventDataSource(name: "", date: date, color: PCColorOption.option1.colorName)
+        ])
+    }
+
+    /// Stages the events chosen via multi-select into the shared manager.
+    func prepareAddEditEventBatchViewModel() {
+        guard !addedEvents.isEmpty else { return }
+        eventsSelectionManager.prepare(with: addedEvents.sorted { $0.date < $1.date })
+    }
+
+    /// Stages the single placeholder event for a new batch on `date`.
+    func prepareAddEditEventBatchViewModel(for date: Date) {
+        prepareNewBatchEvents(on: date)
+    }
+
+    /// Creates a batch editor view model bound to the shared session manager.
+    public func makeBatchEditor() -> AddEditEventBatchViewModel {
+        AddEditEventBatchViewModel(eventsSelectionManager: eventsSelectionManager, calendarId: calendarid)
+    }
+
+    /// Resolves the effective column count for a year model. Injected so callers
+    /// (e.g. UI-test launch arguments) can override the calendar's natural count
+    /// without the data provider knowing about test infrastructure.
+    private let columnCountResolver: (Int) -> Int
+
+    public init(
+        calendarid: Int64,
+        cache: CalendarCache,
+        dataProvider: PCCalendarDataProvider = PCCalendarDataProvider(),
+        eventsSelectionManager: PCEventsSelectionManager = PCEventsSelectionManager(),
+        daySelectionManager: PCCalendarDaySelectionManager = PCCalendarDaySelectionManager(),
+        columnCountResolver: @escaping (Int) -> Int = { $0 }
+    ) {
         self.calendarid = calendarid
         self.cache = cache
+        self.dataProvider = dataProvider
+        self.eventsSelectionManager = eventsSelectionManager
+        self.daySelectionManager = daySelectionManager
+        self.columnCountResolver = columnCountResolver
         cancellable = cache.changes
             .receive(on: DispatchQueue.main)
             .sink { [weak self] operation in
@@ -133,39 +195,24 @@ public final class SingleCalendarModel {
         // so event updates would not be observed and committed days would
         // silently stop rendering. Event changes are applied in-place below.
         if yearModel.months.isEmpty {
-            yearModel.months = dataProvider.months(forYear: calendar.year).map {
-                PCCalendarMonthModel(dto: $0, daySelectionManager: daySelectionManager)
-            }
-            yearModel.numberOfCurrentMonth = dataProvider.numberOfCurrentMonth
-            yearModel.set(initialNumberOfColumns: Self.initialNumberOfColumns(for: calendar))
+            yearModel = PCCalendarModelBuilder.makeYearModel(
+                from: dataProvider.yearData(for: calendar.year),
+                daySelectionManager: daySelectionManager,
+                numberOfCurrentMonth: dataProvider.numberOfCurrentMonth,
+                numberOfColumns: calendar.numberOfColumns,
+                columnCountResolver: columnCountResolver
+            )
         }
+        // Mirror the resolved column count onto the shared batch-editing session
+        // manager so the batch editor's calendar uses the same layout (and honors
+        // `-UITestColumns`), keeping its day cells reliably tappable.
+        eventsSelectionManager.numberOfColumns = yearModel.numberOfColumns
         
-        originalBatches = calendar.eventBatches
+        eventsSelectionManager.setCalendar(id: calendarid, batches: calendar.eventBatches)
         updateYearModel(with: originalEvents)
         state = .content
     }
-
-    /// Resolves the year-grid column count for this calendar.
-    ///
-    /// UI tests can force a specific column count (e.g. a single column so the
-    /// day cells are large and reliably tappable) by passing
-    /// `-UITestColumns <n>` as a launch argument. It is ignored outside UI tests
-    /// and does not affect the app's pinch-to-zoom (the `maximumNumberOfColumns`
-    /// cap is unchanged).
-    private static func initialNumberOfColumns(for calendar: CalendarDataSource) -> Int {
-        forcedColumnsForUITests ?? calendar.numberOfColumns
-    }
-
-    private static var forcedColumnsForUITests: Int? {
-        let arguments = ProcessInfo.processInfo.arguments
-        guard
-            let flagIndex = arguments.firstIndex(of: "-UITestColumns"),
-            arguments.indices.contains(flagIndex + 1),
-            let value = Int(arguments[flagIndex + 1])
-        else { return nil }
-        return value
-    }
-
+    
     public func save(for calendarId: Int64) {
         let batches = originalBatches
         let columns = yearModel.internalNumberOfColumns
@@ -177,30 +224,6 @@ public final class SingleCalendarModel {
         }
     }
     
-    public func prepareAddEditEventBatchViewModel() {
-        guard !addedEvents.isEmpty else { return }
-        let sortedEvents = addedEvents.sorted { $0.date < $1.date }
-        let addEditModel = addEditBatchListViewModel.addEditEventBatchModel
-        addEditModel.eventBatchId = 0
-        addEditModel.eventBatchName = sortedEvents.first?.name ?? ""
-        addEditModel.selectedColor = PCColorOption(sortedEvents.first?.color ?? "") ?? selectedColor
-        addEditModel.date = nil
-        addEditModel.timestamp = UUID()
-        addEditModel.prepare(with: sortedEvents)
-    }
-    
-    public func prepareAddEditEventBatchViewModel(for date: Date) {
-        let addEditModel = addEditBatchListViewModel.addEditEventBatchModel
-        addEditModel.eventBatchId = 0
-        addEditModel.eventBatchName = ""
-        addEditModel.selectedColor = .option1
-        addEditModel.date = date
-        addEditModel.timestamp = UUID()
-        addEditModel.prepare(with: [
-            EventDataSource(name: "", date: date, color: PCColorOption.option1.colorName)
-        ])
-    }
-    
     public func handleSelectionConfirmation() -> AppRoute? {
         guard !addedEvents.isEmpty else {
             cancelMultipleChanges()
@@ -210,28 +233,19 @@ public final class SingleCalendarModel {
         guard let day = addedEvents.sorted(by: { $0.date < $1.date }).first?.date else { return nil }
         return .batchEditor(.newDay(day))
     }
-    
-    public func commitPendingBatch() {
-        guard let eventBatch = addEditBatchListViewModel.addEditEventBatchModel.eventBatch else { return }
-        addEditBatchListViewModel.addEditEventBatchModel.eventBatch = nil
-        let batchKey = key(for: eventBatch)
-        originalBatches.removeAll(where: { key(for: $0) == batchKey })
-        if !eventBatch.events.isEmpty {
-            originalBatches.append(eventBatch)
-        }
+
+    /// Commits a batch that was edited/saved in the batch editor. The manager
+    /// owns the calendar's batch list and the persistence; this model only
+    /// updates its own calendar state (year model + multi-select session).
+    public func commitPendingBatch(_ eventBatch: EventBatchDataSource?) {
+        eventsSelectionManager.commit(eventBatch)
         updateYearModel(with: originalEvents)
         save(for: calendarid)
-        refreshBatchListIfVisible(keeping: eventBatch)
         if daySelectionManager.selectionMode == .multiple {
             daySelectionManager.toggleSelectionMode()
             addedEvents = []
             selectedColor = nil
         }
-    }
-
-    private func refreshBatchListIfVisible(keeping batch: EventBatchDataSource) {
-        guard let selectedDay = addEditBatchListViewModel.selectedDay else { return }
-        prepareAddEditBatchListViewModel(with: [selectedDay], keeping: batch)
     }
     
     public func cancelMultipleChanges() {
@@ -241,87 +255,32 @@ public final class SingleCalendarModel {
         selectedColor = nil
     }
     
-    public func prepareAddEditBatchListViewModel(with selectedDays: Set<Date>, keeping keepBatch: EventBatchDataSource? = nil) {
-        guard let selectedDay = selectedDays.first else {
-            addEditBatchListViewModel.reset()
-            return
-        }
-        var dayBatches = originalBatches.filter { batch in
-            batch.events.contains { event in
-                isSameDay(event.date, selectedDay)
-            } || (batch.date.map { isSameDay($0, selectedDay) } ?? false)
-        }
-        // After an edit the batch may no longer fall on the day the list was
-        // opened from (e.g. its anchor/event days changed). Keep the batch the
-        // user just saved visible — provided it still exists — so the list does
-        // not look empty right after saving.
-        if let keepBatch,
-           originalBatches.contains(where: { key(for: $0) == key(for: keepBatch) }),
-           !dayBatches.contains(where: { key(for: $0) == key(for: keepBatch) }) {
-            dayBatches.append(keepBatch)
-        }
-        addEditBatchListViewModel.prepare(with: dayBatches, and: selectedDay)
-    }
-    
     public func onBatchListDismissed() {
         daySelectionManager.selectedDays = []
-        addEditBatchListViewModel.reset()
+        eventsSelectionManager.reset()
     }
     
     public func deleteBatches(_ batches: [EventBatchDataSource], for calendarId: Int64) {
-        for batch in batches {
-            originalBatches.removeAll(where: { key(for: $0) == key(for: batch) })
-        }
+        eventsSelectionManager.deleteBatches(batches)
         updateYearModel(with: originalEvents)
         save(for: calendarId)
-        prepareAddEditBatchListViewModel(with: daySelectionManager.selectedDays)
     }
     
     public func reset() {
         label = ""
         state = .empty
-        addEditBatchListViewModel.reset()
+        eventsSelectionManager.reset()
     }
     
     public func resetSelectedDays() {
         daySelectionManager.selectedDays = []
+        eventsSelectionManager.reset()
         if daySelectionManager.selectionMode == .multiple {
-            commitPendingBatch()
-            if daySelectionManager.selectionMode == .multiple {
-                daySelectionManager.toggleSelectionMode()
-            }
+            daySelectionManager.toggleSelectionMode()
             addedEvents = []
             selectedColor = nil
             updateYearModel(with: originalEvents)
-        } else {
-            commitPendingBatch()
         }
-        addEditBatchListViewModel.addEditEventBatchModel.reset()
-    }
-    
-    enum BatchMergeKey: Hashable {
-        case persisted(Int64)
-        case pending(UUID)
-        case unsaved(Int)
-    }
-    
-    func key(for batch: EventBatchDataSource) -> BatchMergeKey {
-        if batch.id != 0 {
-            return .persisted(batch.id)
-        }
-        if let timestamp = batch.timestamp {
-            return .pending(timestamp)
-        }
-        return .unsaved(batch.hashValue)
-    }
-    
-    private func isSameDay(_ lhs: Date, _ rhs: Date) -> Bool {
-        let lhsComponents = dataProvider.dateComponents(forDate: lhs)
-        let rhsComponents = dataProvider.dateComponents(forDate: rhs)
-        return
-            lhsComponents.day == rhsComponents.day &&
-            lhsComponents.month == rhsComponents.month &&
-            lhsComponents.year == rhsComponents.year
     }
     
     private func updateYearModel(with events: Set<EventDataSource>) {
@@ -334,7 +293,7 @@ public final class SingleCalendarModel {
                     }
                     .forEach { day in
                         guard let dayDate = day.date else { return }
-                        let key = Calendar.autoupdatingCurrent.startOfDay(for: dayDate)
+                        let key = dataProvider.startOfDay(for: dayDate)
                         let newEvents = eventColorsByDay[key] ?? []
                         guard day.events != newEvents else { return }
                         day.events = newEvents
@@ -345,7 +304,7 @@ public final class SingleCalendarModel {
     
     private func updateDayModel(at date: Date, with events: Set<EventDataSource>) {
         guard let day = dayModel(for: date) else { return }
-        let key = Calendar.autoupdatingCurrent.startOfDay(for: date)
+        let key = dataProvider.startOfDay(for: date)
         let newEvents = colorsByStartOfDay(from: events)[key] ?? []
         guard day.events != newEvents else { return }
         day.events = newEvents
@@ -356,7 +315,7 @@ public final class SingleCalendarModel {
         for month in yearModel.months {
             for week in month.weeks {
                 for day in week.days {
-                    guard let dayDate = day.date, isSameDay(dayDate, date) else { continue }
+                    guard let dayDate = day.date, dataProvider.isSameDay(dayDate, date) else { continue }
                     if day.isInCurrentMonth { return day }
                     fallback = day
                 }
@@ -368,7 +327,7 @@ public final class SingleCalendarModel {
     private func colorsByStartOfDay(from events: Set<EventDataSource>) -> [Date: [String]] {
         var result: [Date: [String]] = [:]
         for event in events {
-            result[Calendar.autoupdatingCurrent.startOfDay(for: event.date), default: []].append(event.color)
+            result[dataProvider.startOfDay(for: event.date), default: []].append(event.color)
         }
         return result
     }

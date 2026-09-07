@@ -41,7 +41,7 @@ public struct PCColorOptionSheet: View {
                 .accessibilityIdentifier("color-option-\(colorOption.colorName)")
             }
             .navigationTitle("Выберите цвет")
-            .navigationBarTitleDisplayMode(.inline)
+            .pcNavigationBarTitleDisplayMode(.inline)
         }
         .presentationDetents([.medium, .large])
     }

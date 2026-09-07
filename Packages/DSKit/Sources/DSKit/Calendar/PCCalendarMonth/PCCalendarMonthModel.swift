@@ -6,7 +6,6 @@
 //
 
 import Foundation
-import CoreDomain
 import Observation
 
 @MainActor
@@ -19,17 +18,13 @@ public final class PCCalendarMonthModel: Identifiable {
     public let weekHeaderModel: PCCalendarWeekHeaderModel
     public let weeks: [PCCalendarWeekModel]
     
-    public var isLongPressed: Bool = false
-        
-    public init(dto: PCCalendarMonthDataSource, daySelectionManager: PCCalendarDaySelectionManager) {
-        self.id = dto.number
-        self.label = dto.label
-        self.number = dto.number
-        self.weekDaySymbols = dto.weekDaySymbols
-        self.weekHeaderModel = PCCalendarWeekHeaderModel(weekSymbols: dto.weekDaySymbols)
-        self.weeks = dto.weeks.map {
-            .init(dto: $0, monthNumber: dto.number, daySelectionManager: daySelectionManager)
-        }
+    public init(number: Int, label: String, weekDaySymbols: [String], weeks: [PCCalendarWeekModel]) {
+        self.id = number
+        self.label = label
+        self.number = number
+        self.weekDaySymbols = weekDaySymbols
+        self.weekHeaderModel = PCCalendarWeekHeaderModel(weekSymbols: weekDaySymbols)
+        self.weeks = weeks
     }
 }
 

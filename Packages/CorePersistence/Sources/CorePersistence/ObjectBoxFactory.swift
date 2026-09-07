@@ -23,12 +23,13 @@ public struct ObjectBoxFactory {
 
     private static func getDatabasePath() throws -> URL {
         let databaseName = "p_calendars"
+        let bundleIdentifier = Bundle.main.bundleIdentifier ?? "com.crucialsoftware.PinCalApp"
         let appSupport = try FileManager.default.url(
             for: .applicationSupportDirectory,
             in: .userDomainMask,
             appropriateFor: nil,
             create: true)
-            .appendingPathComponent(Bundle.main.bundleIdentifier!)
+            .appendingPathComponent(bundleIdentifier)
         let directory = appSupport.appendingPathComponent(databaseName)
         try FileManager.default.createDirectory(
             at: directory,

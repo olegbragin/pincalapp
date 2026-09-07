@@ -1,27 +1,16 @@
 //
 //  PCColorOption.swift
-//  USkateAppV2
+//  PinCalApp
 //
-//  Created by Oleg Bragin on 24.02.2026.
+//  Created by Oleg Bragin on 05.09.2026.
 //
-
-import SwiftUI
 
 public enum PCColorOption: CaseIterable {
     case option1,
          option2,
          option3,
          option4
-    
-    public var color: Color {
-        switch self {
-        case .option1: return Color.dsKit.colorEventOption1
-        case .option2: return Color.dsKit.colorEventOption2
-        case .option3: return Color.dsKit.colorEventOption3
-        case .option4: return Color.dsKit.colorEventOption4
-        }
-    }
-    
+
     public var colorName: String {
         switch self {
         case .option1: return "eventColorOption1"
@@ -30,7 +19,7 @@ public enum PCColorOption: CaseIterable {
         case .option4: return "eventColorOption4"
         }
     }
-    
+
     public var name: String {
         switch self {
         case .option1: return "Вариант 1"
@@ -39,7 +28,7 @@ public enum PCColorOption: CaseIterable {
         case .option4: return "Вариант 4"
         }
     }
-    
+
     public init?(_ rawValue: String) {
         switch rawValue {
         case "eventColorOption1":

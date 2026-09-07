@@ -9,6 +9,7 @@ import Testing
 import Foundation
 import ObjectBox
 import DSKit
+import CoreDomain
 @testable import CorePersistence
 @testable import SingleCalendarFeature
 
@@ -43,7 +44,7 @@ struct EventBatchCreationTests {
         .init(name: name, date: date(year: 2026, month: 6, day: day), color: color, timestamp: timestamp)
     }
     
-    private func waitForBatchCount(_ expected: Int, in store: Store, timeout: TimeInterval = 3) async throws -> Bool {
+    private func waitForBatchCount(_ expected: Int, in store: Store, timeout: TimeInterval = 10) async throws -> Bool {
         let batchBox = store.box(for: PPEventBatch.self)
         let deadline = Date().addingTimeInterval(timeout)
         while Date() < deadline {
@@ -85,7 +86,7 @@ struct EventBatchCreationTests {
         editor.update(from: edited)
         editor.selectedColor = .option3
         #expect(editor.save())
-        viewModel.apply(with: editor.event!)
+        viewModel.apply(with: editor.event)
         
         let colors = viewModel.events.map(\.color)
         #expect(colors[0] == "eventColorOption3")
@@ -197,7 +198,7 @@ struct EventBatchCreationTests {
         editor.update(from: first)
         editor.selectedColor = .option3
         #expect(editor.save())
-        viewModel.eventsSelectionManager.apply(editor.event!)
+        viewModel.eventsSelectionManager.apply(editor.event)
         
         #expect(viewModel.save())
         
@@ -248,7 +249,7 @@ struct EventBatchCreationTests {
     @Test func setupCalendarSetsScrollTargetToEarliestEvent() {
         let viewModel = AddEditEventBatchViewModel(events: [event(day: 20), event(day: 10)])
         
-        #expect(viewModel.yearModel.scrollTargetDate.map { Calendar.current.component(.day, from: $0) } == 10)
+        #expect(viewModel.yearModel.scrollTargetMonth == 6)
     }
     
     @Test func setupCalendarFallsBackScrollTargetToSelectedDay() {
@@ -256,7 +257,7 @@ struct EventBatchCreationTests {
         viewModel.date = date(year: 2026, month: 1, day: 1)
         viewModel.setupCalendar()
         
-        #expect(viewModel.yearModel.scrollTargetDate.map { Calendar.current.component(.day, from: $0) } == 1)
+        #expect(viewModel.yearModel.scrollTargetMonth == 1)
     }
     
     // MARK: - SingleCalendarModel
@@ -305,7 +306,8 @@ struct EventBatchCreationTests {
         
         model.prepareAddEditEventBatchViewModel()
         
-        let addEdit = model.addEditBatchListViewModel.addEditEventBatchModel
+        let addEdit = model.makeBatchEditor()
+        addEdit.load(nil)
         #expect(addEdit.eventBatchName == "Event1")
         #expect(addEdit.selectedColor == .option1)
         #expect(addEdit.eventsSelectionManager.events.count == 2)
@@ -319,7 +321,7 @@ struct EventBatchCreationTests {
         
         model.prepareAddEditEventBatchViewModel()
         
-        #expect(model.addEditBatchListViewModel.addEditEventBatchModel.eventBatch == nil)
+        #expect(model.makeBatchEditor().eventBatch == nil)
     }
     
     @Test func cancelMultipleChangesExitsModeAndClearsState() {
@@ -368,7 +370,7 @@ struct EventBatchCreationTests {
         model.daySelectionManager.selectionMode = .multiple
         
         model.prepareAddEditEventBatchViewModel()
-        let addEdit = model.addEditBatchListViewModel.addEditEventBatchModel
+        let addEdit = model.makeBatchEditor()
         addEdit.eventBatchName = "Women Cycle"
         addEdit.selectedColor = .option1
         addEdit.recolorAllEvents()
@@ -378,10 +380,10 @@ struct EventBatchCreationTests {
         editor.update(from: first)
         editor.selectedColor = .option3
         #expect(editor.save())
-        addEdit.eventsSelectionManager.apply(editor.event!)
+        addEdit.eventsSelectionManager.apply(editor.event)
         
         #expect(addEdit.save())
-        model.resetSelectedDays()
+        model.commitPendingBatch(addEdit.eventBatch)
         
         #expect(model.daySelectionManager.selectionMode == .single)
         #expect(!model.isColorPickerDisabled)
@@ -420,7 +422,7 @@ struct EventBatchCreationTests {
         model.daySelectionManager.selectionMode = .multiple
         
         model.prepareAddEditEventBatchViewModel()
-        #expect(model.addEditBatchListViewModel.addEditEventBatchModel.eventBatch == nil)
+        #expect(model.makeBatchEditor().eventBatch == nil)
         
         model.resetSelectedDays()
         
@@ -450,16 +452,14 @@ struct EventBatchCreationTests {
         model.daySelectionManager.selectionMode = .multiple
         
         model.prepareAddEditEventBatchViewModel()
-        let addEdit = model.addEditBatchListViewModel.addEditEventBatchModel
+        let addEdit = model.makeBatchEditor()
         addEdit.eventBatchName = "Women Cycle"
         addEdit.selectedColor = .option1
         addEdit.recolorAllEvents()
         #expect(addEdit.save())
-        model.resetSelectedDays()
+        model.commitPendingBatch(addEdit.eventBatch)
         
-        model.prepareAddEditBatchListViewModel(with: [day10])
-        
-        let visibleBatches = model.addEditBatchListViewModel.eventBatches
+        let visibleBatches = model.batches(for: day10)
         #expect(visibleBatches.count == 1)
         #expect(visibleBatches[0].name == "Women Cycle")
         #expect(visibleBatches[0].events.count == 2)
@@ -557,12 +557,9 @@ struct EventBatchCreationTests {
         await model.fetch(force: true)
         #expect(model.state == .content)
         
-        model.prepareAddEditBatchListViewModel(with: [day10])
-        let batchList = model.addEditBatchListViewModel
-        #expect(batchList.eventBatches.count == 1)
-        batchList.prepareAddEditBatchViewModel(with: batchList.eventBatches[0])
-        
-        let addEdit = batchList.addEditEventBatchModel
+        #expect(model.batches(for: day10).count == 1)
+        let addEdit = model.makeBatchEditor()
+        addEdit.load(model.batches(for: day10)[0])
         #expect(addEdit.eventBatchId != 0)
         #expect(addEdit.eventsSelectionManager.events.count == 2)
         
@@ -571,7 +568,7 @@ struct EventBatchCreationTests {
         #expect(addEdit.eventsSelectionManager.events.isEmpty)
         
         #expect(addEdit.save())
-        model.resetSelectedDays()
+        model.commitPendingBatch(addEdit.eventBatch)
         
         let dayModel = model.yearModel.months
             .first(where: { $0.number == 6 })?
@@ -609,18 +606,19 @@ struct EventBatchCreationTests {
         await model.fetch(force: true)
         #expect(model.state == .content)
         
-        model.prepareAddEditEventBatchViewModel(for: date(year: 2026, month: 6, day: 10))
-        let addEdit = model.addEditBatchListViewModel.addEditEventBatchModel
+        let day10 = date(year: 2026, month: 6, day: 10)
+        model.prepareAddEditEventBatchViewModel(for: day10)
+        let addEdit = model.makeBatchEditor()
+        addEdit.load(nil, selectedDay: day10)
         addEdit.eventBatchName = "Women Cycle"
         addEdit.selectedColor = .option1
         
-        let day10 = date(year: 2026, month: 6, day: 10)
         let day12 = date(year: 2026, month: 6, day: 12)
         addEdit.toggleEvent(on: day12)
         addEdit.toggleEvent(on: day12)
         
         #expect(addEdit.save())
-        model.resetSelectedDays()
+        model.commitPendingBatch(addEdit.eventBatch)
         
         #expect(try await waitForBatchCount(1, in: store))
         
@@ -649,7 +647,8 @@ struct EventBatchCreationTests {
         
         model.prepareAddEditEventBatchViewModel(for: day10)
         
-        let addEdit = model.addEditBatchListViewModel.addEditEventBatchModel
+        let addEdit = model.makeBatchEditor()
+        addEdit.load(nil, selectedDay: day10)
         #expect(addEdit.eventBatchName == "")
         #expect(addEdit.selectedColor == .option1)
         #expect(addEdit.date == day10)

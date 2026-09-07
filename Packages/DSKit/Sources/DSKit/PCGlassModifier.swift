@@ -25,7 +25,7 @@ public struct PCGlassModifier: ViewModifier {
             content
                 .background(
                     RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                        .fill(Color(.secondarySystemBackground))
+                        .fill(PCSystemColor.secondarySystemBackground)
                         .overlay(
                             RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
                                 .fill(tint ?? .clear)

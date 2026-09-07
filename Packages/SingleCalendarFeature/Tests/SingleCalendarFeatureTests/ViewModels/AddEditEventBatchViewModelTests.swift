@@ -2,6 +2,7 @@ import Foundation
 import Testing
 import CorePersistence
 import DSKit
+import CoreDomain
 @testable import SingleCalendarFeature
 
 @MainActor
@@ -27,13 +28,14 @@ struct AddEditEventBatchViewModelTests {
     @Test("canSave requires a name and a color")
     func canSaveRequirements() {
         let vm = AddEditEventBatchViewModel()
+        vm.setup()
         #expect(!vm.canSave)
 
         vm.eventBatchName = "Summer"
-        #expect(!vm.canSave)
-
-        vm.selectedColor = .option1
         #expect(vm.canSave)
+
+        vm.selectedColor = nil
+        #expect(!vm.canSave)
     }
 
     @Test("save returns false when invalid")
@@ -62,7 +64,8 @@ struct AddEditEventBatchViewModelTests {
         #expect(vm.eventBatch?.id == 7)
         #expect(vm.eventBatch?.name == "Beach")
         #expect(vm.eventBatch?.colorName == PCColorOption.option2.colorName)
-        #expect(vm.eventBatch?.events == [storedEvent])
+        // Setting the batch color rewrites every event's color in the batch.
+        #expect(vm.eventBatch?.events == [storedEvent.withColor("eventColorOption2")])
         #expect(vm.eventBatch?.date == date)
         #expect(vm.eventBatch?.timestamp == timestampToUse)
     }

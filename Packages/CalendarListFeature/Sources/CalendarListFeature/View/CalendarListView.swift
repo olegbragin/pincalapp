@@ -3,23 +3,42 @@ import CorePersistence
 import DSKit
 
 public struct CalendarListView: View {
-    @State private var viewModel: CalendarListViewModel
+    @Environment(\.calendarCache) private var cache
+    @State private var viewModel: CalendarListViewModel?
     @State private var isAddSheetPresented = false
     public var selectedCalendarID: Int64?
     public var onSelectCalendar: (Int64) -> Void = { _ in }
+    let mode: CalendarListMode
 
     public init(
         mode: CalendarListMode = .active,
-        cache: CalendarCache,
         selectedCalendarID: Int64? = nil,
         onSelectCalendar: @escaping (Int64) -> Void = { _ in }
     ) {
-        _viewModel = State(initialValue: CalendarListViewModel(mode: mode, cache: cache))
+        self.mode = mode
         self.selectedCalendarID = selectedCalendarID
         self.onSelectCalendar = onSelectCalendar
     }
 
     public var body: some View {
+        Group {
+            if let viewModel {
+                content(for: viewModel)
+            } else {
+                PCProgressView(label: "Loading")
+            }
+        }
+        .task {
+            if viewModel == nil {
+                guard let cache else { return }
+                viewModel = CalendarListViewModel(mode: mode, cache: cache)
+            }
+            await viewModel?.fetch()
+        }
+    }
+
+    @ViewBuilder
+    private func content(for viewModel: CalendarListViewModel) -> some View {
         VStack(spacing: 0) {
             if viewModel.isLoading, viewModel.calendars.isEmpty {
                 Spacer()
@@ -29,7 +48,7 @@ public struct CalendarListView: View {
                 CalendarListContent(
                     calendars: viewModel.calendars,
                     displayMode: viewModel.displayMode,
-                    isArchived: viewModel.mode == .archived,
+                    isArchived: mode == .archived,
                     cardViewModelFactory: { viewModel.cardViewModel(for: $0) },
                     onCalendarDelete: { viewModel.archiveCalendarInList($0) },
                     onCalendarRestore: { viewModel.restoreCalendarInList($0) },
@@ -46,10 +65,10 @@ public struct CalendarListView: View {
                 .frame(maxWidth: .infinity)
                 .padding(.bottom, 8)
         }
-        .background(Color(.systemGroupedBackground))
+        .background(PCSystemColor.systemGroupedBackground)
         .ignoresSafeArea(edges: .bottom)
         .overlay(alignment: .bottomTrailing) {
-            if !viewModel.isAnyCardEditing, viewModel.mode == .active {
+            if !viewModel.isAnyCardEditing, mode == .active {
                 Button {
                     viewModel.addItem()
                     isAddSheetPresented = true
@@ -68,13 +87,13 @@ public struct CalendarListView: View {
                 .transition(.scale.combined(with: .opacity))
             }
         }
-        .navigationBarTitleDisplayMode(.inline)
+        .pcNavigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .principal) {
-                Text(viewModel.mode == .active ? "My calendars" : "Archived")
+                Text(mode == .active ? "My calendars" : "Archived")
                     .font(.headline)
             }
-            ToolbarItem(placement: .navigationBarTrailing) {
+            ToolbarItem(placement: .pcTrailing) {
                 Button {
                     withAnimation(.easeInOut(duration: 0.3)) {
                         viewModel.displayMode = viewModel.displayMode.toggled
@@ -83,9 +102,6 @@ public struct CalendarListView: View {
                     Label(viewModel.displayMode.toggled.label, systemImage: viewModel.displayMode.toggled.icon)
                 }
             }
-        }
-        .task {
-            await viewModel.fetch()
         }
         .onChange(of: viewModel.addEditCalendarViewModel.calendar) {
             if $0 != $1, let calendar = $1 {

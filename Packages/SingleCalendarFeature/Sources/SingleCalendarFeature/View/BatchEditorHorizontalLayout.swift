@@ -10,25 +10,21 @@ import DSKit
 
 public struct BatchEditorHorizontalLayout: View {
     var viewModel: AddEditEventBatchViewModel
-    public var onSave: () -> Void
 
     public var body: some View {
         HStack(spacing: 0) {
-            BatchEditorCalendarContent(viewModel: viewModel.yearModel)
+            PCCalendarYearView(viewModel: viewModel.yearModel)
+                .accessibilityIdentifier("batch-editor-calendar")
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
-            AddEditEventBatchView(
-                viewModel: viewModel,
-                onSave: onSave
-            )
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            AddEditEventBatchView(viewModel: viewModel)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
     }
 }
 
 #Preview {
     BatchEditorHorizontalLayout(
-        viewModel: .init(events: [.init(name: "1", date: Date(), color: "eventColorOption1")]),
-        onSave: {}
+        viewModel: .init(events: [.init(name: "1", date: Date(), color: "eventColorOption1")])
     )
     .environment(PCKeyboardState())
 }

@@ -6,8 +6,7 @@
 //
 
 import Foundation
-import SwiftUI
-import CoreDomain
+import Observation
 
 @MainActor
 @Observable
@@ -16,13 +15,9 @@ public final class PCCalendarWeekModel: Identifiable {
     public let days: [PCCalendarDayModel]
     public let daySelectionManager: PCCalendarDaySelectionManager
     
-    public var isLongPressed: Bool = false
-    
-    public init(dto: PCCalendarWeekDataSource, monthNumber: Int, daySelectionManager: PCCalendarDaySelectionManager) {
+    public init(days: [PCCalendarDayModel], daySelectionManager: PCCalendarDaySelectionManager) {
         self.daySelectionManager = daySelectionManager
-        self.days = dto.days.map {
-            PCCalendarDayModel(dto: $0, gridMonth: monthNumber)
-        }
+        self.days = days
     }
     
     @MainActor
