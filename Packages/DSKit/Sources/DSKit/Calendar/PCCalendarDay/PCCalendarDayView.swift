@@ -10,6 +10,7 @@ import SwiftUI
 public struct PCCalendarDayView: View {
     @Bindable var model: PCCalendarDayModel
     var cellSize: CGFloat
+    @Environment(\.pcVibe) private var vibe
     
     public var body: some View {
         ZStack {
@@ -54,19 +55,8 @@ public struct PCCalendarDayView: View {
         return "\(model.text), \(model.events.count) events"
     }
     
-    private static func eventColor(for name: String) -> Color {
-        Color.dsKit.eventColor(named: name)
-    }
-    
-    private static var eventColorsCache: [[String]: [Color]] = [:]
-    
     private var eventColors: [Color] {
-        if let cached = Self.eventColorsCache[model.events] {
-            return cached
-        }
-        let colors = model.events.map(Self.eventColor(for:))
-        Self.eventColorsCache[model.events] = colors
-        return colors
+        model.events.map { vibe.eventColor(named: $0) }
     }
     
     private var textColor: Color {

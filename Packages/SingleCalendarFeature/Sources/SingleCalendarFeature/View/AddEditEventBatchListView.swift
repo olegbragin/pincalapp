@@ -13,6 +13,7 @@ import CoreDomain
 
 public struct AddEditEventBatchListView: View {
     @Environment(RootNavigation.self) var navigation
+    @Environment(\.pcVibe) private var vibe
 
     @State private var viewModel: AddEditEventBatchListViewModel
 
@@ -57,7 +58,7 @@ public struct AddEditEventBatchListView: View {
                         .padding()
                         .background(
                             RoundedRectangle(cornerRadius: 16, style: .continuous)
-                                .fill(eventBatch.color)
+                                .fill(batchColor(eventBatch))
                         )
                     }
 
@@ -80,14 +81,14 @@ public struct AddEditEventBatchListView: View {
         }
         .listStyle(.plain)
         .scrollContentBackground(.hidden)
-        .background(Color.dsKit.colorBackgroundMain)
-        .toolbarBackground(Color.dsKit.colorBackgroundMain, for: .pcNavigationBar)
+        .background(vibe.color(for: .backgroundMain))
+        .toolbarBackground(vibe.color(for: .backgroundMain), for: .pcNavigationBar)
         .toolbar {
             ToolbarItem(placement: .pcTitle) {
                 Text(viewModel.selectedDay ?? Date(), style: .date)
             }
         }
-        .background(Color.dsKit.colorBackgroundMain)
+        .background(vibe.color(for: .backgroundMain))
         .onAppear {
             viewModel.prepare(with: viewModel.eventsSelectionManager.batches(for: selectedDay ?? Date()), and: selectedDay)
         }
@@ -99,5 +100,11 @@ public struct AddEditEventBatchListView: View {
                 navigation.goTo(.calendar(calendarId, toRoot: true))
             }
         }
+    }
+
+    private func batchColor(_ eventBatch: EventBatchDataSource) -> Color {
+        let colorNameToUse = eventBatch.colorName.isEmpty ? eventBatch.events.first?.color : eventBatch.colorName
+        guard let colorNameToUse, !colorNameToUse.isEmpty else { return .clear }
+        return vibe.eventColor(named: colorNameToUse)
     }
 }

@@ -4,13 +4,14 @@ import AppNavigation
 
 struct RootDetailView: View {
     @Environment(RootNavigation.self) private var navigation
+    @Environment(\.pcVibe) private var vibe
 
     var body: some View {
         @Bindable var bindableNavigation = navigation
         NavigationStack(path: $bindableNavigation.path) {
             ZStack {
                 Rectangle()
-                    .fill(Color.dsKit.colorBackgroundMain)
+                    .fill(vibe.color(for: .backgroundMain))
                     .ignoresSafeArea()
                 if let id = navigation.detailCalendarID {
                     CalendarDetailView(calendarId: id)
@@ -23,6 +24,6 @@ struct RootDetailView: View {
                 }
             }
         }
-        .background(Color.dsKit.colorBackgroundMain)
+        .background(vibe.color(for: .backgroundMain))
     }
 }

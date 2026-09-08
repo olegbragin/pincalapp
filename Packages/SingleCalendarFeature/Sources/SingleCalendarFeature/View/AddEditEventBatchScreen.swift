@@ -18,6 +18,7 @@ public struct AddEditEventBatchScreen: View {
 
     @Environment(\.dismiss) private var dismiss
     @Environment(RootNavigation.self) private var navigation
+    @Environment(\.pcVibe) private var vibe
 
     public init(
         eventsSelectionManager: PCEventsSelectionManager,
@@ -57,9 +58,9 @@ public struct AddEditEventBatchScreen: View {
                 )
             }
         }
-        .toolbarBackground(Color.dsKit.colorBackgroundMain, for: .pcNavigationBar)
+        .toolbarBackground(vibe.color(for: .backgroundMain), for: .pcNavigationBar)
         .ignoresSafeArea(edges: .bottom)
-        .background(Color.dsKit.colorBackgroundMain)
+        .background(vibe.color(for: .backgroundMain))
         .task {
             viewModel.setup()
         }

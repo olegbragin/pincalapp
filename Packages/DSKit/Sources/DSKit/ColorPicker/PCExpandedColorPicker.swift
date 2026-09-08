@@ -10,6 +10,7 @@ import SwiftUI
 public struct PCExpandedColorPicker: View {
     @Binding var selectedColor: PCColorOption?
     public var defaultColor: PCColorOption? = nil
+    @Environment(\.pcVibe) private var vibe
     @Environment(\.isEnabled) private var isEnabled
 
     public init(selectedColor: Binding<PCColorOption?>, defaultColor: PCColorOption? = nil) {
@@ -25,11 +26,11 @@ public struct PCExpandedColorPicker: View {
                 } label: {
                     VStack(spacing: 6) {
                         Circle()
-                            .fill(colorOption.color)
+                            .fill(vibe.eventColor(for: colorOption))
                             .frame(width: 50, height: 50)
                             .overlay(
                                 Circle()
-                                    .stroke((selectedColor ?? defaultColor)?.color == colorOption.color ?
+                                    .stroke((selectedColor ?? defaultColor) == colorOption ?
                                             Color.accentColor : Color.clear,
                                             lineWidth: 3)
                             )

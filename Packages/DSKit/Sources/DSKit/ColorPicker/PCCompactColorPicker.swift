@@ -10,6 +10,7 @@ import SwiftUI
 public struct PCCompactColorPicker: View {
     @Binding var selectedColor: PCColorOption?
     public var defaultColor: PCColorOption? = nil
+    @Environment(\.pcVibe) private var vibe
     @Environment(\.isEnabled) private var isEnabled
     @State private var isColorOptionsPresented = false
 
@@ -23,7 +24,7 @@ public struct PCCompactColorPicker: View {
             isColorOptionsPresented = true
         } label: {
             Circle()
-                .fill((selectedColor ?? defaultColor)?.color ?? Color.secondary.opacity(0.3))
+                .fill((selectedColor ?? defaultColor).map { vibe.eventColor(for: $0) } ?? Color.secondary.opacity(0.3))
                 .frame(width: 32, height: 32)
                 .overlay {
                     Circle()

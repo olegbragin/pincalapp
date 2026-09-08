@@ -10,6 +10,7 @@ import SwiftUI
 public struct PCColorOptionSheet: View {
     @Binding var selectedColor: PCColorOption?
     var defaultColor: PCColorOption? = nil
+    @Environment(\.pcVibe) private var vibe
     @Environment(\.dismiss) private var dismiss
     
     public var body: some View {
@@ -21,7 +22,7 @@ public struct PCColorOptionSheet: View {
                 } label: {
                     HStack(spacing: 12) {
                         Circle()
-                            .fill(colorOption.color)
+                            .fill(vibe.eventColor(for: colorOption))
                             .frame(width: 28, height: 28)
                         
                         Text(colorOption.name)

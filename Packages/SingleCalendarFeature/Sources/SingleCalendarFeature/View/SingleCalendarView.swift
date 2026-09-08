@@ -17,6 +17,7 @@ public struct SingleCalendarView: View {
         self.viewModel = viewModel
     }
     @Environment(RootNavigation.self) var navigation
+    @Environment(\.pcVibe) private var vibe
     
     @State private var columnCountSaveTask: Task<Void, Never>?
         
@@ -51,7 +52,7 @@ public struct SingleCalendarView: View {
             .padding(6)
             .navigationTitle(viewModel.label)
             .pcNavigationBarTitleDisplayMode(.inline)
-            .toolbarBackground(Color.dsKit.colorBackgroundMain, for: .pcNavigationBar)
+            .toolbarBackground(vibe.color(for: .backgroundMain), for: .pcNavigationBar)
             .toolbar { toolbarContent }
             .id(viewModel.calendarid)
             .navigationDestination(for: AppRoute.self) { route in

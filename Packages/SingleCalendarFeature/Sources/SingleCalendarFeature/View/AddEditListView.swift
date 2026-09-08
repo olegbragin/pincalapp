@@ -12,6 +12,7 @@ import AppNavigation
 public struct AddEditListView: View {
     @State private var viewModel: AddEditListViewModel
     @Environment(RootNavigation.self) private var navigation
+    @Environment(\.pcVibe) private var vibe
 
     public init(manager: PCEventsSelectionManager) {
         _viewModel = State(initialValue: AddEditListViewModel(eventsSelectionManager: manager))
@@ -35,7 +36,7 @@ public struct AddEditListView: View {
                             label: {
                                 HStack(spacing: 12) {
                                     Text(.eventAt(event.name, event.date.formatted(date: .omitted, time: .shortened)))
-                                        .foregroundStyle(Color.dsKit.colorForegroundOnEventCard)
+                                        .foregroundStyle(vibe.color(for: .foregroundOnEventCard))
                                     
                                     Spacer()
                                     Image(systemName: "chevron.right")
@@ -46,7 +47,7 @@ public struct AddEditListView: View {
                         .padding()
                         .background(
                             RoundedRectangle(cornerRadius: 16, style: .continuous)
-                                .fill(Color.dsKit.eventColor(named: event.color))
+                                .fill(vibe.eventColor(named: event.color))
                         )
                     }
 

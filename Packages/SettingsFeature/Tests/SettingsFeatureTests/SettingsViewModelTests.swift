@@ -1,5 +1,6 @@
 import Foundation
 import Testing
+import DSKit
 import SettingsFeature
 
 @MainActor
@@ -39,5 +40,33 @@ struct SettingsViewModelTests {
         vm.theme = .light
 
         #expect(defaults.string(forKey: SettingsViewModel.themeKey) == AppTheme.light.rawValue)
+    }
+
+    @Test("defaults to the default vibe when nothing is stored")
+    func defaultsToDefaultVibe() {
+        let defaults = makeDefaults()
+        let vm = SettingsViewModel(defaults: defaults)
+
+        #expect(vm.vibeId == PCVibe.default.id)
+    }
+
+    @Test("reads a persisted vibe id")
+    func readsPersistedVibe() {
+        let defaults = makeDefaults()
+        defaults.set("custom-vibe", forKey: SettingsViewModel.vibeKey)
+
+        let vm = SettingsViewModel(defaults: defaults)
+
+        #expect(vm.vibeId == "custom-vibe")
+    }
+
+    @Test("setting the vibe persists")
+    func persistsVibe() {
+        let defaults = makeDefaults()
+        let vm = SettingsViewModel(defaults: defaults)
+
+        vm.vibeId = "dark-vibe"
+
+        #expect(defaults.string(forKey: SettingsViewModel.vibeKey) == "dark-vibe")
     }
 }

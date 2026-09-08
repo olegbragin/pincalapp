@@ -25,6 +25,12 @@ public struct SettingsView: View {
                             .tag(theme)
                     }
                 }
+                Picker("Vibe", selection: $viewModel.vibeId) {
+                    ForEach(PCVibe.all) { vibe in
+                        Text(vibe.name)
+                            .tag(vibe.id)
+                    }
+                }
             }
         }
         .navigationTitle("Settings")

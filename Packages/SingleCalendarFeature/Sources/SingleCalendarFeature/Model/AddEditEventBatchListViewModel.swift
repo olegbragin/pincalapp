@@ -80,12 +80,6 @@ public final class AddEditEventBatchListViewModel {
 }
 
 extension EventBatchDataSource {
-    var color: Color {
-        let colorNameToUse = colorName.isEmpty ? events.first?.color : colorName
-        guard let colorNameToUse, !colorNameToUse.isEmpty else { return .clear }
-        return Color.dsKit.eventColor(named: colorNameToUse)
-    }
-
     func eventsForDay(_ day: Date?) -> [EventDataSource] {
         guard let day else { return events.sorted { $0.date < $1.date } }
         return events
