@@ -276,7 +276,7 @@ struct CalendarListViewModelIntegrationTests {
         #expect(persisted?.first?.name == "New Test Calendar")
     }
 
-    @Test("archiveCalendarInList archives calendar")
+    @Test("archiveCalendarInList archives immediately and shows undo toast")
     func archiveCalendarInList() async throws {
         let calendar = CalendarDataSource(id: 1, name: "Test", year: 2026, numberOfColumns: 3)
         let repository = InMemoryCalendarRepository(seed: [calendar])
@@ -288,10 +288,35 @@ struct CalendarListViewModelIntegrationTests {
 
         vm.archiveCalendarInList(calendar)
 
+        // Archiving is immediate; the toast offers an undo window.
+        #expect(vm.isArchiveToastPresented)
+        #expect(vm.pendingArchive?.id == 1)
         await waitUntil { vm.calendars.isEmpty }
         #expect(try await repository.getCalendar(id: 1)?.isArchived == true)
         let active = try await repository.getActiveCalendars()
         #expect(active.isEmpty)
+    }
+
+    @Test("undoArchive restores the calendar")
+    func undoArchive() async throws {
+        let calendar = CalendarDataSource(id: 1, name: "Test", year: 2026, numberOfColumns: 3)
+        let repository = InMemoryCalendarRepository(seed: [calendar])
+        let cache = CalendarCache(repository: repository)
+        let vm = CalendarListViewModel(mode: .active, cache: cache)
+
+        await vm.fetch()
+        await waitUntil { vm.calendars.count == 1 }
+
+        vm.archiveCalendarInList(calendar)
+        await waitUntil { vm.calendars.isEmpty }
+        #expect(vm.isArchiveToastPresented)
+
+        vm.undoArchive()
+
+        #expect(!vm.isArchiveToastPresented)
+        #expect(vm.pendingArchive == nil)
+        await waitUntil { vm.calendars.count == 1 }
+        #expect(try await repository.getCalendar(id: 1)?.isArchived == false)
     }
 
     @Test("restoreCalendarInList restores calendar")

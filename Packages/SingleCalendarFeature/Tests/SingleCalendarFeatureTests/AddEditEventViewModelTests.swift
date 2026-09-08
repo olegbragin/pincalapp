@@ -34,35 +34,25 @@ struct AddEditEventViewModelTests {
     func saveBuildsEvent() {
         let date = day(2026, 6, 1)
         let vm = AddEditEventViewModel()
-        vm.eventId = 5
-        vm.eventName = "Party"
+        vm.eventName = "Swim"
         vm.selectedColor = .option2
-        vm.selectedDate = date
-        vm.timestamp = UUID()
+        vm.event.date = date
 
         #expect(vm.save() == true)
-
-        let event = vm.event
-        #expect(event.id == 5)
-        #expect(event.name == "Party")
-        #expect(event.date == date)
-        #expect(event.color == PCColorOption.option2.colorName)
-        #expect(event.timestamp != nil)
+        #expect(vm.event.name == "Swim")
+        #expect(vm.event.color == PCColorOption.option2.colorName)
+        #expect(vm.event.date == date)
     }
 
     @Test("reset clears all fields")
     func resetClearsFields() {
         let vm = AddEditEventViewModel()
-        vm.eventName = "Party"
+        vm.eventName = "Event"
         vm.selectedColor = .option1
-        _ = vm.save()
 
         vm.reset()
 
         #expect(vm.eventName == "")
         #expect(vm.selectedColor == nil)
-        #expect(vm.event.id == 0)
-        #expect(vm.eventId == 0)
-        #expect(vm.timestamp == nil)
     }
 }

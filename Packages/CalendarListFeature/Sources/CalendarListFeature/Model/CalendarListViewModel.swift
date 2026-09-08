@@ -55,6 +55,14 @@ public final class CalendarListViewModel {
     var addEditCalendarViewModel = AddEditCalendarViewModel()
     var isLoading = true
 
+    /// Calendar awaiting the archive timeout; nil when no toast is pending.
+    var pendingArchive: CalendarDataSource?
+    var isArchiveToastPresented = false
+    var archiveToastMessage = ""
+    var archiveToastProgress: Double { archiveCountdown.progress }
+
+    @ObservationIgnored private let archiveCountdown = PCTimeoutProgress(duration: 5)
+
     var isAnyCardEditing: Bool {
         cardViewModels.values.contains { $0.isEditing }
     }
@@ -71,6 +79,9 @@ public final class CalendarListViewModel {
     public init(mode: CalendarListMode = .active, cache: CalendarCache) {
         self.mode = mode
         self.cache = cache
+        archiveCountdown.onComplete = { [weak self] in
+            self?.undoWindowElapsed()
+        }
         cancellable = cache.changes
             .receive(on: DispatchQueue.main)
             .sink { [weak self] operation in
@@ -122,9 +133,36 @@ public final class CalendarListViewModel {
         }
     }
 
+    /// Archives the calendar immediately and shows an undo toast. The toast's
+    /// progress bar is the 5s window during which the user can undo.
     func archiveCalendarInList(_ calendar: CalendarDataSource) {
+        pendingArchive = calendar
+        archiveToastMessage = "\(calendar.name) archived"
+        isArchiveToastPresented = true
+        archiveCountdown.start()
         Task { [weak self] in
             try? await self?.cache.archiveCalendar(calendar)
+        }
+    }
+
+    /// Called when the undo window elapses — the calendar stays archived and
+    /// the toast dismisses.
+    func undoWindowElapsed() {
+        pendingArchive = nil
+        isArchiveToastPresented = false
+        archiveCountdown.cancel()
+    }
+
+    /// Called when the user taps the toast's undo — restores the calendar and
+    /// refreshes the active list so it reappears.
+    func undoArchive() {
+        guard let calendar = pendingArchive else { return }
+        pendingArchive = nil
+        isArchiveToastPresented = false
+        archiveCountdown.cancel()
+        Task { [weak self] in
+            try? await self?.cache.restoreCalendar(calendar)
+            await self?.cache.loadActive()
         }
     }
 

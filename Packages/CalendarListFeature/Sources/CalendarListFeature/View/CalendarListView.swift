@@ -39,6 +39,7 @@ public struct CalendarListView: View {
 
     @ViewBuilder
     private func content(for viewModel: CalendarListViewModel) -> some View {
+        @Bindable var viewModel = viewModel
         VStack(spacing: 0) {
             if viewModel.isLoading, viewModel.calendars.isEmpty {
                 Spacer()
@@ -111,5 +112,14 @@ public struct CalendarListView: View {
         .sheet(isPresented: $isAddSheetPresented) {
             AddEditCalendarView(viewModel: viewModel.addEditCalendarViewModel)
         }
+        .pcToast(
+            isPresented: $viewModel.isArchiveToastPresented,
+            position: .bottom,
+            message: viewModel.archiveToastMessage,
+            actionTitle: "Undo",
+            action: { viewModel.undoArchive() },
+            backgroundColor: .black.opacity(0.85),
+            progress: viewModel.archiveToastProgress
+        )
     }
 }
