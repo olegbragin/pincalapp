@@ -36,40 +36,51 @@ public struct AddEditEventBatchListView: View {
     public var body: some View {
         List {
             ForEach(viewModel.eventBatches, id: \.self) { eventBatch in
-                PCCard {
-                    Button(
-                        action: {
-                            navigation.goTo(AppRoute.batchEditor(.existingBatch(eventBatch.id)))
-                        },
-                        label: {
-                            HStack(spacing: 12) {
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text(eventBatch.name)
-                                        .font(.headline)
+                HStack(spacing: 12) {
+                    PCCard {
+                        Button(
+                            action: {
+                                navigation.goTo(AppRoute.batchEditor(.existingBatch(eventBatch.id)))
+                            },
+                            label: {
+                                HStack(spacing: 12) {
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text(eventBatch.name)
+                                            .font(.headline)
+                                    }
+                                    Spacer()
+                                    Image(systemName: "chevron.right")
                                 }
-                                Spacer()
-                                Image(systemName: "chevron.right")
+                                .frame(minWidth: 0, maxWidth: .infinity)
                             }
-                            .frame(minWidth: 0, maxWidth: .infinity)
-                        }
-                    )
-                    .padding()
-                    .background(
-                        RoundedRectangle(cornerRadius: 16, style: .continuous)
-                            .fill(eventBatch.color)
-                    )
+                        )
+                        .padding()
+                        .background(
+                            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                                .fill(eventBatch.color)
+                        )
+                    }
+
+                    Button {
+                        viewModel.remove(eventBatch)
+                    } label: {
+                        Image(systemName: "trash")
+                            .font(.system(size: 15, weight: .semibold))
+                            .foregroundColor(.white)
+                            .frame(width: 36, height: 36)
+                            .background(Color.red)
+                            .clipShape(Circle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Delete batch")
                 }
                 .listRowBackground(Color.clear)
                 .listRowSeparator(.hidden)
             }
-            .onDelete(perform: deleteItems)
         }
         .listStyle(.plain)
         .scrollContentBackground(.hidden)
         .background(Color.dsKit.colorBackgroundMain)
-        #if os(iOS)
-        .environment(\.editMode, .constant(.active))
-        #endif
         .toolbarBackground(Color.dsKit.colorBackgroundMain, for: .pcNavigationBar)
         .toolbar {
             ToolbarItem(placement: .pcTitle) {
@@ -88,9 +99,5 @@ public struct AddEditEventBatchListView: View {
                 navigation.goTo(.calendar(calendarId, toRoot: true))
             }
         }
-    }
-
-    private func deleteItems(offsets: IndexSet) {
-        viewModel.removeBatches(at: offsets)
     }
 }

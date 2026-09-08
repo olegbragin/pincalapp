@@ -55,6 +55,12 @@ public final class AddEditListViewModel {
         eventsSelectionManager.removeEvents(at: indexSet)
     }
 
+    /// Removes a single event from the list by identity.
+    func remove(_ event: EventDataSource) {
+        guard let index = events.firstIndex(of: event) else { return }
+        eventsSelectionManager.removeEvents(at: IndexSet(integer: index))
+    }
+
     func hasEvent(on date: Date) -> Bool {
         eventsSelectionManager.hasEvent(on: date)
     }

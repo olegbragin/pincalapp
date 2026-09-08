@@ -140,6 +140,21 @@ struct AddEditListViewModelTests {
         #expect(changeCount == 1)
     }
 
+    @Test("remove removes a single event by identity")
+    func removeSingleEvent() {
+        var changeCount = 0
+        let vm = AddEditListViewModel(events: [
+            event("A", day: 1),
+            event("B", day: 2)
+        ])
+        vm.onEventsChanged = { changeCount += 1 }
+
+        vm.remove(event("B", day: 2))
+
+        #expect(vm.events.map(\.name) == ["A"])
+        #expect(changeCount == 1)
+    }
+
     // MARK: - queries / other
 
     @Test("hasEvent reports presence on the same calendar day")

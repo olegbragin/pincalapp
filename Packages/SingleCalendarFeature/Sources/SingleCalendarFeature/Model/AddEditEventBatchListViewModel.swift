@@ -41,6 +41,12 @@ public final class AddEditEventBatchListViewModel {
         eventBatchesToDelete = removedBatches
     }
 
+    /// Removes a single batch from the list and stages it for deletion.
+    func remove(_ eventBatch: EventBatchDataSource) {
+        guard let index = eventBatches.firstIndex(of: eventBatch) else { return }
+        removeBatches(at: IndexSet(integer: index))
+    }
+
     /// Deletes the given batches through the shared manager (which persists).
     func deleteBatches(_ batches: [EventBatchDataSource]) {
         eventsSelectionManager.deleteBatches(batches)

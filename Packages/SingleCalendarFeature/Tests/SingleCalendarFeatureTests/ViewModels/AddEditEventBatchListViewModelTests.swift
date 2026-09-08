@@ -47,6 +47,21 @@ struct AddEditEventBatchListViewModelTests {
         #expect(vm.eventBatchesToDelete.map(\.id) == [1])
     }
 
+    @Test("remove removes a single batch and stages it for deletion")
+    func removeSingleBatch() {
+        let vm = AddEditEventBatchListViewModel()
+        vm.prepare(
+            with: [batch(1, "A", on: day(2026, 6, 1)), batch(2, "B", on: day(2026, 6, 2))],
+            and: day(2026, 6, 1)
+        )
+        vm.eventBatchesToDelete = []
+
+        vm.remove(batch(2, "B", on: day(2026, 6, 2)))
+
+        #expect(vm.eventBatches.map(\.id) == [1])
+        #expect(vm.eventBatchesToDelete.map(\.id) == [2])
+    }
+
     @Test("commitDelete promotes selected batches to pending deletion")
     func commitDelete() {
         let vm = AddEditEventBatchListViewModel()
