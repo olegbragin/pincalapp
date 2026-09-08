@@ -32,7 +32,7 @@ public class RootNavigation {
         // MARK: - Sidebar category selection (changes content column)
         case .sidebar(let category):
             selectedSidebarCategory = category
-            if category == .archived {
+            if category == .archived || category == .settings {
                 detailCalendarID = nil
             }
             

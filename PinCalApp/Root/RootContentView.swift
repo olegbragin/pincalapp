@@ -1,5 +1,6 @@
 import SwiftUI
 import CalendarListFeature
+import SettingsFeature
 import AppNavigation
 
 struct RootContentView: View {
@@ -27,6 +28,8 @@ struct RootContentView: View {
                     navigation.goTo(.calendar(id, toRoot: false))
                 }
             )
+        case .settings:
+            SettingsView()
         }
     }
 }

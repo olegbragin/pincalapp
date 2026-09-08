@@ -63,6 +63,13 @@
     },
     {
       "target" : {
+        "containerPath" : "container:Packages\/SettingsFeature",
+        "identifier" : "SettingsFeatureTests",
+        "name" : "SettingsFeatureTests"
+      }
+    },
+    {
+      "target" : {
         "containerPath" : "container:Packages\/DSKit",
         "identifier" : "DSKitTests",
         "name" : "DSKitTests"

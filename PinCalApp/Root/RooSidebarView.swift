@@ -14,6 +14,9 @@ struct RootSidebarView: View {
                 Label("Archived", systemImage: "archivebox")
                     .tag(SidebarCategory.archived)
                     .accessibilityIdentifier("sidebar-archived")
+                Label("Settings", systemImage: "gearshape")
+                    .tag(SidebarCategory.settings)
+                    .accessibilityIdentifier("sidebar-settings")
             }
         }
         .onChange(of: bindableNavigation.selectedSidebarCategory) { _, newCategory in

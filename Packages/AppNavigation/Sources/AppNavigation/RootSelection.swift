@@ -13,6 +13,7 @@ import SwiftUI
 public enum SidebarCategory: Equatable, Hashable {
     case calendarList
     case archived
+    case settings
 }
 
 /// What the batch editor screen should be opened with.

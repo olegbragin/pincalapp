@@ -1,10 +1,12 @@
 import SwiftUI
 import DSKit
+import SettingsFeature
 import AppNavigation
 
 struct RootView: View {
     @State private var navigation = RootNavigation()
     @State private var keyboardState = PCKeyboardState()
+    @AppStorage(SettingsViewModel.themeKey) private var theme: AppTheme = .system
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
     var body: some View {
@@ -22,5 +24,6 @@ struct RootView: View {
         }
         .environment(navigation)
         .environment(keyboardState)
+        .preferredColorScheme(theme.colorScheme)
     }
 }

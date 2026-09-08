@@ -135,6 +135,7 @@
 				D7A647363040DD35009034E4 /* CoreDomain */,
 				D7A647393040DD40009034E4 /* CalendarListFeature */,
 				D7A6473C3040DD4C009034E4 /* AppNavigation */,
+				D7A6473F3040DD51009034E4 /* SettingsFeature */,
 			);
 			productName = PinCalApp;
 			productReference = D7B935792FA90E7A00E5A62D /* PinCalApp.app */;
@@ -225,6 +226,7 @@
 				D7A647353040DD35009034E4 /* XCLocalSwiftPackageReference "Packages/CoreDomain" */,
 				D7A647383040DD40009034E4 /* XCLocalSwiftPackageReference "Packages/CalendarListFeature" */,
 				D7A6473B3040DD4C009034E4 /* XCLocalSwiftPackageReference "Packages/AppNavigation" */,
+				D7A6473E3040DD50009034E4 /* XCLocalSwiftPackageReference "Packages/SettingsFeature" */,
 				D796CDD03045533B005EA9F5 /* XCLocalSwiftPackageReference "Packages/AutoTestRunner" */,
 			);
 			preferredProjectObjectVersion = 77;
@@ -689,6 +691,10 @@
 			isa = XCLocalSwiftPackageReference;
 			relativePath = Packages/AppNavigation;
 		};
+		D7A6473E3040DD50009034E4 /* XCLocalSwiftPackageReference "Packages/SettingsFeature" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = Packages/SettingsFeature;
+		};
 /* End XCLocalSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
@@ -715,6 +721,10 @@
 		D7A6473C3040DD4C009034E4 /* AppNavigation */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = AppNavigation;
+		};
+		D7A6473F3040DD51009034E4 /* SettingsFeature */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = SettingsFeature;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};
