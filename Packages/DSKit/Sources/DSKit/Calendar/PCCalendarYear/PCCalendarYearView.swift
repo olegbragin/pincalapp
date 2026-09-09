@@ -35,7 +35,7 @@ public struct PCCalendarYearView: View {
     
     public var body: some View {
         GeometryReader { proxy in
-            let cellSize = max(1, (proxy.size.width - Self.monthColumnSpacing * CGFloat(viewModel.internalNumberOfColumns - 1)) / CGFloat(viewModel.internalNumberOfColumns) / 7)
+            let cellSize = max(1, (proxy.size.width - Self.monthColumnSpacing * CGFloat(viewModel.numberOfColumns - 1)) / CGFloat(viewModel.numberOfColumns) / 7)
             ScrollViewReader { scrollProxy in
                 ScrollView {
                     LazyVGrid(
@@ -61,11 +61,11 @@ public struct PCCalendarYearView: View {
                     viewModel.maximumNumberOfColumns = Self.maxColumns(forWidth: newWidth)
                 }
                 .onChange(of: viewModel.numberOfColumns) {
-                    scrollToTargetMonth(using: scrollProxy)
+                    scrollToCurrentMonth(using: scrollProxy)
                 }
                 .onChange(of: proxy.size) { oldSize, newSize in
                     guard oldSize != newSize else { return }
-                    scrollToTargetMonth(using: scrollProxy)
+                    scrollToCurrentMonth(using: scrollProxy)
                 }
                 .highPriorityGesture(pinchToZoomGesture)
                 .simultaneousGesture(
@@ -98,7 +98,7 @@ public struct PCCalendarYearView: View {
     private static var columnsCache: [Int: [GridItem]] = [:]
     
     private var gridColumns: [GridItem] {
-        let count = viewModel.internalNumberOfColumns
+        let count = viewModel.numberOfColumns
         if let cached = Self.columnsCache[count] {
             return cached
         }
@@ -110,6 +110,20 @@ public struct PCCalendarYearView: View {
     private func scrollToTargetMonth(using proxy: ScrollViewProxy) {
         guard let target = viewModel.targetMonthIndex else { return }
         proxy.scrollTo(target, anchor: .top)
+    }
+
+    /// Scrolls to the current month of today's date after a pinch-to-zoom or a
+    /// device/window rotation, so the user's focus stays on the current month.
+    /// The scroll is deferred a tick so the grid re-layout (from the column /
+    /// size change) settles first; otherwise the programmatic scroll is lost.
+    private func scrollToCurrentMonth(using proxy: ScrollViewProxy) {
+        guard let target = viewModel.indexOfCurrentMonth else { return }
+        Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(50))
+            withAnimation(.easeOut(duration: 0.3)) {
+                proxy.scrollTo(target, anchor: .top)
+            }
+        }
     }
 }
 

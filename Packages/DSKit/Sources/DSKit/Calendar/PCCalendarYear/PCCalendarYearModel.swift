@@ -12,17 +12,13 @@ import CoreGraphics
 @MainActor
 @Observable
 public final class PCCalendarYearModel {
-    public private(set) var internalNumberOfColumns: Int = 3
-    
-    public var numberOfColumns: Int {
-        didSet { internalNumberOfColumns = numberOfColumns }
-    }
+    public var numberOfColumns: Int = 3
     
     public var maximumNumberOfColumns: Int = 3 {
         didSet {
             guard maximumNumberOfColumns != oldValue else { return }
-            let clamped = min(internalNumberOfColumns, maximumNumberOfColumns)
-            if clamped != internalNumberOfColumns {
+            let clamped = min(numberOfColumns, maximumNumberOfColumns)
+            if clamped != numberOfColumns {
                 numberOfColumns = clamped
             }
         }
@@ -32,7 +28,6 @@ public final class PCCalendarYearModel {
     /// The month (1...12) the calendar should scroll to. Set by the feature layer,
     /// which owns the calendar/date logic; the view just reads `targetMonthIndex`.
     public var scrollTargetMonth: Int?
-    public var scrollPosition: CGFloat = 0
     
     public var indexOfCurrentMonth: Int? {
         return months.firstIndex { $0.number == numberOfCurrentMonth }
@@ -55,13 +50,5 @@ public final class PCCalendarYearModel {
     ) {
         self.numberOfColumns = numberOfColumns
         self.numberOfCurrentMonth = numberOfCurrentMonth
-    }
-
-    public func set(initialNumberOfColumns: Int) {
-        self.numberOfColumns = initialNumberOfColumns
-    }
-
-    public func reset() {
-        numberOfColumns = internalNumberOfColumns
     }
 }

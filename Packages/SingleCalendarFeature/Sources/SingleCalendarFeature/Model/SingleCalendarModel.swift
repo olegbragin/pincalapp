@@ -215,7 +215,7 @@ public final class SingleCalendarModel {
     
     public func save(for calendarId: Int64) {
         let batches = originalBatches
-        let columns = yearModel.internalNumberOfColumns
+        let columns = yearModel.numberOfColumns
         Task { [cache] in
             guard var persistedCalendar = try? await cache.getCalendar(id: calendarId) else { return }
             persistedCalendar.numberOfColumns = columns

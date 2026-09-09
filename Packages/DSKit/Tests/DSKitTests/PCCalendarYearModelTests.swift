@@ -12,33 +12,36 @@ import DSKit
 @MainActor
 struct PCCalendarYearModelTests {
 
-    @Test func setInitialNumberOfColumnsSyncsBothProperties() {
+    @Test func settingNumberOfColumnsPersistsTheValue() {
         let model = PCCalendarYearModel()
 
-        model.set(initialNumberOfColumns: 5)
+        model.numberOfColumns = 5
 
         #expect(model.numberOfColumns == 5)
-        #expect(model.internalNumberOfColumns == 5)
+    }
+
+    @Test func initKeepsNumberOfColumns() {
+        let model = PCCalendarYearModel(numberOfColumns: 5)
+
+        #expect(model.numberOfColumns == 5)
     }
 
     @Test func maximumNumberOfColumnsClampsCurrentColumns() {
         let model = PCCalendarYearModel()
-        model.set(initialNumberOfColumns: 5)
+        model.numberOfColumns = 5
 
         model.maximumNumberOfColumns = 4
 
         #expect(model.numberOfColumns == 4)
-        #expect(model.internalNumberOfColumns == 4)
     }
 
     @Test func raisingMaximumNumberOfColumnsPreservesCurrentColumns() {
         let model = PCCalendarYearModel()
-        model.set(initialNumberOfColumns: 3)
+        model.numberOfColumns = 3
 
         model.maximumNumberOfColumns = 6
 
         #expect(model.numberOfColumns == 3)
-        #expect(model.internalNumberOfColumns == 3)
     }
 
     @Test func pinchModelClampsToMaximumOnZoomOut() {
