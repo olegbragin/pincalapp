@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		D75D58B63050963C0019C8CC /* SettingsFeature in Frameworks */ = {isa = PBXBuildFile; productRef = D7A6473F3040DD51009034E4 /* SettingsFeature */; };
 		D7A6472E3040DCD7009034E4 /* SingleCalendarFeature in Frameworks */ = {isa = PBXBuildFile; productRef = D7A6472D3040DCD7009034E4 /* SingleCalendarFeature */; };
 		D7A647313040DD1F009034E4 /* DSKit in Frameworks */ = {isa = PBXBuildFile; productRef = D7A647303040DD1F009034E4 /* DSKit */; };
 		D7A647343040DD2A009034E4 /* CorePersistence in Frameworks */ = {isa = PBXBuildFile; productRef = D7A647333040DD2A009034E4 /* CorePersistence */; };
@@ -62,6 +63,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				D75D58B63050963C0019C8CC /* SettingsFeature in Frameworks */,
 				D7A647313040DD1F009034E4 /* DSKit in Frameworks */,
 				D7A647343040DD2A009034E4 /* CorePersistence in Frameworks */,
 				D7A6473D3040DD4C009034E4 /* AppNavigation in Frameworks */,
@@ -429,7 +431,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 24;
+				CURRENT_PROJECT_VERSION = 25;
 				DEAD_CODE_STRIPPING = YES;
 				DEVELOPMENT_TEAM = T2LC74XB36;
 				ENABLE_APP_SANDBOX = NO;
@@ -475,7 +477,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 24;
+				CURRENT_PROJECT_VERSION = 25;
 				DEAD_CODE_STRIPPING = YES;
 				DEVELOPMENT_TEAM = T2LC74XB36;
 				ENABLE_APP_SANDBOX = NO;
