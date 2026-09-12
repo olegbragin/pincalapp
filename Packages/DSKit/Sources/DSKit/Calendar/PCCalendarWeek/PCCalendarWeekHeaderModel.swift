@@ -19,6 +19,9 @@ public final class PCCalendarWeekHeaderModel {
     
     public let weekSymbols: [WeekSymbol]
     
+    var textColorRole: PCColorRole { .foregroundDisabled }
+    var fontRole: PCFontRole { .weekSymbol }
+    
     public init(weekSymbols: [String]) {
         self.weekSymbols = weekSymbols.map {
             WeekSymbol(name: $0)

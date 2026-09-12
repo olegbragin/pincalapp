@@ -10,15 +10,10 @@ import OrderedCollections
 
 public struct PCCalendarYearView: View {
     @Bindable var viewModel: PCCalendarYearModel
-    var onLongPress: (() -> Void)?
-
-    public init(viewModel: PCCalendarYearModel, onLongPress: (() -> Void)? = nil) {
-        self.viewModel = viewModel
-        self.onLongPress = onLongPress
-    }
-    
     // Временный масштаб во время жеста (сбрасывается после)
     @GestureState private var tempMagnification: CGFloat = 1.0
+    
+    var onLongPress: (() -> Void)?
     
     private static let monthColumnSpacing: CGFloat = 8
     private static let minMonthCellSize: CGFloat = 28
@@ -31,6 +26,37 @@ public struct PCCalendarYearView: View {
         // frames of those micro-cells didn't line up with the actual hit
         // regions — making day taps land on the wrong (adjacent-month) cell.
         max(3, Int(floor(width / minMonthWidth)))
+    }
+    
+    private var pinchToZoomGesture: PCPinchToZoomGesture {
+        PCPinchToZoomGesture(
+            tempMagnification: $tempMagnification,
+            onPinchedToZoomIn: {
+                let next = viewModel.numberOfColumns + 1
+                viewModel.numberOfColumns = min(viewModel.maximumNumberOfColumns, next)
+            },
+            onPinchedToZoomOut: {
+                let next = viewModel.numberOfColumns - 1
+                viewModel.numberOfColumns = max(1, next)
+            }
+        )
+    }
+    
+    private static var columnsCache: [Int: [GridItem]] = [:]
+    
+    private var gridColumns: [GridItem] {
+        let count = viewModel.numberOfColumns
+        if let cached = Self.columnsCache[count] {
+            return cached
+        }
+        let columns = Array(repeating: GridItem(.flexible(), spacing: Self.monthColumnSpacing), count: count)
+        Self.columnsCache[count] = columns
+        return columns
+    }
+    
+    public init(viewModel: PCCalendarYearModel, onLongPress: (() -> Void)? = nil) {
+        self.viewModel = viewModel
+        self.onLongPress = onLongPress
     }
     
     public var body: some View {
@@ -79,32 +105,6 @@ public struct PCCalendarYearView: View {
                 .animation(.easeOut(duration: 0.3), value: viewModel.numberOfColumns)
             }
         }
-    }
-    
-    private var pinchToZoomGesture: PCPinchToZoomGesture {
-        PCPinchToZoomGesture(
-            tempMagnification: $tempMagnification,
-            onPinchedToZoomIn: {
-                let next = viewModel.numberOfColumns + 1
-                viewModel.numberOfColumns = min(viewModel.maximumNumberOfColumns, next)
-            },
-            onPinchedToZoomOut: {
-                let next = viewModel.numberOfColumns - 1
-                viewModel.numberOfColumns = max(1, next)
-            }
-        )
-    }
-    
-    private static var columnsCache: [Int: [GridItem]] = [:]
-    
-    private var gridColumns: [GridItem] {
-        let count = viewModel.numberOfColumns
-        if let cached = Self.columnsCache[count] {
-            return cached
-        }
-        let columns = Array(repeating: GridItem(.flexible(), spacing: Self.monthColumnSpacing), count: count)
-        Self.columnsCache[count] = columns
-        return columns
     }
     
     private func scrollToTargetMonth(using proxy: ScrollViewProxy) {

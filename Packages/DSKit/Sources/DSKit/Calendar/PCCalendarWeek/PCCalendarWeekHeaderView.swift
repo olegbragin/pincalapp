@@ -10,6 +10,7 @@ import SwiftUI
 public struct PCCalendarWeekHeaderView: View {
     @Bindable var viewModel: PCCalendarWeekHeaderModel
     var cellSize: CGFloat
+    @Environment(\.pcVibe) private var vibe
     
     public var body: some View {
         GridRow {
@@ -20,8 +21,8 @@ public struct PCCalendarWeekHeaderView: View {
                         .padding(2)
                     
                     Text(symbol.name)
-                        .font(.footnote)
-                        .foregroundColor(Color("colorForegroundDisabled", bundle: .module))
+                        .font(vibe.font(for: viewModel.fontRole))
+                        .foregroundColor(vibe.color(for: viewModel.textColorRole))
                         .background(.clear)
                 }
                 .frame(width: cellSize, height: cellSize)

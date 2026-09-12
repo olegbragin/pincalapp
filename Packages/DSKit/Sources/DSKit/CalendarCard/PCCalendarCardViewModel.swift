@@ -13,7 +13,6 @@ public final class PCCalendarCardViewModel {
     public var numberOfColumns: Int
     public let id: Int64
     public let isArchived: Bool
-    public let gradient: LinearGradient
 
     public private(set) var isEditing: Bool = false
     public var editingName: String = ""
@@ -30,7 +29,6 @@ public final class PCCalendarCardViewModel {
         self.name = name
         self.numberOfColumns = numberOfColumns
         self.isArchived = isArchived
-        self.gradient = Self.makeGradient(for: id)
     }
 
     init(calendar: some PCCalendarCardData) {
@@ -38,7 +36,6 @@ public final class PCCalendarCardViewModel {
         self.name = calendar.name
         self.numberOfColumns = calendar.numberOfColumns
         self.isArchived = calendar.isArchived
-        self.gradient = Self.makeGradient(for: calendar.id)
     }
 
     public func startEditing() {
@@ -69,17 +66,5 @@ public final class PCCalendarCardViewModel {
         }
         editingName = name
         onEditCancelled?()
-    }
-
-    private static func makeGradient(for id: Int64) -> LinearGradient {
-        LinearGradient(
-            colors: [
-                Color(red: 0.82, green: 0.83, blue: 0.86),
-                Color(red: 0.58, green: 0.60, blue: 0.63),
-                Color(red: 0.42, green: 0.44, blue: 0.47)
-            ],
-            startPoint: .topLeading,
-            endPoint: .bottomTrailing
-        )
     }
 }

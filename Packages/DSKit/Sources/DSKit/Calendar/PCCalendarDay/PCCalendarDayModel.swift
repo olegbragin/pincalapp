@@ -20,6 +20,39 @@ public final class PCCalendarDayModel: Identifiable {
     
     public var events: [String] = []
     
+    var accessibilityLabel: String {
+        guard !events.isEmpty else { return text }
+        return "\(text), \(events.count) events"
+    }
+    
+    var textColorRole: PCColorRole {
+        switch (isToday, isInCurrentMonth) {
+        case (true, _):
+            return .foreground
+        case (false, true):
+            return events.isEmpty ? .foreground : .foregroundEvent
+        case (false, false):
+            return .foregroundDisabled
+        }
+    }
+    
+    var backgroundColorRole: PCColorRole {
+        switch (isToday, isInCurrentMonth) {
+        case (true, _), (false, true):
+            return .background
+        case (false, false):
+            return .backgroundDisabled
+        }
+    }
+    
+    var borderColorRole: PCColorRole? {
+        isToday ? .accent : nil
+    }
+    
+    var fontRole: PCFontRole {
+        isToday ? .todayDayNumber : .dayNumber
+    }
+    
     public init(date: Date, number: Int, isInCurrentMonth: Bool, isToday: Bool, gridMonth: Int) {
         self.text = "\(number)"
         self.isToday = isToday

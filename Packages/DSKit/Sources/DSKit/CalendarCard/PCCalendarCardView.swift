@@ -10,6 +10,7 @@ import SwiftUI
 public struct PCCalendarCardView: View {
     @Bindable var viewModel: PCCalendarCardViewModel
     var onNameFieldFocusedChanged: ((Int64, Bool) -> Void)?
+    @Environment(\.pcVibe) private var vibe
 
     @FocusState private var nameFieldFocused: Bool
     
@@ -22,7 +23,7 @@ public struct PCCalendarCardView: View {
     public var body: some View {
         ZStack {
             RoundedRectangle(cornerRadius: 20, style: .continuous)
-                .fill(viewModel.gradient)
+                .fill(vibe.cardGradient())
 
             RoundedRectangle(cornerRadius: 20, style: .continuous)
                 .fill(
@@ -36,10 +37,10 @@ public struct PCCalendarCardView: View {
             VStack(alignment: .leading, spacing: 0) {
                 HStack {
                     Image(systemName: viewModel.isArchived ? "archivebox" : "calendar")
-                        .font(.system(size: 18, weight: .semibold))
+                        .font(vibe.font(for: .headerIcon))
                     if viewModel.isEditing {
                         TextField("Calendar name", text: $viewModel.editingName)
-                            .font(.system(size: 14, weight: .semibold))
+                            .font(vibe.font(for: .title))
                             .foregroundStyle(.white)
                             .tint(.white)
                             .padding(.horizontal, 4)
@@ -59,14 +60,14 @@ public struct PCCalendarCardView: View {
                             .accessibilityIdentifier("card-name-field-\(viewModel.id)")
                     } else {
                         Text(viewModel.name)
-                            .font(.system(size: 14, weight: .semibold))
+                            .font(vibe.font(for: .title))
                             .lineLimit(1)
                             .truncationMode(.tail)
                     }
                     Spacer()
                     if viewModel.isArchived {
                         Text("Archived")
-                            .font(.system(size: 10, weight: .medium))
+                            .font(vibe.font(for: .badge))
                             .foregroundStyle(.white.opacity(0.6))
                             .padding(.horizontal, 6)
                             .padding(.vertical, 2)
@@ -76,7 +77,7 @@ public struct PCCalendarCardView: View {
                             confirmEdit()
                         } label: {
                             Image(systemName: "checkmark")
-                                .font(.system(size: 13, weight: .semibold))
+                                .font(vibe.font(for: .toolbarIcon))
                                 .foregroundStyle(.white.opacity(0.7))
                                 .frame(width: 28, height: 28)
                                 .background(
@@ -92,7 +93,7 @@ public struct PCCalendarCardView: View {
                             viewModel.startEditing()
                         } label: {
                             Image(systemName: "pencil")
-                                .font(.system(size: 13, weight: .semibold))
+                                .font(vibe.font(for: .toolbarIcon))
                                 .foregroundStyle(.white.opacity(0.7))
                                 .frame(width: 28, height: 28)
                                 .background(
@@ -107,7 +108,7 @@ public struct PCCalendarCardView: View {
                 }
 
                 Text("Columns: \(viewModel.numberOfColumns)")
-                    .font(.system(size: 11, weight: .medium))
+                    .font(vibe.font(for: .metadata))
                     .opacity(0.7)
                     .padding(.top, 2)
 
@@ -120,7 +121,7 @@ public struct PCCalendarCardView: View {
                             viewModel.onRestore?()
                         } label: {
                             Image(systemName: "arrow.counterclockwise")
-                                .font(.system(size: 12, weight: .semibold))
+                                .font(vibe.font(for: .footerIcon))
                                 .foregroundStyle(.white.opacity(0.6))
                                 .frame(width: 28, height: 28)
                                 .background(
@@ -133,7 +134,7 @@ public struct PCCalendarCardView: View {
                             viewModel.onPermanentDelete?()
                         } label: {
                             Image(systemName: "trash")
-                                .font(.system(size: 12, weight: .semibold))
+                                .font(vibe.font(for: .footerIcon))
                                 .foregroundStyle(.white.opacity(0.6))
                                 .frame(width: 28, height: 28)
                                 .background(
@@ -151,7 +152,7 @@ public struct PCCalendarCardView: View {
                             viewModel.onDelete?()
                         } label: {
                             Image(systemName: "trash")
-                                .font(.system(size: 12, weight: .semibold))
+                                .font(vibe.font(for: .footerIcon))
                                 .foregroundStyle(.white.opacity(0.6))
                                 .frame(width: 28, height: 28)
                                 .background(
