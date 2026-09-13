@@ -39,6 +39,8 @@ public enum PCFontRole: Hashable, Sendable {
     case toolbarIcon
     case metadata
     case footerIcon
+    case yearButton
+    case yearTitle
 
     var defaultSpec: PCFontSpec {
         switch self {
@@ -60,6 +62,10 @@ public enum PCFontRole: Hashable, Sendable {
             return PCFontSpec(weight: .medium, size: 11)
         case .footerIcon:
             return PCFontSpec(weight: .semibold, size: 12)
+        case .yearButton:
+            return PCFontSpec(weight: .semibold, size: 16)
+        case .yearTitle:
+            return PCFontSpec(weight: .semibold, size: 22)
         }
     }
 }

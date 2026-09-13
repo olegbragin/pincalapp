@@ -13,7 +13,10 @@ public struct BatchEditorVerticalLayout: View {
 
     public var body: some View {
         VStack(spacing: 0) {
-            PCCalendarYearView(viewModel: viewModel.yearModel)
+            PCCalendarYearView(
+                viewModel: viewModel.yearModel,
+                onYearSelect: { viewModel.switchYear(to: $0) }
+            )
                 .accessibilityIdentifier("batch-editor-calendar")
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             AddEditEventBatchView(viewModel: viewModel)

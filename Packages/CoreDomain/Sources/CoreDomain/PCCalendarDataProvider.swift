@@ -14,6 +14,12 @@ public struct PCCalendarDataProvider {
         calendar.component(.month, from: Date())
     }
     
+    /// The current calendar year. This is the default year used when the feature
+    /// layer does not pin the calendar to a specific year.
+    public var currentYear: Int {
+        year(of: Date())
+    }
+    
     public init(
         calendar: Calendar = .autoupdatingCurrent
     ) {
@@ -40,7 +46,7 @@ public struct PCCalendarDataProvider {
     }
 
     public func yearData(for year: Int) -> PCCalendarYearDataSource {
-        PCCalendarYearDataSource(number: year, months: months(forYear: year))
+        PCCalendarYearDataSource(year: year, months: months(forYear: year))
     }
 
     public func dateComponents(forDate date: Date) -> DateComponents {
@@ -73,6 +79,11 @@ public struct PCCalendarDataProvider {
         ofYear year: Int
     ) -> [PCCalendarWeekDataSource] {
         let todayDate = Date()
+        // "Today" is resolved by the current month/day so the highlight follows
+        // the selected year: the same calendar day (e.g. Sept 13) is flagged as
+        // today in whatever year the user is viewing.
+        let todayMonth = calendar.component(.month, from: todayDate)
+        let todayDay = calendar.component(.day, from: todayDate)
         
         // 1. Первый день заданного месяца
         var components = DateComponents(year: year, month: month, day: 1)
@@ -129,7 +140,7 @@ public struct PCCalendarDataProvider {
                     date: date,
                     number: dayNumberOfDate,
                     isInCurrentMonth: isInMonth,
-                    isToday: calendar.isDate(date, inSameDayAs: todayDate) && isInMonth
+                    isToday: isInMonth && (monthOfDate == todayMonth) && (dayNumberOfDate == todayDay)
                 )
             )
         }
@@ -168,7 +179,7 @@ public struct PCCalendarDataProvider {
                     date: date,
                     number: dayNumberOfDate,
                     isInCurrentMonth: isInMonth,
-                    isToday: calendar.isDate(date, inSameDayAs: todayDate) && isInMonth
+                    isToday: isInMonth && (monthOfDate == todayMonth) && (dayNumberOfDate == todayDay)
                 )
             }
             

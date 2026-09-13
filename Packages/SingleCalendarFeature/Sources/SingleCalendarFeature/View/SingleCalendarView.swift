@@ -34,7 +34,8 @@ public struct SingleCalendarView: View {
                             viewModel: viewModel.yearModel,
                             onLongPress: {
                                 viewModel.daySelectionManager.selectionMode = .multiple
-                            }
+                            },
+                            onYearSelect: { viewModel.switchYear(to: $0) }
                         )
                     }
                     .frame(maxWidth: .infinity, maxHeight: .infinity)

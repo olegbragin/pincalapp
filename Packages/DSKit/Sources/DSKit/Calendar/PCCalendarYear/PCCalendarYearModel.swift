@@ -29,6 +29,9 @@ public final class PCCalendarYearModel {
     /// which owns the calendar/date logic; the view just reads `targetMonthIndex`.
     public var scrollTargetMonth: Int?
     
+    /// The year the month matrix was built for.
+    public var year: Int
+    
     public var indexOfCurrentMonth: Int? {
         return months.firstIndex { $0.number == numberOfCurrentMonth }
     }
@@ -42,13 +45,21 @@ public final class PCCalendarYearModel {
         return indexOfCurrentMonth
     }
 
-    public var months: [PCCalendarMonthModel] = []
+    /// The month matrix currently displayed for `year`. The feature layer owns
+    /// the calendar/date logic and builds this array; it is stored (rather than
+    /// recomputed) because the day models inside are mutated in place to reflect
+    /// event colors, so the views keep binding to the same instances.
+    public var months: [PCCalendarMonthModel]
     
     public init(
         numberOfCurrentMonth: Int = 0,
-        numberOfColumns: Int = 3
+        numberOfColumns: Int = 3,
+        year: Int,
+        months: [PCCalendarMonthModel] = []
     ) {
         self.numberOfColumns = numberOfColumns
         self.numberOfCurrentMonth = numberOfCurrentMonth
+        self.year = year
+        self.months = months
     }
 }

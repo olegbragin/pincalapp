@@ -8,9 +8,10 @@
 import SwiftUI
 
 public struct PCCalendarWeekHeaderView: View {
-    @Bindable var viewModel: PCCalendarWeekHeaderModel
-    var cellSize: CGFloat
     @Environment(\.pcVibe) private var vibe
+    @Bindable var viewModel: PCCalendarWeekHeaderModel
+    
+    var cellSize: CGFloat
     
     public var body: some View {
         GridRow {

@@ -16,17 +16,34 @@ import DSKit
 @MainActor
 enum PCCalendarModelBuilder {
     static func makeYearModel(
-        from dataSource: PCCalendarYearDataSource,
+        from dataProvider: PCCalendarDataProvider,
+        year: Int? = nil,
         daySelectionManager: PCCalendarDaySelectionManager,
         numberOfCurrentMonth: Int,
         numberOfColumns: Int,
         columnCountResolver: @escaping (Int) -> Int
     ) -> PCCalendarYearModel {
+        // The default (current) year comes from the data provider; an explicit
+        // year (e.g. a persisted calendar year) takes precedence.
+        let resolvedYear = year ?? dataProvider.currentYear
+        let dataSource = dataProvider.yearData(for: resolvedYear)
         let model = PCCalendarYearModel(
             numberOfCurrentMonth: numberOfCurrentMonth,
-            numberOfColumns: columnCountResolver(numberOfColumns)
+            numberOfColumns: columnCountResolver(numberOfColumns),
+            year: dataSource.year,
+            months: monthModels(
+                for: dataSource,
+                daySelectionManager: daySelectionManager
+            )
         )
-        model.months = dataSource.months.map { month in
+        return model
+    }
+
+    private static func monthModels(
+        for dataSource: PCCalendarYearDataSource,
+        daySelectionManager: PCCalendarDaySelectionManager
+    ) -> [PCCalendarMonthModel] {
+        dataSource.months.map { month in
             PCCalendarMonthModel(
                 number: month.number,
                 label: month.label,
@@ -47,6 +64,5 @@ enum PCCalendarModelBuilder {
                 }
             )
         }
-        return model
     }
 }

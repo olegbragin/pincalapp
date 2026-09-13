@@ -13,7 +13,7 @@ import DSKit
 struct PCCalendarYearModelTests {
 
     @Test func settingNumberOfColumnsPersistsTheValue() {
-        let model = PCCalendarYearModel()
+        let model = PCCalendarYearModel(year: 2026)
 
         model.numberOfColumns = 5
 
@@ -21,13 +21,19 @@ struct PCCalendarYearModelTests {
     }
 
     @Test func initKeepsNumberOfColumns() {
-        let model = PCCalendarYearModel(numberOfColumns: 5)
+        let model = PCCalendarYearModel(numberOfColumns: 5, year: 2026)
 
         #expect(model.numberOfColumns == 5)
     }
 
+    @Test func initKeepsProvidedYear() {
+        let model = PCCalendarYearModel(year: 2030)
+
+        #expect(model.year == 2030)
+    }
+
     @Test func maximumNumberOfColumnsClampsCurrentColumns() {
-        let model = PCCalendarYearModel()
+        let model = PCCalendarYearModel(year: 2026)
         model.numberOfColumns = 5
 
         model.maximumNumberOfColumns = 4
@@ -36,7 +42,7 @@ struct PCCalendarYearModelTests {
     }
 
     @Test func raisingMaximumNumberOfColumnsPreservesCurrentColumns() {
-        let model = PCCalendarYearModel()
+        let model = PCCalendarYearModel(year: 2026)
         model.numberOfColumns = 3
 
         model.maximumNumberOfColumns = 6

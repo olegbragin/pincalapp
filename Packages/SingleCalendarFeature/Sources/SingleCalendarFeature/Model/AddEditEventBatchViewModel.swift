@@ -176,6 +176,10 @@ public final class AddEditEventBatchViewModel {
         }
     }
 
+    func switchYear(to year: Int) {
+        eventsSelectionManager.switchYear(to: year)
+    }
+
     func recolorAllEvents() {
         guard let selectedColor else { return }
         eventsSelectionManager.setBatchColor(selectedColor)

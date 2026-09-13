@@ -138,7 +138,10 @@ struct SingleCalendarModelTests {
         #expect(model.label == "")
         #expect(model.calendarid == 42)
         #expect(model.isArchived == false)
-        #expect(model.yearModel.months.isEmpty)
+        // The year model is built by the factory for the current year even
+        // before content is fetched; the empty state refers to content only.
+        #expect(model.yearModel.months.count == 12)
+        #expect(model.yearModel.year == Calendar.current.component(.year, from: Date()))
     }
 
     @Test("fetch loads calendar and builds the year model")
@@ -449,5 +452,29 @@ struct SingleCalendarModelTests {
 
         let persisted = try? await repository.getCalendar(id: 42)
         #expect(persisted?.numberOfColumns == 4)
+    }
+
+    @Test("Switching year rebuilds the month matrix via the data provider")
+    func switchYearRebuildsMonthMatrix() {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = .current
+        calendar.locale = .current
+        let provider = PCCalendarDataProvider(calendar: calendar)
+        let manager = PCEventsSelectionManager(dataProvider: provider)
+        manager.setupCalendar()
+
+        let oldFirstDay = manager.yearModel.months.first?.weeks.first?.days.first
+        let oldFirstDayDate = oldFirstDay?.date
+
+        manager.switchYear(to: 2027)
+
+        #expect(manager.yearModel.year == 2027)
+        #expect(manager.yearModel.months.count == 12)
+
+        let newFirstDay = manager.yearModel.months.first?.weeks.first?.days.first
+        // Regeneration means brand-new day model instances for a different year.
+        #expect(newFirstDay !== oldFirstDay)
+        // And the matrix content actually corresponds to the new year.
+        #expect(newFirstDay?.date != oldFirstDayDate)
     }
 }

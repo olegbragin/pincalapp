@@ -36,7 +36,7 @@ struct PCCalendarDataProviderTests {
         let years = provider.years(forYearRange: 2026...2027)
 
         #expect(years.count == 2)
-        #expect(years.map(\.number) == [2026, 2027])
+        #expect(years.map(\.year) == [2026, 2027])
         for year in years {
             #expect(year.months.count == 12)
         }
@@ -118,6 +118,23 @@ struct PCCalendarDataProviderTests {
                 }
             }
         }
+    }
+
+    @Test("Today flag follows the current month/day in the selected year")
+    func todayFollowsSelectedYear() {
+        let provider = PCCalendarDataProvider(calendar: calendar)
+        let todayComponents = calendar.dateComponents([.month, .day], from: Date())
+        let currentYear = calendar.component(.year, from: Date())
+        let otherYear = currentYear == 2010 ? 2011 : 2010
+
+        let month = todayComponents.month!
+        let day = todayComponents.day!
+        let monthData = provider.months(forYear: otherYear).first { $0.number == month }!
+        let todayDay = monthData.weeks
+            .flatMap(\.days)
+            .first { $0.number == day && $0.isInCurrentMonth }
+
+        #expect(todayDay?.isToday == true)
     }
 
     @Test("Day numbers match the calendar day component")

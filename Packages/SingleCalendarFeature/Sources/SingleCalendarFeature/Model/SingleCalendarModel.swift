@@ -44,7 +44,11 @@ public final class SingleCalendarModel {
 
     public var selectedColor: PCColorOption?
     
-    public private(set) var yearModel = PCCalendarYearModel()
+    public private(set) var yearModel: PCCalendarYearModel
+    /// The year the matrix was last built for from the persisted calendar. The
+    /// view may switch the displayed year (`switchYear`) without touching this,
+    /// so a later fetch doesn't undo the user's year selection.
+    private var builtCalendarYear: Int?
 
     public var state: State = .empty
     
@@ -154,6 +158,15 @@ public final class SingleCalendarModel {
         self.eventsSelectionManager = eventsSelectionManager
         self.daySelectionManager = daySelectionManager
         self.columnCountResolver = columnCountResolver
+        self.yearModel = PCCalendarModelBuilder.makeYearModel(
+            from: dataProvider,
+            year: nil,
+            daySelectionManager: daySelectionManager,
+            numberOfCurrentMonth: dataProvider.numberOfCurrentMonth,
+            numberOfColumns: 3,
+            columnCountResolver: columnCountResolver
+        )
+        self.builtCalendarYear = yearModel.year
         cancellable = cache.changes
             .receive(on: DispatchQueue.main)
             .sink { [weak self] operation in
@@ -190,18 +203,21 @@ public final class SingleCalendarModel {
         
         label = calendar.name
         isArchived = calendar.isArchived
-        // Build the year model only once. Rebuilding it on every fetch would
-        // swap out the PCCalendarDayModel instances the views are bound to,
+        // Build the year model once per calendar. Rebuilding it on every fetch
+        // would swap out the PCCalendarDayModel instances the views are bound to,
         // so event updates would not be observed and committed days would
         // silently stop rendering. Event changes are applied in-place below.
-        if yearModel.months.isEmpty {
+        let resolvedColumns = columnCountResolver(calendar.numberOfColumns)
+        if builtCalendarYear != calendar.year || yearModel.numberOfColumns != resolvedColumns {
             yearModel = PCCalendarModelBuilder.makeYearModel(
-                from: dataProvider.yearData(for: calendar.year),
+                from: dataProvider,
+                year: calendar.year,
                 daySelectionManager: daySelectionManager,
                 numberOfCurrentMonth: dataProvider.numberOfCurrentMonth,
                 numberOfColumns: calendar.numberOfColumns,
                 columnCountResolver: columnCountResolver
             )
+            builtCalendarYear = calendar.year
         }
         // Mirror the resolved column count onto the shared batch-editing session
         // manager so the batch editor's calendar uses the same layout (and honors
@@ -222,6 +238,23 @@ public final class SingleCalendarModel {
             persistedCalendar.eventBatches = batches
             try? await cache.updateCalendar(persistedCalendar)
         }
+    }
+    
+    /// Switches the displayed calendar to a different year, rebuilding the month
+    /// matrix and re-applying the current events. The feature layer owns the
+    /// builder, so the year model stays a pure state holder.
+    func switchYear(to year: Int) {
+        guard year != yearModel.year else { return }
+        let columns = yearModel.numberOfColumns
+        yearModel = PCCalendarModelBuilder.makeYearModel(
+            from: dataProvider,
+            year: year,
+            daySelectionManager: daySelectionManager,
+            numberOfCurrentMonth: dataProvider.numberOfCurrentMonth,
+            numberOfColumns: columns,
+            columnCountResolver: columnCountResolver
+        )
+        updateYearModel(with: originalEvents)
     }
     
     public func handleSelectionConfirmation() -> AppRoute? {

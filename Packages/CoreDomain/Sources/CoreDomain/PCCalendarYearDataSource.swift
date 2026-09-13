@@ -8,11 +8,11 @@
 import Foundation
 
 public struct PCCalendarYearDataSource {
-    public let number: Int
+    public let year: Int
     public let months: [PCCalendarMonthDataSource]
 
-    public init(number: Int, months: [PCCalendarMonthDataSource]) {
-        self.number = number
+    public init(year: Int, months: [PCCalendarMonthDataSource]) {
+        self.year = year
         self.months = months
     }
 }

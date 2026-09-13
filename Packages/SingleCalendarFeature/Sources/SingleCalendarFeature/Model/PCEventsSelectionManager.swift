@@ -27,13 +27,12 @@ public final class PCEventsSelectionManager {
     /// The calendar shown in the batch editor. Kept here so every mutation that
     /// changes the events also refreshes the day markers, and so the calendar
     /// and the events list always agree.
-    let yearModel: PCCalendarYearModel = PCCalendarYearModel()
+    private(set) var yearModel: PCCalendarYearModel
 
     /// Calendar/date logic lives in the data provider so the manager doesn't
     /// silently depend on the process calendar.
     private let dataProvider: PCCalendarDataProvider
     let daySelectionManager: PCCalendarDaySelectionManager
-    private var builtCalendarYear: Int?
 
     /// The calendar whose batches are being edited. Set by `SingleCalendarModel`
     /// when a calendar is opened, so the manager can resolve and commit batches.
@@ -80,6 +79,35 @@ public final class PCEventsSelectionManager {
         self.daySelectionManager = daySelectionManager
         self.numberOfColumns = numberOfColumns
         self.columnCountResolver = columnCountResolver
+        self.yearModel = Self.makeYearModel(
+            from: dataProvider,
+            year: nil,
+            numberOfCurrentMonth: dataProvider.numberOfCurrentMonth,
+            numberOfColumns: numberOfColumns,
+            daySelectionManager: daySelectionManager,
+            columnCountResolver: columnCountResolver
+        )
+    }
+
+    /// The single factory for the year model. The feature layer owns the
+    /// calendar/date logic, so the model is always created here with its whole
+    /// month matrix rather than assembled from separate assignments.
+    private static func makeYearModel(
+        from dataProvider: PCCalendarDataProvider,
+        year: Int?,
+        numberOfCurrentMonth: Int,
+        numberOfColumns: Int,
+        daySelectionManager: PCCalendarDaySelectionManager,
+        columnCountResolver: @escaping (Int) -> Int
+    ) -> PCCalendarYearModel {
+        PCCalendarModelBuilder.makeYearModel(
+            from: dataProvider,
+            year: year,
+            daySelectionManager: daySelectionManager,
+            numberOfCurrentMonth: numberOfCurrentMonth,
+            numberOfColumns: numberOfColumns,
+            columnCountResolver: columnCountResolver
+        )
     }
 
     /// Configures the manager for the calendar being edited. `SingleCalendarModel`
@@ -203,23 +231,21 @@ public final class PCEventsSelectionManager {
         events = []
         selectedColor = nil
         yearModel.months = []
-        builtCalendarYear = nil
     }
 
     func setupCalendar() {
         yearModel.numberOfColumns = numberOfColumns
-        let year = calendarYear
-        if yearModel.months.isEmpty || builtCalendarYear != year {
-            let model = PCCalendarModelBuilder.makeYearModel(
-                from: dataProvider.yearData(for: year),
-                daySelectionManager: daySelectionManager,
+        // The displayed year is only ever changed by the user (via `switchYear`);
+        // here we just ensure the model is built for its current year.
+        if yearModel.months.isEmpty {
+            yearModel = Self.makeYearModel(
+                from: dataProvider,
+                year: yearModel.year,
                 numberOfCurrentMonth: dataProvider.numberOfCurrentMonth,
                 numberOfColumns: numberOfColumns,
+                daySelectionManager: daySelectionManager,
                 columnCountResolver: columnCountResolver
             )
-            yearModel.months = model.months
-            yearModel.numberOfCurrentMonth = model.numberOfCurrentMonth
-            builtCalendarYear = year
         }
         yearModel.scrollTargetMonth = events.map(\.date).min().map { dataProvider.month(of: $0) }
         updateYearModel()
@@ -229,6 +255,22 @@ public final class PCEventsSelectionManager {
     /// calendar's scroll target (used as a fallback when there are no events).
     func setScrollTargetMonth(to date: Date?) {
         yearModel.scrollTargetMonth = date.map { dataProvider.month(of: $0) }
+    }
+
+    /// Switches the batch editor's calendar to a different year, rebuilding the
+    /// month matrix for it. The feature layer owns the builder, so the model
+    /// stays a pure state holder.
+    func switchYear(to year: Int) {
+        guard year != yearModel.year else { return }
+        yearModel = Self.makeYearModel(
+            from: dataProvider,
+            year: year,
+            numberOfCurrentMonth: dataProvider.numberOfCurrentMonth,
+            numberOfColumns: yearModel.numberOfColumns,
+            daySelectionManager: daySelectionManager,
+            columnCountResolver: columnCountResolver
+        )
+        updateYearModel()
     }
 
     /// Rebuilds the day markers from the current events. Because the day views
@@ -275,13 +317,6 @@ public final class PCEventsSelectionManager {
             calendar.eventBatches = batchesSnapshot
             try? await cache.updateCalendar(calendar)
         }
-    }
-
-    private var calendarYear: Int {
-        if let firstEventDate = events.map(\.date).min() {
-            return dataProvider.year(of: firstEventDate)
-        }
-        return dataProvider.year(of: Date())
     }
 
     private func eventColorsByDay() -> [Date: [String]] {
