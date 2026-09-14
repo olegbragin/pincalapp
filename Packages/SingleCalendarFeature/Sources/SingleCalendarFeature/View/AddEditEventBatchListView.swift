@@ -87,6 +87,15 @@ public struct AddEditEventBatchListView: View {
             ToolbarItem(placement: .pcTitle) {
                 Text(viewModel.selectedDay ?? Date(), style: .date)
             }
+            ToolbarItem(placement: .pcTrailing) {
+                Button {
+                    startNewBatch()
+                } label: {
+                    Image(systemName: "plus")
+                }
+                .accessibilityLabel("New batch")
+                .accessibilityIdentifier("add-batch-button")
+            }
         }
         .background(vibe.color(for: .backgroundMain))
         .onAppear {
@@ -106,5 +115,16 @@ public struct AddEditEventBatchListView: View {
         let colorNameToUse = eventBatch.colorName.isEmpty ? eventBatch.events.first?.color : eventBatch.colorName
         guard let colorNameToUse, !colorNameToUse.isEmpty else { return .clear }
         return vibe.eventColor(named: colorNameToUse)
+    }
+
+    /// Opens the batch editor for a brand-new batch anchored on the tapped day.
+    /// It stages a placeholder event (mirroring the day-tap path from the single
+    /// calendar view) so the editor has a starting event and the day preselected.
+    private func startNewBatch() {
+        let day = selectedDay ?? Date()
+        viewModel.eventsSelectionManager.prepare(with: [
+            EventDataSource(name: "", date: day, color: PCColorOption.option1.colorName)
+        ])
+        navigation.goTo(.batchEditor(.newDay(day)))
     }
 }
