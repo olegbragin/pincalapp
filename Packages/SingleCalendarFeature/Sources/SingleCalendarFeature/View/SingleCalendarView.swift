@@ -51,6 +51,7 @@ public struct SingleCalendarView: View {
                 )
             }
             .padding(6)
+            .pcDisableInteractivePopGesture()
             .navigationTitle(viewModel.label)
             .pcNavigationBarTitleDisplayMode(.inline)
             .toolbarBackground(vibe.color(for: .backgroundMain), for: .pcNavigationBar)

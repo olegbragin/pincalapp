@@ -80,6 +80,13 @@ public final class AddEditEventBatchViewModel {
         self.initialEventBatch = eventBatch
         self.initialSelectedDay = selectedDay
         eventsSelectionManager.setupCalendar()
+        // Anchor the calendar's scroll target to the day the batch editor was
+        // opened from (a newly-selected day) or the existing batch's assigned
+        // date. Doing this in `init` (before the view first appears) ensures the
+        // calendar scrolls there on first layout rather than to today's month.
+        if let anchor = eventBatch?.date ?? selectedDay {
+            eventsSelectionManager.setScrollTargetMonth(to: anchor)
+        }
     }
 
     convenience init(events: [EventDataSource] = []) {
@@ -171,7 +178,9 @@ public final class AddEditEventBatchViewModel {
 
     func setupCalendar() {
         eventsSelectionManager.setupCalendar()
-        if eventsSelectionManager.yearModel.scrollTargetMonth == nil {
+        // Always re-apply the anchor date (selected day / batch date) so the
+        // calendar's scroll target reflects the batch it's editing.
+        if let date {
             eventsSelectionManager.setScrollTargetMonth(to: date)
         }
     }

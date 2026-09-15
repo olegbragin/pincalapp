@@ -247,7 +247,12 @@ public final class PCEventsSelectionManager {
                 columnCountResolver: columnCountResolver
             )
         }
-        yearModel.scrollTargetMonth = events.map(\.date).min().map { dataProvider.month(of: $0) }
+        // The scroll target is only defaulted here (from the earliest event);
+        // an explicit anchor (the selected day or the batch's date) set by the
+        // batch editor takes precedence and is never overwritten.
+        if yearModel.scrollTargetMonth == nil {
+            yearModel.scrollTargetMonth = events.map(\.date).min().map { dataProvider.month(of: $0) }
+        }
         updateYearModel()
     }
 

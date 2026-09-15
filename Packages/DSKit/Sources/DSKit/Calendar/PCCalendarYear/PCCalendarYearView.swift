@@ -95,6 +95,9 @@ public struct PCCalendarYearView: View {
                         guard oldSize != newSize else { return }
                         scrollToCurrentMonth(using: scrollProxy)
                     }
+                    .onChange(of: viewModel.scrollTargetMonth) {
+                        scrollToTargetMonth(using: scrollProxy)
+                    }
                     .highPriorityGesture(
                         PCPinchToZoomGesture(
                             tempMagnification: $tempMagnification,
@@ -115,7 +118,21 @@ public struct PCCalendarYearView: View {
                             },
                         isEnabled: onLongPress != nil
                     )
+                    // Horizontal swipe switches the year (left = next, right =
+                    // previous). It runs simultaneously with the vertical scroll
+                    // so swiping doesn't block scrolling or pinch-to-zoom; it only
+                    // commits when the horizontal displacement dominates.
+                    .simultaneousGesture(
+                        DragGesture(minimumDistance: 24)
+                            .onEnded { value in
+                                let horizontal = abs(value.translation.width)
+                                let vertical = abs(value.translation.height)
+                                guard horizontal > vertical, horizontal > 50 else { return }
+                                goToAdjacentYear(value.translation.width < 0 ? 1 : -1)
+                            }
+                    )
                     .sensoryFeedback(.success, trigger: viewModel.numberOfColumns)
+                    .sensoryFeedback(.selection, trigger: viewModel.year)
                     .animation(.easeOut(duration: 0.3), value: viewModel.numberOfColumns)
                 }
             }
@@ -157,12 +174,21 @@ public struct PCCalendarYearView: View {
         proxy.scrollTo(target, anchor: .top)
     }
 
+    ///// Switches to the adjacent year (delta of -1 or +1) on a horizontal swipe,
+    ///// clamped to the supported year range. Reuses `onYearSelect` so the feature
+    ///// layer's existing `switchYear` rebuilds the month matrix.
+    private func goToAdjacentYear(_ delta: Int) {
+        let next = viewModel.year + delta
+        guard Self.yearRange.contains(next) else { return }
+        onYearSelect?(next)
+    }
+
     /// Scrolls to the current month of today's date after a pinch-to-zoom or a
     /// device/window rotation, so the user's focus stays on the current month.
     /// The scroll is deferred a tick so the grid re-layout (from the column /
     /// size change) settles first; otherwise the programmatic scroll is lost.
     private func scrollToCurrentMonth(using proxy: ScrollViewProxy) {
-        guard let target = viewModel.indexOfCurrentMonth else { return }
+        guard let target = viewModel.targetMonthIndex else { return }
         Task { @MainActor in
             try? await Task.sleep(for: .milliseconds(50))
             withAnimation(.easeOut(duration: 0.3)) {

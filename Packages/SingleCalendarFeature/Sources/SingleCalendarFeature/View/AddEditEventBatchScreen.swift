@@ -61,6 +61,7 @@ public struct AddEditEventBatchScreen: View {
         .toolbarBackground(vibe.color(for: .backgroundMain), for: .pcNavigationBar)
         .ignoresSafeArea(edges: .bottom)
         .background(vibe.color(for: .backgroundMain))
+        .pcDisableInteractivePopGesture()
         .task {
             viewModel.setup()
         }
