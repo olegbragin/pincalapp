@@ -169,13 +169,13 @@ public struct PCCalendarCardView: View {
             .padding(20)
             .animation(.easeInOut(duration: 0.2), value: viewModel.isEditing)
         }
+        .frame(height: 200)
         .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: 20, style: .continuous)
                 .strokeBorder(.white.opacity(0.6), lineWidth: viewModel.isEditing ? 2 : 1)
                 .animation(.easeInOut(duration: 0.2), value: viewModel.isEditing)
         )
-        .frame(height: 200)
         .contentShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
         .animation(.spring(response: 0.35, dampingFraction: 0.85), value: viewModel.isEditing)
         .onChange(of: nameFieldFocused) { _, isFocused in

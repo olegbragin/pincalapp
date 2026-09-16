@@ -78,7 +78,6 @@ public struct CalendarListContent: View {
                                     lineWidth: isSelected ? 2.5 : 0
                                 )
                         )
-                        .shadow(color: isSelected ? Color.accentColor.opacity(0.4) : .clear, radius: isSelected ? 8 : 0)
                         .animation(.easeOut(duration: 0.2), value: isSelected)
                         .onTapGesture {
                             onSelectCalendar(calendar.id)

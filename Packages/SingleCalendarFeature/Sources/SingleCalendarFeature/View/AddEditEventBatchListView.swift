@@ -127,64 +127,62 @@ private struct BatchEventCard: View {
     private var showsToggle: Bool { naturalHeight > collapsedMaxHeight }
 
     var body: some View {
-        PCCard {
+        ZStack {
             VStack(alignment: .leading, spacing: 0) {
-                header
-                eventRows
-            }
-            .padding()
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .frame(maxHeight: isExpanded ? nil : collapsedMaxHeight, alignment: .top)
-            .clipped()
-            .background(
-                RoundedRectangle(cornerRadius: 16, style: .continuous)
-                    .fill(batchColor)
-            )
-            // The toggle sits at the bottom of the card, full width, with a
-            // gradient (card color at the bottom -> transparent upward) so it
-            // looks like it slightly covers the content behind it.
-            .overlay(alignment: .bottom) {
-                if showsToggle {
-                    toggleButton
-                }
-            }
-            // Clip everything (including the toggle) to the card's rounded shape
-            // so the toggle fully corresponds with the card bounds.
-            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-            // Measures the natural (un-capped) height of the padded content so we
-            // know whether it overflows the collapsed limit.
-            .overlay(alignment: .top) {
-                VStack(alignment: .leading, spacing: 0) {
                     header
                     eventRows
                 }
                 .padding()
-                .fixedSize(horizontal: false, vertical: true)
-                .hidden()
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .frame(maxHeight: isExpanded ? nil : collapsedMaxHeight, alignment: .top)
+                .clipped()
+                .contentShape(Rectangle())
+                .onTapGesture { onOpen() }
                 .background(
-                    GeometryReader { proxy in
-                        Color.clear.preference(key: BatchCardHeightKey.self, value: proxy.size.height)
-                    }
+                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        .fill(batchColor)
                 )
-            }
-            .onPreferenceChange(BatchCardHeightKey.self) { naturalHeight = $0 }
-            .animation(.easeInOut(duration: 0.25), value: isExpanded)
+                // The toggle sits at the bottom of the card, full width, with a
+                // gradient (card color at the bottom -> transparent upward) so it
+                // looks like it slightly covers the content behind it.
+                .overlay(alignment: .bottom) {
+                    if showsToggle {
+                        toggleButton
+                    }
+                }
+                // Clip everything (including the toggle) to the card's rounded shape
+                // so the toggle fully corresponds with the card bounds.
+                .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                // Measures the natural (un-capped) height of the padded content so we
+                // know whether it overflows the collapsed limit.
+                .overlay(alignment: .top) {
+                    VStack(alignment: .leading, spacing: 0) {
+                        header
+                        eventRows
+                    }
+                    .padding()
+                    .fixedSize(horizontal: false, vertical: true)
+                    .hidden()
+                    .background(
+                        GeometryReader { proxy in
+                            Color.clear.preference(key: BatchCardHeightKey.self, value: proxy.size.height)
+                        }
+                    )
+                }
+                .onPreferenceChange(BatchCardHeightKey.self) { naturalHeight = $0 }
+                .animation(.easeInOut(duration: 0.25), value: isExpanded)
         }
     }
 
     private var header: some View {
-        Button(action: onOpen) {
-            HStack {
-                Text(eventBatch.name)
-                    .font(.headline)
-                    .foregroundStyle(vibe.color(for: .foregroundOnEventCard))
-                Spacer()
-                Image(systemName: "chevron.right")
-                    .foregroundStyle(vibe.color(for: .foregroundOnEventCard))
-            }
-            .contentShape(Rectangle())
+        HStack {
+            Text(eventBatch.name)
+                .font(.headline)
+                .foregroundStyle(vibe.color(for: .foregroundOnEventCard))
+            Spacer()
+            Image(systemName: "chevron.right")
+                .foregroundStyle(vibe.color(for: .foregroundOnEventCard))
         }
-        .buttonStyle(.plain)
         .padding(.bottom, 6)
     }
 
