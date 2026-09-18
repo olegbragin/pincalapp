@@ -120,14 +120,17 @@ public struct PCCalendarYearView: View {
                     )
                     // Horizontal swipe switches the year (left = next, right =
                     // previous). It runs simultaneously with the vertical scroll
-                    // so swiping doesn't block scrolling or pinch-to-zoom; it only
-                    // commits when the horizontal displacement dominates.
+                    // so swiping doesn't block scrolling or pinch-to-zoom. It only
+                    // commits on a clearly horizontal swipe (the horizontal
+                    // displacement must dominate by a wide margin and exceed a
+                    // larger threshold), so a near-vertical scroll or a
+                    // UI-test swipe can't accidentally change the year.
                     .simultaneousGesture(
-                        DragGesture(minimumDistance: 24)
+                        DragGesture(minimumDistance: 40)
                             .onEnded { value in
                                 let horizontal = abs(value.translation.width)
                                 let vertical = abs(value.translation.height)
-                                guard horizontal > vertical, horizontal > 50 else { return }
+                                guard horizontal > vertical * 2, horizontal > 70 else { return }
                                 goToAdjacentYear(value.translation.width < 0 ? 1 : -1)
                             }
                     )

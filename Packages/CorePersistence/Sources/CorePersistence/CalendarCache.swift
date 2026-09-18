@@ -45,10 +45,21 @@ public actor CalendarCache {
 
     public func updateCalendar(_ calendar: CalendarDataSource) async throws {
         try await repository.saveCalendar(calendar)
-        if let idx = calendars.firstIndex(where: { $0.id == calendar.id }) {
-            calendars[idx] = calendar
+        // Refetch the saved calendar from the store so in-memory batches/events
+        // get their real DB ids. Without this, newly created batches stay with
+        // `id == 0` in memory and navigation that resolves a batch by id becomes
+        // ambiguous once more than one unsaved batch exists.
+        if let fresh = try? await repository.getCalendar(id: calendar.id) {
+            if let idx = calendars.firstIndex(where: { $0.id == calendar.id }) {
+                calendars[idx] = fresh
+            }
+            await MainActor.run { changes.send(.change(item: fresh)) }
+        } else {
+            if let idx = calendars.firstIndex(where: { $0.id == calendar.id }) {
+                calendars[idx] = calendar
+            }
+            await MainActor.run { changes.send(.change(item: calendar)) }
         }
-        await MainActor.run { changes.send(.change(item: calendar)) }
     }
 
     public func archiveCalendar(_ calendar: CalendarDataSource) async throws {

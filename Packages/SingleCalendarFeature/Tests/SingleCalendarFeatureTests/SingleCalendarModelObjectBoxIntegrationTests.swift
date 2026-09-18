@@ -106,7 +106,10 @@ struct SingleCalendarModelObjectBoxIntegrationTests {
         model.commitPendingBatch(editor.eventBatch)
         #expect(try await waitForBatchCount(1, in: store))
 
-        let batch = model.batch(for: .existingBatch(editor.eventBatch!.id))
+        // Resolve the persisted batch by its real DB id (it is no longer `id == 0`
+        // once the cache refreshes after save).
+        #expect(await waitForModelCondition(model) { model.batches(for: someDay).count == 1 })
+        let batch = model.batches(for: someDay).first
         #expect(batch != nil)
         let editor2 = model.makeBatchEditor()
         editor2.setup()
@@ -856,9 +859,10 @@ struct SingleCalendarModelObjectBoxIntegrationTests {
         let day11 = date(year: 2026, month: 4, day: 11)
         let day12 = date(year: 2026, month: 4, day: 12)
 
-        // STR 2-4: tap empty day 10 -> editor anchored at day 10, add 11 & 12.
+        // STR 2-4: tap empty day 10 -> editor anchored at day 10, add 10, 11 & 12.
         model.prepareAddEditEventBatchViewModel(for: day10)
         let addEdit = model.makeBatchEditor()
+        addEdit.load(nil, selectedDay: day10)
         addEdit.eventBatchName = "Batch"
         addEdit.selectedColor = .option1
         addEdit.toggleEvent(on: day11)
@@ -874,8 +878,9 @@ struct SingleCalendarModelObjectBoxIntegrationTests {
 
         // STR 7-8: open the batch, remove day 10.
         let batchList = model.batches(for: day10)
+        let openedBatch = try #require(batchList.first, "Batch should be listed under day 10")
         let addEdit2 = model.makeBatchEditor()
-        addEdit2.load(batchList[0])
+        addEdit2.load(openedBatch)
         addEdit2.toggleEvent(on: day10)
         #expect(addEdit2.eventsSelectionManager.events.contains {
             Calendar.current.isDate($0.date, inSameDayAs: day10)
@@ -883,7 +888,7 @@ struct SingleCalendarModelObjectBoxIntegrationTests {
 
         // STR 9: save.
         #expect(addEdit2.save())
-        model.commitPendingBatch(addEdit.eventBatch)
+        model.commitPendingBatch(addEdit2.eventBatch)
         try? await Task.sleep(for: .milliseconds(300))
 
         // The batch still has 11 & 12, so the day-10 batch list must not be empty.

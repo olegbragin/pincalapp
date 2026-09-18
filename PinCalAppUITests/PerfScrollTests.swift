@@ -11,19 +11,11 @@ final class PerfScrollTests: XCTestCase {
 
     @MainActor
     func testScrollYearCalendarAndBatchEditor() throws {
-        let app = XCUIApplication()
-        app.launchArguments = ["-UITestSeedData", "-UITestColumns", "1"]
-        app.launch()
-
-        if app.buttons["sidebar-calendars"].waitForExistence(timeout: 2) {
-            app.buttons["sidebar-calendars"].tap()
-        }
-        app.staticTexts["UI Test Calendar"].firstMatch.tap()
+        let app = KeyboardAvoidanceTestSupport.launchSeededApp()
+        KeyboardAvoidanceTestSupport.openCalendarDetail(app, named: "UI Test Calendar")
 
         // Interact with the batch editor first while the current month is guaranteed on screen.
-        let day10 = app.descendants(matching: .any).matching(identifier: dayIdentifier(day: 10)).firstMatch
-        XCTAssertTrue(day10.waitForExistence(timeout: 5))
-        day10.tap()
+        KeyboardAvoidanceTestSupport.tapDay(day: 10, in: app)
 
         let womenCycle = app.staticTexts["Women Cycle"]
         XCTAssertTrue(womenCycle.waitForExistence(timeout: 5), "Batch list should show the existing batch")
@@ -43,9 +35,9 @@ final class PerfScrollTests: XCTestCase {
             RunLoop.current.run(until: Date().addingTimeInterval(0.15))
         }
 
-        editorCalendar.descendants(matching: .any).matching(identifier: dayIdentifier(day: 12)).firstMatch.tap()
+        KeyboardAvoidanceTestSupport.tapDay(day: 12, in: app)
         RunLoop.current.run(until: Date().addingTimeInterval(0.5))
-        editorCalendar.descendants(matching: .any).matching(identifier: dayIdentifier(day: 10)).firstMatch.tap()
+        KeyboardAvoidanceTestSupport.tapDay(day: 10, in: app)
         RunLoop.current.run(until: Date().addingTimeInterval(0.5))
         editorSave.tap()
 
@@ -57,19 +49,5 @@ final class PerfScrollTests: XCTestCase {
             app.swipeDown(velocity: .fast)
             RunLoop.current.run(until: Date().addingTimeInterval(0.15))
         }
-    }
-
-    private func dayIdentifier(day: Int) -> String {
-        let calendar = Calendar.current
-        let now = Date()
-        let year = calendar.component(.year, from: now)
-        let month = calendar.component(.month, from: now)
-        let components = DateComponents(year: year, month: month, day: day)
-        let date = calendar.date(from: components)!
-        let formatter = DateFormatter()
-        formatter.dateFormat = "yyyy-MM-dd"
-        formatter.locale = Locale(identifier: "en_US_POSIX")
-        let gridMonth = String(format: "%02d", month)
-        return "day-\(gridMonth)-\(formatter.string(from: date))"
     }
 }

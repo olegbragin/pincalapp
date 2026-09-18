@@ -290,30 +290,32 @@ final class BatchEditCommitTests: XCTestCase {
         XCTAssertTrue(saveButton.waitForExistence(timeout: 5), "Batch editor should open")
 
         // The batch editor's calendar marks days that have events.
-        let day10 = KeyboardAvoidanceTestSupport.dayIdentifier(day: 10)
-        let day12 = KeyboardAvoidanceTestSupport.dayIdentifier(day: 12)
-        let editorCalendar = app.descendants(matching: .any).matching(identifier: "batch-editor-calendar").firstMatch
-        let day10Cell = editorCalendar.descendants(matching: .any).matching(identifier: day10).firstMatch
-        let day12Cell = editorCalendar.descendants(matching: .any).matching(identifier: day12).firstMatch
-        XCTAssertTrue(day10Cell.waitForExistence(timeout: 5))
-        XCTAssertTrue(day12Cell.waitForExistence(timeout: 5))
-        XCTAssertTrue(day10Cell.label.lowercased().contains("events"), "Day 10 should be marked")
-        XCTAssertTrue(day12Cell.label.lowercased().contains("events"), "Day 12 should be marked")
+        let day10ID = KeyboardAvoidanceTestSupport.dayIdentifier(day: 10)
+        let day12ID = KeyboardAvoidanceTestSupport.dayIdentifier(day: 12)
+        let day10Query = app.descendants(matching: .any).matching(identifier: day10ID)
+        let day12Query = app.descendants(matching: .any).matching(identifier: day12ID)
+        XCTAssertTrue(day10Query.firstMatch.waitForExistence(timeout: 5))
+        XCTAssertTrue(day12Query.firstMatch.waitForExistence(timeout: 5))
+        XCTAssertTrue(day10Query.firstMatch.label.lowercased().contains("events"), "Day 10 should be marked")
+        XCTAssertTrue(day12Query.firstMatch.label.lowercased().contains("events"), "Day 12 should be marked")
 
-        // Delete the first event row (on day 10, first in the sorted list).
-        let removeControl = app.images.matching(identifier: "minus.circle.fill").firstMatch
-        XCTAssertTrue(removeControl.waitForExistence(timeout: 5), "Edit-mode delete control should exist")
-        removeControl.tap()
-        let deleteButton = app.buttons["Delete"].firstMatch
-        XCTAssertTrue(deleteButton.waitForExistence(timeout: 5), "Delete button should appear")
-        deleteButton.tap()
+        // Delete the first event row (on day 10, first in the date-sorted list).
+        let deleteEvent = app.buttons["Delete event"].firstMatch
+        XCTAssertTrue(deleteEvent.waitForExistence(timeout: 5), "Event delete button should exist")
+        deleteEvent.tap()
 
-        // Day 10 must now be unmarked in the top calendar.
+        // Day 10 must now be unmarked in the calendar.
         let deadline = Date().addingTimeInterval(5)
-        while Date() < deadline && day10Cell.label.lowercased().contains("events") {
+        var day10Marked = true
+        while Date() < deadline {
+            if day10Query.firstMatch.exists,
+               !day10Query.firstMatch.label.lowercased().contains("events") {
+                day10Marked = false
+                break
+            }
             Thread.sleep(forTimeInterval: 0.2)
         }
-        XCTAssertFalse(day10Cell.label.lowercased().contains("events"),
-                       "Day 10 should be unmarked after its event was deleted; label = \(day10Cell.label)")
+        XCTAssertFalse(day10Marked,
+                       "Day 10 should be unmarked after its event was deleted")
     }
 }
