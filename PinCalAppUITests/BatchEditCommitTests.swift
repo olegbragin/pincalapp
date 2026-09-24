@@ -177,6 +177,108 @@ final class BatchEditCommitTests: XCTestCase {
         XCTAssertEqual(persisted, "Event1Renamed", "Persisted name must equal edited name after immediate reopen")
     }
 
+    // MARK: - New-batch STR regressions
+
+    /// Exact STR regression for the reported bug:
+    /// 1) Open calendar
+    /// 2) Tap a day without events  -> new-batch editor
+    /// 3) Enter a batch name
+    /// 4) Tap the event in the list -> event editor
+    /// 5) Enter an event name
+    /// 6) Save (event)   -> auto-persists the batch
+    /// 7) Save (batch)
+    /// 8) Tap the day again
+    /// EB: exactly one batch in the list. AB: two batches with the same event.
+    @MainActor
+    func testSavingEventThenSavingNewBatchDoesNotDuplicateIt() throws {
+        let app = KeyboardAvoidanceTestSupport.launchSeededApp()
+        KeyboardAvoidanceTestSupport.openCalendarDetail(app, named: "UI Test Calendar")
+
+        // 2) Tap an empty day -> new-batch editor with a placeholder event.
+        KeyboardAvoidanceTestSupport.tapDay(day: 20, in: app)
+
+        // 3) Enter the batch name.
+        let batchNameField = app.textFields["batch-name-field"]
+        XCTAssertTrue(batchNameField.waitForExistence(timeout: 5), "Batch editor should open for the tapped day")
+        batchNameField.tap()
+        batchNameField.typeText("Edited Batch")
+
+        // 4) Tap the placeholder event row -> event editor. The query must be
+        //    scoped to the events collection: a global `app.buttons` search also
+        //    matches the keyboard's "dictation" key (its label contains "at").
+        let eventRow = app.collectionViews.buttons
+            .containing(NSPredicate(format: "label CONTAINS %@", "at"))
+            .firstMatch
+        XCTAssertTrue(eventRow.waitForExistence(timeout: 5), "Placeholder event row should exist in the batch editor")
+        _ = KeyboardAvoidanceTestSupport.stableFrame(of: eventRow, timeout: 4)
+        eventRow.tap()
+
+        // 5) Enter the event name.
+        let eventNameField = app.textFields["event-name-field"]
+        XCTAssertTrue(eventNameField.waitForExistence(timeout: 5), "Event editor should open")
+        if let currentName = eventNameField.value as? String, !currentName.isEmpty {
+            eventNameField.tap()
+            eventNameField.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: currentName.count))
+        }
+        eventNameField.tap()
+        eventNameField.typeText("Edited Event")
+
+        // 6) Save the event (auto-persists the batch, store assigns a real id).
+        let eventSaveButton = app.buttons["Save"].firstMatch
+        XCTAssertTrue(eventSaveButton.waitForExistence(timeout: 5), "Event save button should be visible")
+        eventSaveButton.tap()
+
+        // 7) Save the batch.
+        let batchSaveButton = app.buttons["batch-save-button"]
+        XCTAssertTrue(batchSaveButton.waitForExistence(timeout: 5), "Back in the batch editor after the event save")
+        batchSaveButton.tap()
+        XCTAssertFalse(
+            batchSaveButton.waitForExistence(timeout: 2),
+            "Batch editor should be dismissed after Save"
+        )
+
+        // 8a) The editor dismissed back to the calendar detail. The day we just
+        //     saved must now be MARKED as having events. The reported bug leaves
+        //     it unmarked because the saved batch holds no events.
+        let day20ID = KeyboardAvoidanceTestSupport.dayIdentifier(day: 20)
+        let day20Query = app.descendants(matching: .any).matching(identifier: day20ID)
+        XCTAssertTrue(day20Query.firstMatch.waitForExistence(timeout: 5), "Should be back on the calendar detail after the batch Save")
+        XCTAssertTrue(
+            day20Query.firstMatch.label.lowercased().contains("events"),
+            "Bug: day 20 is not marked as having events after the Save (label: '\(day20Query.firstMatch.label)')"
+        )
+
+        // 8b) Tap the day again. The day now has a batch, so this opens the
+        //     day's batch list (the editor dismissed back to the calendar).
+        KeyboardAvoidanceTestSupport.tapDay(day: 20, in: app)
+
+        // The day now has exactly ONE batch, not two with the same name and
+        // event (the reported bug).
+        let batchNameMatches = app.staticTexts.matching(NSPredicate(format: "label == %@", "Edited Batch"))
+        XCTAssertTrue(batchNameMatches.firstMatch.waitForExistence(timeout: 5), "The day's batch list should show the new batch")
+
+        // Let a delayed duplicate (if any) surface before counting.
+        let settleDeadline = Date().addingTimeInterval(3)
+        while Date() < settleDeadline { Thread.sleep(forTimeInterval: 0.2) }
+
+        XCTAssertEqual(
+            batchNameMatches.count,
+            1,
+            "Bug: saving the event then the batch created \(batchNameMatches.count) batches with the same event instead of one"
+        )
+
+        // 9) Reopen the batch. It must still contain its event — the reported
+        //    bug opens the batch editor with an EMPTY event list.
+        batchNameMatches.firstMatch.tap()
+        let eventInBatch = app.collectionViews.buttons
+            .containing(NSPredicate(format: "label CONTAINS %@", "Edited Event"))
+            .firstMatch
+        XCTAssertTrue(
+            eventInBatch.waitForExistence(timeout: 5),
+            "Bug: the saved batch opened with an EMPTY event list — the event was lost"
+        )
+    }
+
     // MARK: - Color change regressions (same STR as name, but changing color)
 
     @MainActor

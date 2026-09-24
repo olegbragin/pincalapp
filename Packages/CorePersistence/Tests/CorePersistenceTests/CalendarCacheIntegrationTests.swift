@@ -324,8 +324,48 @@ struct CalendarCacheIntegrationTests {
         #expect(try eventBox.all().count == 2)
     }
 
-    @Test func getActiveCalendarsReturnsOnlyNonArchived() async throws {
+    /// Re-saving a calendar whose batch event carries a churned id (`id == 0`,
+    /// as the app's in-memory events do) must keep that event on the batch.
+    /// Before the fix, `saveCalendar` deleted the old event row before updating
+    /// the batch's relation, so `applyToDb()` threw "Could not remove relation
+    /// data" and the batch silently ended up with zero events (the day lost its
+    /// marker and reopening the batch showed an empty list).
+    @Test func saveCalendarKeepsEventsWhenBatchEventIdIsZero() async throws {
         let store = try makeStore()
+        defer { store.close() }
+
+        let calendarBox = store.box(for: PPCalendar.self)
+        let batchBox = store.box(for: PPEventBatch.self)
+        let eventBox = store.box(for: PPEvent.self)
+
+        let calendar = PPCalendar(name: "Test", year: 2026, numberOfColumns: 3)
+        try calendarBox.put(calendar)
+        let e1 = PPEvent(name: "A", color: "eventColorOption1", date: Date())
+        try eventBox.put(e1)
+        let batch = PPEventBatch(title: "A", color: "eventColorOption1")
+        try batchBox.put(batch)
+        batch.events.replace([e1])
+        try batch.events.applyToDb()
+        calendar.eventBatches.append(batch)
+        try calendar.eventBatches.applyToDb()
+        _ = try calendarBox.put(calendar)
+
+        let storage = ObjectBoxCalendarStorage(store: store)
+        var dto = try calendarBox.get(calendar.id).map { CalendarDataSource($0)! }!
+        // The store holds a persisted event for the batch, but the in-memory
+        // batch (as the app rebuilds it from the session) carries `id == 0`.
+        dto.eventBatches[0].events = [.init(name: "Renamed", date: Date(), color: "eventColorOption1")]
+        #expect(dto.eventBatches[0].events[0].id == 0)
+        try await storage.saveCalendar(dto)
+
+        let readBack = try calendarBox.get(calendar.id).map { CalendarDataSource($0)! }!
+        #expect(readBack.eventBatches.count == 1)
+        #expect(readBack.eventBatches[0].events.count == 1)
+        #expect(readBack.eventBatches[0].events[0].name == "Renamed")
+        #expect(try eventBox.all().count == 1)
+    }
+
+    @Test func getActiveCalendarsReturnsOnlyNonArchived() async throws {        let store = try makeStore()
         defer { store.close() }
 
         let storage = ObjectBoxCalendarStorage(store: store)

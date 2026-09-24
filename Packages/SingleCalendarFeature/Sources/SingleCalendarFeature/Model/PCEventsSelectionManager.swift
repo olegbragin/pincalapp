@@ -46,6 +46,18 @@ public final class PCEventsSelectionManager {
     /// unit tests that don't touch persistence.
     private let cache: CalendarCache?
 
+    /// Maps a staged (not-yet-persisted) batch's `timestamp` to the id the
+    /// store assigned to it once it was reloaded through `setCalendar`.
+    ///
+    /// A batch staged in this session is committed with `id == 0` and carries a
+    /// `timestamp` as its identity (see `key(for:)`). The store drops that
+    /// `timestamp` and assigns a real `id`, so the moment the reload arrives the
+    /// same logical batch would otherwise look like a *different* batch: a later
+    /// commit keyed `.pending(timestamp)` would not match the reloaded
+    /// `.persisted(id)` row and would append a duplicate (the reported bug).
+    /// This map re-establishes that link so later commits update in place.
+    private var persistedIDsByPendingTimestamp: [UUID: Int64] = [:]
+
     /// Number of columns the batch editor's calendar should show. It mirrors
     /// the owning calendar's column count (and the `-UITestColumns` launch
     /// argument) so the batch editor's day cells match the main calendar and
@@ -115,7 +127,43 @@ public final class PCEventsSelectionManager {
     /// commit batches for that calendar.
     func setCalendar(id: Int64, batches: [EventBatchDataSource]) {
         self.calendarId = id
+        // A batch staged during this session is committed as id == 0 with a
+        // timestamp identity. If it was already persisted (e.g. auto-committed
+        // by an event edit), the freshly loaded row carries the store-assigned
+        // id and a dropped timestamp — so relate the two by content. A later
+        // commit of the staged batch then updates that row instead of appending
+        // a duplicate (the reported bug: saving the batch editor after saving an
+        // event created a second batch with the same event).
+        let stagedBeforeReload = self.batches.filter { $0.id == 0 && $0.timestamp != nil }
         self.batches = batches
+        guard !stagedBeforeReload.isEmpty else { return }
+        for staged in stagedBeforeReload {
+            guard let pendingTimestamp = staged.timestamp else { continue }
+            // The twin is the fresh batch with the same content and no timestamp
+            // (timestamps are never persisted).
+            guard let persisted = batches.first(where: { $0.timestamp == nil && contentEquals(staged, $0) }) else { continue }
+            persistedIDsByPendingTimestamp[pendingTimestamp] = persisted.id
+        }
+    }
+
+    /// Compares two batches ignoring their identity (id and timestamp), matching
+    /// only the user-visible content: name, color, date, and the event set
+    /// (compared by name, color, and day).
+    private func contentEquals(_ lhs: EventBatchDataSource, _ rhs: EventBatchDataSource) -> Bool {
+        guard lhs.name == rhs.name,
+              lhs.colorName == rhs.colorName,
+              (lhs.date ?? lhs.events.first?.date) == (rhs.date ?? rhs.events.first?.date),
+              lhs.events.count == rhs.events.count,
+              !lhs.events.isEmpty else {
+            return false
+        }
+        let lhsSorted = lhs.events.sorted { $0.date < $1.date }
+        let rhsSorted = rhs.events.sorted { $0.date < $1.date }
+        return zip(lhsSorted, rhsSorted).allSatisfy { lhsEvent, rhsEvent in
+            lhsEvent.name == rhsEvent.name
+                && lhsEvent.color == rhsEvent.color
+                && dataProvider.isSameDay(lhsEvent.date, rhsEvent.date)
+        }
     }
 
     func prepare(with events: [EventDataSource]) {
@@ -211,10 +259,21 @@ public final class PCEventsSelectionManager {
     /// Replaces an existing batch (matched by its merge key) or appends a new one.
     func commit(_ eventBatch: EventBatchDataSource?) {
         guard let eventBatch else { return }
-        let batchKey = key(for: eventBatch)
+        // If this staged batch was already persisted (e.g. auto-committed by an
+        // event edit) before the user hit Save, rewrite its id to the persisted
+        // one so the merge key resolves to the existing row rather than appending
+        // a second batch (the reported bug).
+        let batchToCommit: EventBatchDataSource
+        if eventBatch.id == 0, let timestamp = eventBatch.timestamp,
+           let persistedID = persistedIDsByPendingTimestamp[timestamp] {
+            batchToCommit = eventBatch.with(id: persistedID)
+        } else {
+            batchToCommit = eventBatch
+        }
+        let batchKey = key(for: batchToCommit)
         batches.removeAll(where: { key(for: $0) == batchKey })
-        if !eventBatch.events.isEmpty {
-            batches.append(eventBatch)
+        if !batchToCommit.events.isEmpty {
+            batches.append(batchToCommit)
         }
         persistBatches()
     }
@@ -222,6 +281,12 @@ public final class PCEventsSelectionManager {
     /// Removes the given batches from the calendar's batch list and persists it.
     func deleteBatches(_ batches: [EventBatchDataSource]) {
         for batch in batches {
+            if batch.id != 0 {
+                persistedIDsByPendingTimestamp = persistedIDsByPendingTimestamp.filter { $0.value != batch.id }
+            }
+            if let timestamp = batch.timestamp {
+                persistedIDsByPendingTimestamp.removeValue(forKey: timestamp)
+            }
             self.batches.removeAll(where: { key(for: $0) == key(for: batch) })
         }
         persistBatches()

@@ -59,20 +59,29 @@ public class ObjectBoxCalendarStorage: CalendarRepository, @unchecked Sendable {
                 ppBatch.date = batch.date
                 try batchEntityBox.put(ppBatch)
 
+                let oldEventIDs = Set(ppBatch.events.map(\.id))
+
                 let ppevents = batch.events.map { event in
                     PPEvent(id: UInt64(event.id), name: event.name, color: event.color, date: event.date)
                 }
-
-                let oldEventIDs = Set(ppBatch.events.map(\.id))
-                let newEventIDs = Set(ppevents.map(\.id))
-                let removedEventIDs = oldEventIDs.subtracting(newEventIDs)
-                for removedID in removedEventIDs {
-                    try eventEntityBox.remove(removedID)
+                // Persist the events first and keep the ids the store assigned,
+                // so the relation is wired to real rows.
+                for event in ppevents {
+                    event.id = try eventEntityBox.put(event)
                 }
 
-                try eventEntityBox.put(ppevents)
+                // Wire the relation to the persisted rows BEFORE deleting events
+                // that are no longer referenced. Deleting the entity first leaves
+                // a dangling relation row and `applyToDb()` then fails with
+                // "Could not remove relation data", which silently emptied every
+                // event from the batch.
                 ppBatch.events.replace(ppevents)
                 try ppBatch.events.applyToDb()
+
+                let newEventIDs = Set(ppevents.map(\.id))
+                for removedID in oldEventIDs.subtracting(newEventIDs) {
+                    try eventEntityBox.remove(removedID)
+                }
 
                 if !ppcalendar.eventBatches.contains(where: { $0.id == ppBatch.id }) {
                     ppcalendar.eventBatches.append(ppBatch)
@@ -85,7 +94,7 @@ public class ObjectBoxCalendarStorage: CalendarRepository, @unchecked Sendable {
             return Int64(ppcalendar.id)
         } catch {
             print(error)
-            return -1
+            throw error
         }
     }
 

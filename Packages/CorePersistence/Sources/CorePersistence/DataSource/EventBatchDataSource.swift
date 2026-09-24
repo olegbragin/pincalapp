@@ -42,6 +42,19 @@ public struct EventBatchDataSource: Identifiable, Hashable, Sendable {
         }
         self.timestamp = nil
     }
+
+    /// Returns a copy with a new persisted id. Used when a staged (id == 0)
+    /// batch is recognized as an already-persisted batch after a reload.
+    public func with(id: Int64) -> EventBatchDataSource {
+        EventBatchDataSource(
+            id: id,
+            name: name,
+            colorName: colorName,
+            events: events,
+            date: date,
+            timestamp: timestamp
+        )
+    }
 }
 
 extension EventBatchDataSource: Equatable {
