@@ -86,7 +86,12 @@ extension View {
     /// Adds pull-to-refresh behavior. On iOS 26+, uses a custom implementation
     /// to work around a SwiftUI `.refreshable` bug. On older iOS versions, uses
     /// the standard `.refreshable`.
-    func safeRefreshable(action: @escaping @Sendable () async -> Void) -> some View {
+    ///
+    /// Prefer this over `.refreshable` for any scrollable list. Plain
+    /// `.refreshable` on a `ScrollView` is what triggers the contentOffset jump on
+    /// iOS 26+, and the workaround is worth reaching for by default rather than
+    /// per-screen.
+    public func safeRefreshable(action: @escaping @Sendable () async -> Void) -> some View {
         modifier(PCSafeRefreshableModifier(refreshAction: action))
     }
 }

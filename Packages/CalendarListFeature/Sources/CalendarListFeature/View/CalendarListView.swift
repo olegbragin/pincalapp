@@ -38,8 +38,11 @@ public struct CalendarListView: View {
     }
 
     @ViewBuilder
-    private func content(for viewModel: CalendarListViewModel) -> some View {
-        @Bindable var viewModel = viewModel
+    private func content(for model: CalendarListViewModel) -> some View {
+        // The `@Sendable` refresh closure below must capture the immutable parameter,
+        // not this `@Bindable` shadow, which is a `var` the compiler rightly refuses to
+        // let escape into concurrent code.
+        @Bindable var viewModel = model
         VStack(spacing: 0) {
             if viewModel.isLoading, viewModel.calendars.isEmpty {
                 Spacer()
@@ -54,7 +57,7 @@ public struct CalendarListView: View {
                     onCalendarDelete: { viewModel.archiveCalendarInList($0) },
                     onCalendarRestore: { viewModel.restoreCalendarInList($0) },
                     onCalendarPermanentDelete: { viewModel.permanentlyDeleteCalendar($0) },
-                    onRefresh: { await viewModel.fetch() },
+                    onRefresh: { await model.fetch() },
                     selectedCalendarID: selectedCalendarID,
                     onSelectCalendar: onSelectCalendar
                 )

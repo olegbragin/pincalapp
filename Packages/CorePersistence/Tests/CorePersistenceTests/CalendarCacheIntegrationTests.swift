@@ -8,7 +8,6 @@
 import Testing
 import Foundation
 import ObjectBox
-import Combine
 @testable import CorePersistence
 
 @MainActor
@@ -23,6 +22,44 @@ struct CalendarCacheIntegrationTests {
     private func makeCache(store: Store) -> CalendarCache {
         let storage = ObjectBoxCalendarStorage(store: store)
         return CalendarCache(repository: storage)
+    }
+
+    /// Awaits the cache's change feed until `count` operations have arrived, running
+    /// `trigger` once the subscription is live.
+    ///
+    /// The stream is captured *before* the trigger task is started, so registration
+    /// provably precedes the action. Collecting and then cancelling instead would race
+    /// the stream's buffer.
+    private func collect(
+        _ cache: CalendarCache,
+        count: Int,
+        _ trigger: () async throws -> Void
+    ) async rethrows -> [ChangeOperation] {
+        let stream = await cache.changes()
+        let collector = Task {
+            var received: [ChangeOperation] = []
+            for await operation in stream {
+                received.append(operation)
+                if received.count >= count { break }
+            }
+            return received
+        }
+        try await trigger()
+        return await collector.value
+    }
+
+    private func waitForRefresh(
+        _ cache: CalendarCache,
+        trigger: @escaping @Sendable () async -> Void
+    ) async {
+        let stream = await cache.changes()
+        let waiter = Task {
+            for await operation in stream {
+                if case .refresh = operation { return }
+            }
+        }
+        await trigger()
+        await waiter.value
     }
 
     private func createAndGetCalendar(_ cache: CalendarCache, name: String, year: Int, numberOfColumns: Int) async throws -> CalendarDataSource {
@@ -169,16 +206,7 @@ struct CalendarCacheIntegrationTests {
         try await cache.archiveCalendar(try await cache.getCalendar(id: cal3.id) ?? cal1)
 
         // Path A: verify via cache
-        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
-            var cancellable: AnyCancellable?
-            cancellable = cache.changes.sink { operation in
-                if case .refresh = operation {
-                    cancellable?.cancel()
-                    continuation.resume()
-                }
-            }
-            Task { await cache.loadActive() }
-        }
+        await waitForRefresh(cache, trigger: { await cache.loadActive() })
 
         // Path B: verify via direct ObjectBox
         let calendarBox = store.box(for: PPCalendar.self)
@@ -200,16 +228,7 @@ struct CalendarCacheIntegrationTests {
         try await cache.archiveCalendar(archived)
 
         // Path A: verify via cache
-        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
-            var cancellable: AnyCancellable?
-            cancellable = cache.changes.sink { operation in
-                if case .refresh = operation {
-                    cancellable?.cancel()
-                    continuation.resume()
-                }
-            }
-            Task { await cache.loadArchived() }
-        }
+        await waitForRefresh(cache, trigger: { await cache.loadArchived() })
 
         // Path B: verify via direct ObjectBox
         let calendarBox = store.box(for: PPCalendar.self)
@@ -226,14 +245,9 @@ struct CalendarCacheIntegrationTests {
 
         let cache = makeCache(store: store)
 
-        var receivedOperations: [ChangeOperation] = []
-        let cancellable = cache.changes.sink { operation in
-            receivedOperations.append(operation)
+        let receivedOperations = try await collect(cache, count: 1) {
+            try await cache.createCalendar(name: "Signal Test", year: 2026, numberOfColumns: 3)
         }
-
-        try await cache.createCalendar(name: "Signal Test", year: 2026, numberOfColumns: 3)
-
-        cancellable.cancel()
 
         #expect(receivedOperations.count == 1)
         if case .add(let item) = receivedOperations.first {
@@ -250,16 +264,11 @@ struct CalendarCacheIntegrationTests {
         let cache = makeCache(store: store)
         let created = try await createAndGetCalendar(cache, name: "Original", year: 2026, numberOfColumns: 3)
 
-        var receivedOperations: [ChangeOperation] = []
-        let cancellable = cache.changes.sink { operation in
-            receivedOperations.append(operation)
+        let receivedOperations = try await collect(cache, count: 1) {
+            var updated = created
+            updated.name = "Updated"
+            try await cache.updateCalendar(updated)
         }
-
-        var updated = created
-        updated.name = "Updated"
-        try await cache.updateCalendar(updated)
-
-        cancellable.cancel()
 
         let changeOps = receivedOperations.filter {
             if case .change = $0 { return true }
@@ -275,14 +284,9 @@ struct CalendarCacheIntegrationTests {
         let cache = makeCache(store: store)
         let created = try await createAndGetCalendar(cache, name: "To Archive Signal", year: 2026, numberOfColumns: 3)
 
-        var receivedOperations: [ChangeOperation] = []
-        let cancellable = cache.changes.sink { operation in
-            receivedOperations.append(operation)
+        let receivedOperations = try await collect(cache, count: 1) {
+            try await cache.archiveCalendar(created)
         }
-
-        try await cache.archiveCalendar(created)
-
-        cancellable.cancel()
 
         let deleteOps = receivedOperations.filter {
             if case .delete = $0 { return true }

@@ -3,7 +3,6 @@
 //  PinCalApp
 //
 
-import Combine
 import Foundation
 
 public enum ChangeOperation: Sendable {
@@ -13,9 +12,18 @@ public enum ChangeOperation: Sendable {
     case refresh(calendars: [CalendarDataSource])
 }
 
+/// In-memory calendar list plus a change feed.
+///
+/// The feed was a Combine `PassthroughSubject` and is now an `AsyncStream`
+/// fan-out. Two things change beyond the type. First, `AsyncStream` is
+/// single-consumer where a subject is shared, so each caller gets its own stream and
+/// the cache holds a continuation per subscriber — there are at most two live ones, the
+/// calendar list and one calendar detail. Second, the senders no longer hop to the main
+/// actor to deliver: yielding from inside the actor is already correctly isolated, so
+/// the `MainActor.run` detour is gone.
 public actor CalendarCache {
     private var calendars: [CalendarDataSource] = []
-    public nonisolated(unsafe) let changes = PassthroughSubject<ChangeOperation, Never>()
+    private var changeContinuations: [UUID: AsyncStream<ChangeOperation>.Continuation] = [:]
 
     private let repository: any CalendarRepository
 
@@ -23,24 +31,50 @@ public actor CalendarCache {
         self.repository = repository
     }
 
+    /// A fresh change stream, registered before this returns.
+    ///
+    /// A method rather than a property because registration touches actor state, so it
+    /// has to happen inside the actor. Await it *before* triggering whatever you are
+    /// waiting to hear about: the stream buffers from the moment of registration, so an
+    /// action fired earlier can still be missed.
+    public func changes() -> AsyncStream<ChangeOperation> {
+        let id = UUID()
+        return AsyncStream { continuation in
+            changeContinuations[id] = continuation
+            continuation.onTermination = { [weak self] _ in
+                Task { await self?.removeContinuation(id) }
+            }
+        }
+    }
+
+    private func removeContinuation(_ id: UUID) {
+        changeContinuations[id] = nil
+    }
+
+    private func broadcast(_ operation: ChangeOperation) {
+        for continuation in changeContinuations.values {
+            continuation.yield(operation)
+        }
+    }
+
     public func loadActive() async {
         let fetched = try? await repository.getActiveCalendars()
         calendars = fetched ?? []
         let snapshot = calendars
-        await MainActor.run { changes.send(.refresh(calendars: snapshot)) }
+        broadcast(.refresh(calendars: snapshot))
     }
 
     public func loadArchived() async {
         let fetched = try? await repository.getArchivedCalendars()
         calendars = fetched ?? []
         let snapshot = calendars
-        await MainActor.run { changes.send(.refresh(calendars: snapshot)) }
+        broadcast(.refresh(calendars: snapshot))
     }
 
     public func createCalendar(name: String, year: Int, numberOfColumns: Int) async throws {
         let newCalendar = try await repository.createCalendar(name: name, year: year, numberOfColumns: numberOfColumns)
         calendars.append(newCalendar)
-        await MainActor.run { changes.send(.add(item: newCalendar)) }
+        broadcast(.add(item: newCalendar))
     }
 
     public func updateCalendar(_ calendar: CalendarDataSource) async throws {
@@ -53,31 +87,31 @@ public actor CalendarCache {
             if let idx = calendars.firstIndex(where: { $0.id == calendar.id }) {
                 calendars[idx] = fresh
             }
-            await MainActor.run { changes.send(.change(item: fresh)) }
+            broadcast(.change(item: fresh))
         } else {
             if let idx = calendars.firstIndex(where: { $0.id == calendar.id }) {
                 calendars[idx] = calendar
             }
-            await MainActor.run { changes.send(.change(item: calendar)) }
+            broadcast(.change(item: calendar))
         }
     }
 
     public func archiveCalendar(_ calendar: CalendarDataSource) async throws {
         try await repository.archiveCalendar(calendar.id)
         calendars.removeAll { $0.id == calendar.id }
-        await MainActor.run { changes.send(.delete(item: calendar)) }
+        broadcast(.delete(item: calendar))
     }
 
     public func restoreCalendar(_ calendar: CalendarDataSource) async throws {
         try await repository.restoreCalendar(calendar.id)
         calendars.removeAll { $0.id == calendar.id }
-        await MainActor.run { changes.send(.delete(item: calendar)) }
+        broadcast(.delete(item: calendar))
     }
 
     public func permanentlyDeleteCalendar(_ calendar: CalendarDataSource) async throws {
         try await repository.deleteCalendar(calendar.id)
         calendars.removeAll { $0.id == calendar.id }
-        await MainActor.run { changes.send(.delete(item: calendar)) }
+        broadcast(.delete(item: calendar))
     }
 
     public func getCalendar(id: Int64) async throws -> CalendarDataSource? {
@@ -87,6 +121,16 @@ public actor CalendarCache {
         guard let fetched = try await repository.getCalendar(id: id) else { return nil }
         calendars.append(fetched)
         return fetched
+    }
+
+    /// The calendars currently held in memory, with no I/O.
+    ///
+    /// Distinct from `getAllCalendars()`, which asks the repository. A caller that has
+    /// just run `loadActive()` or `loadArchived()` should read the result from here
+    /// rather than wait for the `.refresh` broadcast it triggered itself: the change
+    /// feed has no replay, and its subscription may not be live yet.
+    public func loadedCalendars() -> [CalendarDataSource] {
+        calendars
     }
 
     public func getAllCalendars() async throws -> [CalendarDataSource] {

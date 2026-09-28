@@ -12,7 +12,9 @@ public struct CalendarListContent: View {
     public var onCalendarDelete: (CalendarDataSource) -> Void
     public var onCalendarRestore: (CalendarDataSource) -> Void
     public var onCalendarPermanentDelete: (CalendarDataSource) -> Void
-    public var onRefresh: () async -> Void
+    /// `@Sendable` because the pull-to-refresh gesture fires it from a `Task` that
+    /// `PCSafeRefreshableModifier` owns.
+    public var onRefresh: @Sendable () async -> Void
     public var selectedCalendarID: Int64?
     public var onSelectCalendar: (Int64) -> Void = { _ in }
 
@@ -24,7 +26,7 @@ public struct CalendarListContent: View {
         onCalendarDelete: @escaping (CalendarDataSource) -> Void,
         onCalendarRestore: @escaping (CalendarDataSource) -> Void,
         onCalendarPermanentDelete: @escaping (CalendarDataSource) -> Void,
-        onRefresh: @escaping () async -> Void,
+        onRefresh: @escaping @Sendable () async -> Void,
         selectedCalendarID: Int64? = nil,
         onSelectCalendar: @escaping (Int64) -> Void = { _ in }
     ) {
@@ -113,7 +115,10 @@ public struct CalendarListContent: View {
             }
             .padding(.horizontal, 16)
             .padding(.top, 12)
-            .refreshable {
+            // `safeRefreshable`, not `.refreshable`: plain `.refreshable` on a
+            // ScrollView is the thing that misbehaves on iOS 26+ (contentOffset
+            // jumps), which is what PCSafeRefreshableModifier exists to work around.
+            .safeRefreshable {
                 await onRefresh()
             }
             .scrollDismissesKeyboard(.interactively)

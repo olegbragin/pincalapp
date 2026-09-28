@@ -12,7 +12,6 @@ import CorePersistence
 import AppNavigation
 import DSKit
 import CoreDomain
-import Combine
 
 @MainActor
 @Observable
@@ -52,7 +51,9 @@ public final class SingleCalendarModel {
 
     public var state: State = .empty
     
-    @ObservationIgnored private var cancellable: AnyCancellable?
+    /// The calendar's own change feed. Ends when the model deallocates: the loop's
+    /// `guard let self` breaks, which terminates the task and releases the stream.
+    @ObservationIgnored private var changesTask: Task<Void, Never>?
     
     private var originalEvents: Set<EventDataSource> {
         Set(originalBatches.flatMap(\.events))
@@ -167,16 +168,14 @@ public final class SingleCalendarModel {
             columnCountResolver: columnCountResolver
         )
         self.builtCalendarYear = yearModel.year
-        cancellable = cache.changes
-            .receive(on: DispatchQueue.main)
-            .sink { [weak self] operation in
+        changesTask = Task { [weak self] in
+            for await operation in await cache.changes() {
                 guard let self else { return }
                 if case .change(let item) = operation, item.id == calendarid {
-                    Task { @MainActor [weak self] in
-                        await self?.fetch(force: true)
-                    }
+                    await self.fetch(force: true)
                 }
             }
+        }
     }
     
     public var isColorPickerDisabled: Bool {

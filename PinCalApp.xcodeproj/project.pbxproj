@@ -7,6 +7,8 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		D733BC91306A7693000F242F /* CorePersistence in Frameworks */ = {isa = PBXBuildFile; productRef = D7A647333040DD2A009034E4 /* CorePersistence */; };
+		D733BC92306A7693000F242F /* CoreDomain in Frameworks */ = {isa = PBXBuildFile; productRef = D7A647363040DD35009034E4 /* CoreDomain */; };
 		D75D58B63050963C0019C8CC /* SettingsFeature in Frameworks */ = {isa = PBXBuildFile; productRef = D7A6473F3040DD51009034E4 /* SettingsFeature */; };
 		D7A6472E3040DCD7009034E4 /* SingleCalendarFeature in Frameworks */ = {isa = PBXBuildFile; productRef = D7A6472D3040DCD7009034E4 /* SingleCalendarFeature */; };
 		D7A647313040DD1F009034E4 /* DSKit in Frameworks */ = {isa = PBXBuildFile; productRef = D7A647303040DD1F009034E4 /* DSKit */; };
@@ -77,6 +79,8 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				D733BC91306A7693000F242F /* CorePersistence in Frameworks */,
+				D733BC92306A7693000F242F /* CoreDomain in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -161,6 +165,8 @@
 			);
 			name = PinCalAppTests;
 			packageProductDependencies = (
+				D7A647333040DD2A009034E4 /* CorePersistence */,
+				D7A647363040DD35009034E4 /* CoreDomain */,
 			);
 			productName = PinCalAppTests;
 			productReference = D7B935862FA90E7C00E5A62D /* PinCalAppTests.xctest */;

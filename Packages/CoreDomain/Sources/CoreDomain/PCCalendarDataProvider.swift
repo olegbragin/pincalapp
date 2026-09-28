@@ -7,7 +7,16 @@
 
 import Foundation
 
-public struct PCCalendarDataProvider {
+/// The single owner of `Foundation.Calendar` in the domain layer.
+///
+/// Every date calculation in the app goes through this type. Nothing else wraps a
+/// `Calendar` and re-exports its answers — an earlier draft of
+/// `REFACTOR_PLAN.md` proposed a `PCDayCalendar` value type for the reducer to carry,
+/// which reintroduced exactly the second source of truth this type exists to be.
+///
+/// It is `Equatable` so it can live inside `PCEventSelectionState`, which is an
+/// `Equatable` value the reducer compares.
+public struct PCCalendarDataProvider: Equatable {
     private var calendar: Calendar
 
     public var numberOfCurrentMonth: Int {

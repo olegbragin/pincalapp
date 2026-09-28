@@ -34,7 +34,7 @@
 > which they no longer live in (§3). The calendar itself is `PinCalendar`, not
 > `SCCalendar` and not `Calendar` — a type named `Calendar` in a module that also
 > imports `Foundation` shadows `Foundation.Calendar` in every file that sees both,
-> and this one holds a `Calendar` in `PCDayCalendar`.
+> and this one owns a `Calendar` inside `PCCalendarDataProvider`.
 
 ---
 
@@ -45,7 +45,7 @@
 | `AddEditListView` | `AddEditEventListView` |
 | `AddEditListViewModel` | `AddEditEventListViewModel` (kept — see §8.1) |
 | `PCEventsSelectionManager` | `PCEventSelectionManager` |
-| `CalendarDataSource` | `PinCalendar`, moves to `CoreDomain`, becomes a domain model |
+| `CalendarDataSource` | **stays** in `CorePersistence`; `PinCalendar` is the abstraction layered above it |
 | `AddEditEventBatchListView` | unchanged |
 | `AddEditEventBatchScreen` | unchanged |
 | `AddEditEventBatchView` | unchanged |
@@ -60,7 +60,7 @@ in Stage 8, so no intermediate branch depends on a broken reference.
 | Type | Disposition | Stage | Reason |
 |---|---|---|---|
 | `EventDataSource`, `EventBatchDataSource` | internal to `CorePersistence` | 3 | Requirement 4 |
-| `CalendarDataSource` | replaced by `PinCalendar` | 2, 4 | Requirement 4 |
+| — | nothing | — | `CalendarDataSource` **stays** in `CorePersistence`; see §3.2 |
 | `onEventsChanged` / `onEventApplied` closures | deleted | 10 | Last-writer-wins clobbering; replaced by `Action` |
 | `BatchEditorSource`, `EventEditorSource` | deleted | 6 | Route payloads move into store state |
 | `BatchMergeKey.unsaved(Int)` | deleted | 5 | `hashValue` is not a stable identity |
@@ -146,13 +146,19 @@ This is requirement 4, and it is the change that makes requirement 2 enforceable
                    ObjectBoxCalendarStorage      CalendarRepository (protocol)
                            └──────────┬──────────────┘
                                       ▼
-                                 CalendarCache      ◄── the data edge
-                                      │                 (maps PP* ⇄ domain models)
-                                      │  PinCalendar / [CalendarEventBatch] in
-                                      │  numberOfColumns + [CalendarEventBatch] in
+                                 CalendarCache
+                                      │  CalendarDataSource out
+                                      ▼
+  PinCalApp (composition root) ──────────┤  the ONLY place that names both
+  PinCalApp/Root/                        │  vocabularies.
+        EntityMappable (protocol) ───────┤  the pure translation seam.
+        RootMapper (concrete)  ──────────┤  stateless, injected, does no I/O.
+        CalendarStore  ───────────────────┘  the port. Holds the cache, does I/O,
+        PinCalAppApp builds CalendarStore and hands it to PCCalendarSession
+                                      │  PinCalendar / [CalendarEventBatch] out
                                       ▼
   CoreDomain ────────────────────────────────────────────
-  (domain)     PinCalendar, CalendarEventBatch, CalendarEvent, PCDayCalendar,
+  (domain, no deps) PinCalendar, CalendarEventBatch, CalendarEvent,
                PCCalendarDataProvider, PCCalendar*DataSource,
                protocol CalendarPersisting
                                       ▲
@@ -173,23 +179,76 @@ This is requirement 4, and it is the change that makes requirement 2 enforceable
 > `SingleCalendarFeature/View/` imports `CorePersistence`.
 
 The manager's persistence dependency is the `CalendarPersisting` protocol, declared
-in `CoreDomain`. The concrete `CalendarCache` is named exactly once, at the app root
-in `PCCalendarSession`, which already imports `CorePersistence`.
+in `CoreDomain`. The concrete implementation is `CalendarStore`, in the **app target**.
+`CorePersistence` and `CoreDomain` depend on neither each other nor anything else, and
+the app is the only place that names both.
+
+Two types, split by what they carry:
+
+| Type | Carries | Job |
+|---|---|---|
+| `EntityMappable` | — | the protocol for translating between the two vocabularies. Lives only where both type families are visible, so the app target. |
+| `RootMapper` | nothing | the production translation. Stateless, and **injected** rather than a static namespace, so a test can substitute it. |
+| `CalendarStore` | a `CalendarCache` + an `EntityMappable` | the async read/write side. `CalendarPersisting`, and the only type that touches persistence. |
+
+`PCCalendarSession` does **not** build either, and does not hold the cache. Its
+collaborators — the port, the data provider, the column-count resolver, and both shared
+managers — all arrive through `init`, so it builds nothing and a test can hand it
+whatever it needs. `PinCalAppApp` is the composition root that assembles all of it.
+
+The session exposes `persistence` and nothing storage-shaped, so the storage vocabulary
+stops there. The two places that genuinely still need a `CalendarCache` —
+`SingleCalendarModel`, and `PCEventsSelectionManager` until it is replaced — get it
+injected directly, because that dependency belongs to them rather than to the session.
+`PCEventsSelectionManager` is the last cache consumer in the batch flow and it goes in
+Stage 9, with `SingleCalendarModel`.
+
+The cache reaches them through the `\.calendarCache` environment key, which the app
+already injects. It is **not** injected as a SwiftUI environment object: that requires
+`Observable`, and `@Observable` cannot be applied to an actor, which `CalendarCache` is.
+Converting it to an `@MainActor @Observable` class would forfeit the isolation its
+mutable calendar list depends on, and is not worth it for a non-optional.
 
 ```swift
 // CoreDomain
 public protocol CalendarPersisting: Sendable {
-    /// Reads the calendar and its batches, mapped into domain models.
+    /// Reads a calendar's management data.
     func calendar(id: Int64) async throws -> PinCalendar?
+    /// Reads the event batches assigned to a calendar.
+    func eventBatches(calendarID: Int64) async throws -> [CalendarEventBatch]
     /// Writes the batch list and column count. The store assigns ids; the caller
     /// never supplies one.
     func save(numberOfColumns: Int, eventBatches: [CalendarEventBatch], forCalendar id: Int64) async throws
 }
 ```
 
-Two methods, deliberately. The `CalendarCache.changes` stream stays off the protocol:
-the manager does not consume it, and `SingleCalendarModel` keeps its existing Combine
-subscription to the concrete `CalendarCache` for calendar metadata, exactly as today.
+Three methods, and the split matters. A calendar's *management* data and its *batches*
+are read by different consumers for different reasons, and `CalendarListFeature` has no
+business holding an event graph it never reads — it only ever touched `id`, `name`,
+`year`, `numberOfColumns` and `isArchived`. So the calendar comes back as a
+`PinCalendar`, five scalars, and the batches come back on their own. A wider port would
+put `CalendarCache`'s calendar-list and archive/restore surface back in front of every
+caller.
+
+`CalendarDataSource` **stays** in `CorePersistence` rather than being replaced. It is
+still the right shape down there: `PPCalendar` holds both `events` and `eventBatches`
+relations, so the storage layer genuinely needs the full graph. `PinCalendar` is the
+abstraction *above* it, not a replacement for it.
+
+The `CalendarCache.changes` stream stays off the protocol: the manager does not
+consume it, and `SingleCalendarModel` keeps its existing Combine subscription to the
+concrete `CalendarCache` for calendar metadata, exactly as today.
+
+`CalendarListFeature` is the case that does not get to drop `CorePersistence`. It
+needs the concrete `CalendarCache` for the change stream and for the calendar-management
+operations — `loadActive`, `loadArchived`, `createCalendar`, `archiveCalendar`,
+`restoreCalendar`, `permanentlyDeleteCalendar`, `updateCalendar` — none of which are on
+the narrow port, and all of which are that screen's job. So it gains `CoreDomain` for
+`PinCalendar` and keeps `CorePersistence` for `CalendarCache`.
+
+The rule in this section is therefore scoped: **no file in `SingleCalendarFeature` imports
+`CorePersistence`.** `CalendarListFeature` still does, for the cache and nothing else —
+it just stops naming a DTO.
 
 This also gives tests an in-memory `CalendarPersisting` fake, which is what the
 write-ordering test in §12.3 needs.
@@ -210,15 +269,41 @@ The `GenerateObjectBox` codegen does not need to re-run and no store migration i
 required. User data on device is untouched. This is the fact that makes requirement
 4 cheap, and it is the reason the plan does not add a migration stage.
 
-### 3.4 Mapping lives in the data layer
+### 3.4 The transformer lives in the composition root
+
+Neither `CorePersistence` nor `CoreDomain` may hold the mapping, or one would have to
+depend on the other. So it lives in the **app target**, in `PinCalApp/Root/` beside
+`PCCalendarSession`, which is the composition root and already imports both.
 
 ```swift
-// CorePersistence/Internal/PPMapping.swift — the only PP* ⇄ domain bridge
-enum PPMapping {
-    static func event(_ dto: PPEvent) -> CalendarEvent
-    static func eventBatch(_ dto: PPEventBatch, events: [PPEvent]) -> CalendarEventBatch
-    static func calendar(_ dto: PPCalendar) -> PinCalendar
-    static func apply(_ batches: [CalendarEventBatch], to entity: PPCalendar) throws
+// PinCalApp/Root/EntityMappable.swift — the translation seam.
+// One protocol, not three: seven pure functions with a single responsibility
+// do not need interface segregation, only three types to pass around.
+public nonisolated protocol EntityMappable: Sendable { … }
+
+// PinCalApp/Root/RootMapper.swift — the production translation.
+// Stateless, and injected rather than a static namespace, so a test can put a
+// different translation in its place. Maps the DTOs, not the PP* entities: the
+// DTOs already carry the same information, so CalendarStore can reuse the
+// existing, tested write path. `nonisolated` because the app target sets
+// SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor.
+public nonisolated struct RootMapper: EntityMappable {
+    static func calendar(_ dto: CalendarDataSource) -> PinCalendar
+    static func event(_ dto: EventDataSource) -> CalendarEvent
+    static func eventBatch(_ dto: EventBatchDataSource) -> CalendarEventBatch
+    static func eventDataSource(from domain: CalendarEvent) -> EventDataSource
+    static func eventBatchDataSource(from domain: CalendarEventBatch) -> EventBatchDataSource
+}
+
+// PinCalApp/Root/CalendarStore.swift — the concrete port, and the only type
+// that holds a cache. Delegates every conversion to its injected EntityMappable.
+public nonisolated struct CalendarStore: CalendarPersisting {
+    private let cache: CalendarCache
+    private let mapper: any EntityMappable
+    public init(cache: CalendarCache, mapper: any EntityMappable = RootMapper())
+    private let cache: CalendarCache
+    public init(cache: CalendarCache)
+    // calendar(id:) / eventBatches(calendarID:) / save(...)
 }
 ```
 
@@ -226,6 +311,17 @@ DTO → domain assigns a fresh `pendingID` per row and copies the entity id into
 `persistedID`. Domain → DTO writes `persistedID ?? 0`, so ObjectBox sees `0` for a
 new row and auto-assigns, and an existing id for an update. `persistedID` is only
 ever copied from a row the store returned; nothing fabricates one.
+
+`CalendarDataSource` remains the storage layer's own projection of `PPCalendar` and is
+not deleted — see §3.2. `RootMapper` is its counterpart, so `CalendarListFeature` can be
+retargeted without the storage layer losing its full graph.
+
+**The protocol, its implementor and the store are all `nonisolated` by necessity, not by
+preference.** The app target sets
+`SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor`, so everything in it is implicitly
+main-actor — including this pure value-to-value mapping, which then cannot satisfy
+`CalendarPersisting`'s nonisolated requirements. Opting out also keeps the mapping off
+the main actor, where it does not belong.
 
 Two small corrections land in the same stage, both safe because the DTOs are
 internal:
@@ -244,10 +340,9 @@ internal:
 
 ```
 Packages/CoreDomain/Sources/CoreDomain/          [no dependencies]
-  PinCalendar.swift                                # was CalendarDataSource
+  PinCalendar.swift                                # management data only, no events
   CalendarEventBatch.swift
   CalendarEvent.swift
-  PCDayCalendar.swift
   CalendarPersisting.swift                        # the data-layer port
   PCCalendarDataProvider.swift                    # unchanged
   PCCalendar{Year,Month,Week,Day}DataSource.swift # unchanged, domain value types
@@ -256,9 +351,8 @@ Packages/CorePersistence/Sources/CorePersistence/
   DataSource/EventDataSource.swift                # internal
   DataSource/EventBatchDataSource.swift           # internal
   CalendarCache.swift                             # conforms to CalendarPersisting
-  CalendarRepository.swift                        # returns PinCalendar
+  CalendarRepository.swift                        # still CalendarDataSource internally
   ObjectBoxCalendarStorage.swift                  # maps PP* ⇄ domain models
-  Internal/PPMapping.swift                        # new, the only bridge
   DataModels/PP{Calendar,EventBatch,Event}.swift  # unchanged entities
   CalendarCacheEnvironment.swift                  # unchanged
 
@@ -289,34 +383,39 @@ Packages/SingleCalendarFeature/Sources/SingleCalendarFeature/
 All four live in `CoreDomain`, so the data layer can produce them and the feature
 layer can consume them without either importing the other.
 
-### 5.1 `PCDayCalendar`
+### 5.1 Date comparison: `PCCalendarDataProvider`, and nothing else
 
-The reducer needs date comparison and must stay pure, so the calendar it compares
-with is part of the value state rather than an injected service. It also removes the
-two competing day-equality implementations that exist today —
-`PCCalendarDataProvider.isSameDay`, and the bare `Calendar.autoupdatingCurrent`
-call in `AddEditEventBatchListViewModel.eventsForDay`.
+`PCCalendarDataProvider` is the sole owner of `Foundation.Calendar` in the domain
+layer, and the reducer carries one in `state.dataProvider` so the transition function
+stays pure. It needed one change to be usable that way — `Equatable`:
 
 ```swift
-public struct PCDayCalendar: Equatable {
-    public var calendar: Calendar
-
-    public init(calendar: Calendar = Calendar(identifier: .gregorian)) {
-        self.calendar = calendar
-    }
-
-    public func startOfDay(for date: Date) -> Date { calendar.startOfDay(for: date) }
-    public func isSameDay(_ lhs: Date, _ rhs: Date) -> Bool {
-        calendar.isDate(lhs, inSameDayAs: rhs)
-    }
-    public func month(of date: Date) -> Int { calendar.component(.month, from: date) }
-    public var currentYear: Int { calendar.component(.year, from: .now) }
-    public var numberOfCurrentMonth: Int { calendar.component(.month, from: .now) }
+public struct PCCalendarDataProvider: Equatable {
+    private var calendar: Calendar
+    // startOfDay(for:), isSameDay(_:_:), month(of:), year(of:),
+    // currentYear, numberOfCurrentMonth, yearData(for:)  — all unchanged
 }
 ```
 
-Not marked `Sendable`: it holds a `Calendar`, and the whole pipeline stays on
-`MainActor`, so there is nothing to gain and a conformance to get wrong.
+An earlier draft of this plan proposed a separate `PCDayCalendar` value type for the
+same job. That was wrong: `PCDayCalendar` wrapped a second `Calendar` and re-exported
+six of the provider's methods, which is a second source of truth wearing the costume
+of a fix. The provider already held every one of them. **There is one `Calendar` in
+the domain layer and one way to compare days.**
+
+This also retires a live inconsistency. The codebase compares days two ways today —
+`PCCalendarDataProvider.isSameDay`, and a bare
+`Calendar.autoupdatingCurrent.isDate(_:inSameDayAs:)` in
+`AddEditEventBatchListViewModel.eventsForDay`. The latter goes away with that view
+model's rewrite in Stage 8.
+
+**Known trap:** `PCCalendarDataProvider.init` overwrites the calendar it is handed —
+`self.calendar.timeZone = .current; self.calendar.locale = .current` — so a caller
+cannot pin a time zone. Harmless today (every caller passes
+`Calendar.autoupdatingCurrent`, whose values are already the current ones), but it
+means no test can fix a time zone, and date assertions must be written to hold in
+whatever zone they run in. Left alone here because changing it is a behaviour change
+to shared code; flagged in §15.
 
 ### 5.2 `CalendarEvent`
 
@@ -330,9 +429,6 @@ public struct CalendarEvent: Identifiable, Hashable, Sendable {
     public var name: String
     public var date: Date
     public var colorName: String
-    /// `date` normalised to the start of its day. Stored, not computed, so the
-    /// one-event-per-day rule is a plain lookup.
-    public let dayKey: Date
 
     public var id: UUID { pendingID }
     public var isPersisted: Bool { persistedID != nil }
@@ -342,12 +438,11 @@ public struct CalendarEvent: Identifiable, Hashable, Sendable {
         persistedID: Int64? = nil,
         name: String = "",
         date: Date,
-        dayKey: Date,
         colorName: String = ""
     ) { … }
 
     public func with(name: String) -> CalendarEvent
-    public func with(date: Date, dayKey: Date) -> CalendarEvent
+    public func with(date: Date) -> CalendarEvent
     public func with(colorName: String) -> CalendarEvent
     public func with(pendingID: UUID) -> CalendarEvent
     public func with(persistedID: Int64?) -> CalendarEvent
@@ -366,7 +461,17 @@ Why this shape:
   An `OrderedSet<CalendarEvent>` would dedupe fully-equal events, which does not enforce
   the day rule, and would silently drop a legitimate event that happened to be
   equal. `events` stays an array sorted by `date`; the day rule lives in
-  `BatchAssembly.toggling(day:days:)` (§5.4). No new package dependency.
+  `BatchAssembly.toggling(day:using:)` (§5.4). No new package dependency.
+- **No `dayKey`, and no `PCCalendarDataProvider`.** Two earlier drafts added a
+  `dayKey: Date` — `date` normalised to its start-of-day — so the day rule would be a
+  dictionary lookup, and threaded a calendar type into the value to derive it. Both
+  were wrong. A batch holds a handful of events, so the comparison was never a
+  bottleneck; and `dayKey` was a second representation of a fact `date` already
+  carried, which had to be recomputed by every setter of `date` and could drift if one
+  did not. The rule that stands: **a value never needs a calendar to exist, only to be
+  compared.** `CalendarEvent` is constructed from a `Date` and nothing else; the
+  calendar appears in `occurs(on:using:)` and `hasSameContent(as:using:)`, which are
+  the places that actually ask a question about two dates.
 
 ### 5.3 `CalendarEventBatch`
 
@@ -377,7 +482,7 @@ public struct CalendarEventBatch: Identifiable, Hashable, Sendable {
 
     public var name: String
     public var colorName: String
-    /// Always sorted ascending by `date`, at most one event per `dayKey`.
+    /// Always sorted ascending by `date`, at most one event per calendar day.
     public var events: [CalendarEvent]
 
     public var id: UUID { pendingID }
@@ -392,14 +497,14 @@ public struct CalendarEventBatch: Identifiable, Hashable, Sendable {
     /// First event's day, or `nil` when the batch is empty.
     public var date: Date? { events.first?.date }
 
-    public func occurs(on day: Date, days: PCDayCalendar) -> Bool
+    public func occurs(on day: Date, using: PCCalendarDataProvider) -> Bool
     public func with(name: String) -> CalendarEventBatch
     public func with(colorName: String, propagateToEvents: Bool) -> CalendarEventBatch
     public func with(events: [CalendarEvent]) -> CalendarEventBatch
     public func with(persistedID: Int64?) -> CalendarEventBatch
     /// Identity-free comparison, used to recognise a staged batch among the rows
     /// that came back from a reload.
-    public func hasSameContent(as other: CalendarEventBatch, days: PCDayCalendar) -> Bool
+    public func hasSameContent(as other: CalendarEventBatch, using: PCCalendarDataProvider) -> Bool
 }
 
 public enum EventBatchKey: Hashable, Sendable {
@@ -436,7 +541,7 @@ public struct BatchAssembly: Equatable {
     }
 
     // Identity
-    public static func new(anchor: Date, colorName: String, days: PCDayCalendar) -> BatchAssembly
+    public static func new(anchor: Date, colorName: String, using: PCCalendarDataProvider) -> BatchAssembly
     public static func existing(_ batch: CalendarEventBatch) -> BatchAssembly
 
     // Transformations — each returns a new value
@@ -444,12 +549,12 @@ public struct BatchAssembly: Equatable {
     public func recoloring(_ color: PCColorOption?) -> BatchAssembly
     /// Removes any event on `day`, then appends a fresh placeholder, so a day
     /// never holds two events whichever way the toggle goes.
-    public func toggling(day: Date, days: PCDayCalendar) -> BatchAssembly
+    public func toggling(day: Date, using: PCCalendarDataProvider) -> BatchAssembly
     public func removingEvent(pendingID: UUID) -> BatchAssembly
     /// Replaces by `pendingID`; otherwise, if the incoming event lands on a day
     /// that already has one, replaces that event, so moving an event onto an
     /// occupied day moves it rather than duplicating it. Otherwise appends.
-    public func applying(_ event: CalendarEvent, days: PCDayCalendar) -> BatchAssembly
+    public func applying(_ event: CalendarEvent, using: PCCalendarDataProvider) -> BatchAssembly
     public func adopting(persistedID: Int64?) -> BatchAssembly
     /// The row to write, or `nil` when the batch has been emptied and must be
     /// removed from the calendar.
@@ -466,7 +571,7 @@ three separate mechanisms: `BatchMergeKey`, `persistedIDsByPendingTimestamp`, an
 
 `recoloring` takes `PCColorOption?`, which lives in `DSKit`, so `BatchAssembly` is
 placed in `SingleCalendarFeature`, not `CoreDomain`. Only `CalendarEvent`,
-`CalendarEventBatch`, `PinCalendar` and `PCDayCalendar` are domain types.
+`CalendarEventBatch` and `PinCalendar` are domain types.
 
 ---
 
@@ -526,7 +631,7 @@ public struct PCEventSelectionState: Equatable {
     public var multiSelectColor: PCColorOption?
 
     // Environment the reducer needs (§5.1)
-    public var days = PCDayCalendar()
+    public var dataProvider = PCCalendarDataProvider()
 
     // Intent
     public var isDirty = false
@@ -537,7 +642,7 @@ public struct PCEventSelectionState: Equatable {
     public var dayBatches: [CalendarEventBatch] {
         guard let day else { return [] }
         return batches
-            .filter { $0.occurs(on: day, days: days) }
+            .filter { $0.occurs(on: day, using: dataProvider) }
             .sorted { ($0.date ?? .distantPast) < ($1.date ?? .distantPast) }
     }
     public var canSave: Bool { assembly?.canSave ?? false }
@@ -645,7 +750,7 @@ public let pcEventSelectionReducer: (PCEventSelectionState, PCEventSelectionActi
 |---|---|---|---|
 | `openEvent(pendingID:)` | event found in `assembly.batch.events` | `eventDraft = event`; `stage = .eventEditor(batchPendingID:, eventPendingID:)` | `pushEventEditor` |
 | `setEventName(n)` | `eventDraft != nil` | `eventDraft = eventDraft.with(name: n)`; `isDirty = true` | — |
-| `setEventDate(d)` | `eventDraft != nil` | `eventDraft = eventDraft.with(date: d, dayKey: days.startOfDay(for: d))`; `isDirty = true` | — |
+| `setEventDate(d)` | `eventDraft != nil` | `eventDraft = eventDraft.with(date: d)`; `isDirty = true` | — |
 | `setEventColor(c)` | `eventDraft != nil` | `eventDraft = eventDraft.with(colorName: c?.colorName ?? "")`; `isDirty = true` | — |
 | `saveEventTapped` | `eventDraft != nil`, name non-empty | `assembly = assembly.applying(eventDraft!, days:)`; `eventDraft = nil`; `stage = .batchEditor`; `dayEventColors` updated; `isDirty = true` | `pop` |
 | `discardEventTapped` | — | `eventDraft = nil`; `stage = .batchEditor` | `pop` |
@@ -661,7 +766,7 @@ public let pcEventSelectionReducer: (PCEventSelectionState, PCEventSelectionActi
 | `saveTapped` | `stage == .eventEditor`, `canSave` | draft applied to assembly, assembly merged into `batches`; `eventDraft = nil`; `assembly = nil`; `stage = .dayList(day)`; `didSave = true` | `pop` |
 | `deleteBatches(list)` | — | rows removed from `batches` by `mergeKey`; `isDirty = true`; `dayEventColors` rebuilt | `popToCalendarRoot` when `dayBatches` empties, else none |
 | `syncCalendar(id, incoming)` | `id == calendarID` | staged assembly adopted against `incoming` (§6.5); `batches = incoming`; `calendarID = id`; `isDirty = false` | — |
-| `resetSession` | — | `= .init(days: days)` | — |
+| `resetSession` | — | `= .init(dataProvider: dataProvider)` | — |
 
 #### Main calendar and misc
 
@@ -796,8 +901,8 @@ private func projectCalendar() {
         || yearModel.numberOfColumns != resolvedColumns {
         yearModel = PCCalendarModelBuilder.makeYearModel(…)
     }
-    PCCalendarMarkerProjector.apply(state.dayEventColors, to: yearModel, days: state.days)
-    yearModel.scrollTargetMonth = state.scrollAnchor.map { state.days.month(of: $0) }
+    PCCalendarMarkerProjector.apply(state.dayEventColors, to: yearModel, using: state.dataProvider)
+    yearModel.scrollTargetMonth = state.scrollAnchor.map { state.dataProvider.month(of: $0) }
 }
 
 private func perform(_ effect: PCEventSelectionEffect) {
@@ -835,9 +940,9 @@ enum PCCalendarMarkerProjector {
     static func apply(
         _ colorsByDay: [Date: [String]],
         to yearModel: PCCalendarYearModel,
-        days: PCDayCalendar
+        using: PCCalendarDataProvider
     )
-    static func colorsByDay(from batches: [CalendarEventBatch], days: PCDayCalendar) -> [Date: [String]]
+    static func colorsByDay(from batches: [CalendarEventBatch], using: PCCalendarDataProvider) -> [Date: [String]]
 }
 ```
 
@@ -1064,13 +1169,16 @@ public actor CalendarCache: CalendarPersisting {
 }
 ```
 
-`save` keeps the current re-fetch-and-publish behaviour so store-assigned ids flow
-back to observers. `updateCalendar`, `archiveCalendar`, `restoreCalendar`,
-`permanentlyDeleteCalendar`, `createCalendar`, `loadActive`, `loadArchived`,
-`getAllCalendars` and `changes` all retype `CalendarDataSource` → `PinCalendar` and
-`EventBatchDataSource` → `CalendarEventBatch`. `CalendarListFeature`'s
-`CalendarListViewModel` and `AddEditCalendarViewModel` retype likewise, and
-`CalendarCacheIntegrationTests` follows. No behaviour change in either module.
+`calendar(id:)` and `eventBatches(calendarID:)` split what `getCalendar(id:)` used to
+return in one object. `save` keeps the current re-fetch-and-publish behaviour so
+store-assigned ids flow back to observers. `updateCalendar`, `archiveCalendar`,
+`restoreCalendar`, `permanentlyDeleteCalendar`, `createCalendar`, `loadActive`,
+`loadArchived`, `getAllCalendars` and `changes` retype `CalendarDataSource` →
+`PinCalendar`; `EventBatchDataSource` → `CalendarEventBatch` and `EventDataSource` →
+`CalendarEvent` stay internal to the module. `CalendarListFeature`'s
+`CalendarListViewModel` and `AddEditCalendarViewModel` retype to `PinCalendar`, and
+`CalendarCacheIntegrationTests` follows. No behaviour change in either module — the
+calendar list only ever read the five scalars `PinCalendar` carries.
 
 ---
 
@@ -1092,8 +1200,8 @@ back to observers. `updateCalendar`, `archiveCalendar`, `restoreCalendar`,
 `fetch` maps the persisted calendar and sends one action:
 
 ```swift
-let calendar = try await persistence.calendar(id: calendarid)
-eventSelection.send(.syncCalendar(calendarID: calendarid, batches: calendar.batches))
+let batches = try await persistence.eventBatches(calendarID: calendarid)
+eventSelection.send(.syncCalendar(calendarID: calendarid, batches: batches))
 ```
 
 The main calendar's markers are projected with
@@ -1161,9 +1269,10 @@ tests green at every stage, which the previous revision of this plan did not.
 |---:|---|---|
 | **0** | **Baseline.** Record the full suite including UI tests. | **Done** — see `TEST_BASELINE.md`: 229 unit, 29 UI, 0 failures |
 | 1 | **Rename** `AddEditListView` → `AddEditEventListView` and its model (requirement 1). Add `typealias` shims. Update `AddEditEventBatchView`, previews, `AddEditListViewModelTests`. | 229 / 29 |
-| 2 | **`CoreDomain`.** Add `PinCalendar`, `CalendarEventBatch`, `CalendarEvent`, `PCDayCalendar`, `CalendarPersisting`. `CalendarDataSource` becomes `PinCalendar`. Zero behaviour change. | 229 / 29 |
-| 3 | **`CorePersistence`.** `PPMapping` added; `ObjectBoxCalendarStorage`, `CalendarRepository`, `CalendarCache` retargeted at the domain models; the three `*DataSource` structs become `internal`; `timestamp` removed; `PPEvent.init` double-assign fixed. **ObjectBox schema untouched.** | 229 / 29 |
-| 4 | **`CalendarListFeature` + app root** retype `CalendarDataSource` → `PinCalendar`; `PCCalendarSession` gains `eventSelection`. | 229 / 29 |
+| 2 | **`CoreDomain`.** Add `PinCalendar`, `CalendarEventBatch`, `CalendarEvent`, `CalendarPersisting`; make `PCCalendarDataProvider` `Equatable` so it can live in state. No behaviour change. | 247 unit |
+| 3 | **Composition-root mapping + additive fixes.** `EntityMappable`, `RootMapper` and `CalendarStore` added to `PinCalApp/Root/`, with their 22 tests in `PinCalAppTests` (which gains `CorePersistence` + `CoreDomain` package dependencies). `PinCalAppApp` assembles everything and owns the cache; `PCCalendarSession` exposes `persistence` only — no `cache` — and builds nothing. `CorePersistence` gains **no** dependency on `CoreDomain` and no new file — untouched apart from the dead assignment. **ObjectBox schema untouched.** | 268 unit |
+| 4a | **Combine → `AsyncStream`.** `CalendarCache` replaces `PassthroughSubject` with a continuation fan-out and loses `import Combine`; `SingleCalendarModel` and `CalendarListViewModel` consume `for await` in a `Task`; the 5 sinks in `CalendarCacheIntegrationTests` become awaited collectors. `CalendarCache.loadedCalendars()` is added so a first paint reads its own result instead of awaiting the broadcast it triggered. Combine leaves the app. | 269 unit, 7 UI |
+| 4b | **`CalendarListFeature` onto `PinCalendar`.** Nothing moves: the package stays at `Packages/CalendarListFeature`. Four files switch `CalendarDataSource` → `PinCalendar` (five scalars; the list never read the event graph), `ChangeOperation` follows, and `Package.swift` gains `CoreDomain` while **keeping** `CorePersistence`. `PCCalendarSession` gains `eventSelection`. | 229 / 29 |
 | 5 | **`SingleCalendarFeature` UDF types.** `PCEventSelectionState`/`Stage`/`NavigationRequest`, `Action`, the reducer and the effect derivation, plus `PCCalendarMarkerProjector`. No caller wired yet. | 229 / 29, plus the new reducer suites |
 | 6 | **The store.** `PCEventSelectionManager` beside the old manager: `send`, projection, `perform`, `writeChain`; injected via `.environment`. `AppNavigation`: `pop()`, payload-free push routes, `BatchEditorSource`/`EventEditorSource` deleted. | 229 / 29, plus store suites |
 | 7 | **`DSKit`.** `onDayTapped` on `PCCalendarDaySelectionManager`; `Equatable`/`Hashable` on `PCColorOption`. Stop every screen observing `selectedDays`; dispatch from `onDayTapped` instead. | 229 / 29 |
@@ -1171,12 +1280,56 @@ tests green at every stage, which the previous revision of this plan did not.
 | 9 | **Slim `SingleCalendarModel`** to §9. Route `fetch` through `syncCalendar`. Remove `save(for:)`, `commitPendingBatch`, `deleteBatches`, `route(for:)`, `updateYearModel`, `dayModel(for:)`, `colorsByStartOfDay`, the `addedEvents` staging and the 350 ms debounce. | 29 UI |
 | 10 | **Delete the leftovers.** The `onEventsChanged` / `onEventApplied` closures, `columnCountSaveTask`, and `PCEventsSelectionManager` itself. | 229 / 29 |
 | 11 | **Close out the UI suite.** New multi-day scenario: tap two days, save, assert one batch with two days. | 29 + 1 UI |
+| 12 | **The bug in §16**, once 4b–11 are green. Not before — the refactor replaces the machinery it lives in. | §16.4 |
+
+### 11.1.1 The rule Stage 4a established
+
+`AsyncStream` is an **async sequence you await**, not a channel you subscribe to. One
+rule came out of it, and it is the reason the stage needed a second pass:
+
+> **A push stream has no replay. A consumer must never await an event it triggered
+> itself — it should read the result.**
+
+`CalendarListViewModel.fetch` used to call `loadActive()` and wait for the `.refresh`
+broadcast that call emitted. That worked with Combine, which registered synchronously
+inside `.sink`. `AsyncStream` registers when the consuming `Task` runs, so the
+broadcast could land first: six tests in `CalendarListFeatureTests` failed, one of them
+by indexing an empty array. The fix is `loadActive()` then `loadedCalendars()` — read
+what you asked for, do not wait for the echo.
+
+`SingleCalendarModel` already did this, which is why it was unaffected.
+
+The other properties worth stating, because they are what make `AsyncStream` the wrong
+tool when misused: it is **single-consumer** (a second `for await` is undefined, so a
+fan-out is yours to build), it **buffers unbounded** by default (a slow consumer is a
+leak, not backpressure), and its **delivery is serialised per consumer**.
+
+### 11.2 When the DTOs actually close
+
+The access modifiers on the three `*DataSource` structs cannot be tightened until their
+last consumer is gone, and each has a different one. This is why Stage 3 is additive
+only:
+
+| DTO | Last consumer | Becomes `internal` in |
+|---|---|---|
+| `CalendarDataSource` | `CalendarListFeature` **and** `SingleCalendarModelTests`, whose `InMemoryCalendarRepository: CalendarRepository` fake is built on it and uses a plain import | **Stage 9** |
+| `EventDataSource`, `EventBatchDataSource` | `PCEventsSelectionManager` and the four view models | **Stage 9** |
+
+Doing it earlier breaks the build, and doing it all at once means one enormous commit
+spanning two packages. So for the middle of the sequence the boundary is deliberately
+half-open — two of the three are closed from Stage 4, and all three from Stage 9. The
+invariant in §10.3 is therefore a Stage 9 assertion, not a Stage 3 one.
+
+The same applies to `EventDataSource.timestamp`. `pendingID` replaces it, but
+`PCEventsSelectionManager` still keys on `timestamp` in three places
+(`key(for:)`, `apply(_:)` and `persistedIDsByPendingTimestamp`) and
+`AppNavigation.EventEditorSource` still carries it. Both go in Stages 6 and 8.
 
 Stage 8 before Stage 9 is deliberate: the view models are what stand between the
 views and the assembler, so rebuilding them first makes the `SingleCalendarModel`
 slimming a mechanical follow-through rather than one combined diff. Stage 3 before
-Stage 4 is deliberate because `CalendarListFeature` cannot be retyped until the data
-layer actually produces the domain models.
+Stage 4 is deliberate because `CalendarListFeature` cannot be retargeted until the
+data layer actually produces `PinCalendar`.
 
 ### 11.1 Per-stage test routine
 
@@ -1224,8 +1377,8 @@ One test per row of the §6.3 and §6.4 tables. Plus:
   `resolved(against:)` returns `nil` when emptied; `resolved` reuses the row matched
   by `mergeKey`; `canSave` requires name, colour and a non-empty event list.
 - `CalendarEventBatch.hasSameContent` ignores identity, compares name, colour and day set.
-- `PPMapping` round-trips: a persisted id survives; `nil` `persistedID` maps to entity
-  id `0`; `timestamp` is neither read nor written.
+- `DomainMapping` round-trips: a persisted id survives; `nil` `persistedID` maps to DTO
+  id `0`; a staged batch never gains an id; the DTO `timestamp` is never read.
 
 ### 12.3 Store
 
@@ -1298,8 +1451,12 @@ Two tests pin it so it cannot regress silently:
 | Separate pure `effects` derivation | Effects folded into the reducer | A reducer that writes cannot be unit-tested without a database. The derivation is a pure function returning `Equatable` values; only `perform` touches IO. |
 | Navigation as state (`navigationRequest` + ack) | Effects that navigate | Navigation is a state transition a screen fulfils; keeping it in state means the reducer tests cover it. `AppRoute` stays payload-free because the payload is state. |
 | Domain models in `CoreDomain`; DTOs internal to `CorePersistence`; `CalendarPersisting` port | Keep the models in the feature and map at the feature's persist edge | The feature cannot both keep the DTOs private and have the data layer produce the models without a shared module. `CoreDomain` already has zero dependencies, so adding it to `CorePersistence` cannot cycle. |
-| Close the rule on all three DTOs, including `CalendarDataSource` → `PinCalendar` | Confine only `EventDataSource` / `EventBatchDataSource` | A half-enforced boundary is re-leaked within two commits. The cost is retyping `CalendarListFeature` and `CalendarCacheIntegrationTests` — mechanical, no behaviour change. |
+| Close the rule on all three DTOs: `CalendarListFeature` retargets from `CalendarDataSource` to `PinCalendar`, after which `CalendarDataSource` becomes internal too | Confine only `EventDataSource` / `EventBatchDataSource` | A half-enforced boundary is re-leaked within two commits. The cost is retyping `CalendarListFeature` and `CalendarCacheIntegrationTests` — mechanical and behaviour-free, since the list only ever read the five scalars `PinCalendar` carries. |
 | `SingleCalendarModel` keeps its Combine subscription for calendar metadata | The manager subscribes to `CalendarCache.changes` and owns everything | Label, year, `isArchived` and column count are calendar metadata, not batch state. Putting them in the selection manager would widen its responsibility past its name. The manager remains the only *writer* of batches and the only owner of batch state. |
+| `CalendarEvent` holds no calendar and no `dayKey` | Store a start-of-day `dayKey` and derive it via an injected provider | A `dayKey` is a second copy of a fact `date` already carries. It had to be recomputed by every setter of `date` and could drift when one did not, and the performance argument for it does not hold at a batch's size. Deriving it required coupling a value type to a service type, which then forced a non-defaulted initialiser parameter — a smell in itself. A calendar is needed to compare two events, not to hold one. |
+| Mapping in the composition root, `PinCalApp/Root/` | Mapping inside `CorePersistence`; or in a separate bridging package | Putting it in `CorePersistence` means `CorePersistence` depends on `CoreDomain`, and the storage layer then knows the domain vocabulary exists — the storage layer should not. Putting the port in `CoreDomain` fails in reverse. A dedicated bridging package was built first and works, but it is a ninth package for ~150 lines when the app target is already the composition root and imports both. `PinCalAppTests` hosts the tests and, with two added package dependencies, can still reach `@testable CorePersistence` and `ObjectBox`. |
+| Three types at the seam: `EntityMappable`, `RootMapper`, `CalendarStore` | One `CalendarPersistingAdapter` doing both; or a static mapper namespace | A transformer must not carry persistence — folding the cache in makes the mapping untestable without a store and hides which half does I/O. And a static namespace cannot be substituted: `CalendarStoreTests` proves the seam by injecting a mapper that uppercases names, which no amount of static-call refactoring would allow. Cost: a protocol over pure functions, which is normally avoided — worth it here because the translation is the only place two vocabularies meet, and that is exactly where a wrong mapping would be hardest to find. |
+| The reducer carries `PCCalendarDataProvider`; it becomes `Equatable` | A separate `PCDayCalendar` value type for the reducer | The provider already held `startOfDay`, `isSameDay`, `month(of:)`, `year(of:)`, `currentYear` and `numberOfCurrentMonth`. A second wrapper around `Foundation.Calendar` would be a second source of truth, which is the duplication this refactor exists to remove. One `Calendar` in the domain layer, one way to compare days. |
 | `pendingID: UUID` + `persistedID: Int64?` | `id: Int64` with a `0` sentinel | Removes the `ForEach` duplicate-identity failure, removes `hashValue` from identity, and makes "not saved yet" a value rather than a magic number. |
 | `events: [CalendarEvent]`, sorted, day-unique in the assembly | `OrderedSet<CalendarEvent>` | `OrderedSet` dedupes by value, which is not the day rule, and would drop a legitimate event that happens to equal another. It would also add a package dependency to the feature layer for no benefit. |
 | `onDayTapped` callback | `onChange(of: selectedDays)` | Removes the shared-mutable-bus failure mode and makes pre-seeding days safe by construction. |
@@ -1402,4 +1559,96 @@ like-for-like.
 | Removing the `selectedDays` observation changes tap behaviour on the main calendar | Stage 7 lands the callback and the dispatch together, behind the existing manager and selection-mode tests, before any view is rewritten. |
 | The duplicate-batch bug reappears through a path the tests miss | The adoption logic is one pure function in `syncCalendar` with one regression test, instead of a dictionary mutated from two call sites. |
 | UI tests depend on accessibility identifiers | `TEST_BASELINE.md` records every one the suite asserts. Keeping them is a stated constraint on Stage 8. |
+| `PCCalendarDataProvider.init` overwrites the time zone and locale of the calendar it is passed, so a test cannot pin either | Harmless today, because every caller passes `Calendar.autoupdatingCurrent` and its values are already the current ones. Date assertions are written to be zone-agnostic. Changing it is a behaviour change to shared code and is not in scope here; if it ever needs fixing it belongs in its own stage with the calendar-grid tests. |
 | Requirement 4 is easy to re-leak | Invariant 3, plus the Stage 6 store test that asserts the manager's import list, plus a grep-based CI check on `SingleCalendarFeature`. |
+
+---
+
+## 16. Known bug — fix last
+
+Recorded, not fixed. Do not start this until Stages 4b–11 are done and green: the
+refactor replaces the machinery this bug lives in, so fixing it first risks fixing
+behaviour that is about to be deleted.
+
+### 16.1 Report
+
+**STR**
+
+1. Open a calendar, or create a new one.
+2. Tap a day that has no events — say Oct 4 — which opens the batch editor for a new batch.
+3. Change the batch name. Go into the event in the list, change its name, press Save.
+4. Back in the batch editor, select Oct 5, Oct 6 and Oct 7. Press Save.
+5. Back on the calendar, tap Oct 7.
+6. In the batch editor, remove Oct 4, Oct 5 and Oct 6. Press Save.
+
+**AB** — the batch list is empty.
+
+**EB** — the batch list should contain a batch with one event, on Oct 7.
+
+### 16.2 Status: pre-existing, not a refactor regression
+
+Confirmed by inspection of the working tree: nothing modified so far touches this
+path. `PCEventsSelectionManager`, all four `AddEdit*ViewModel`s, `AddEditEventListView`,
+`AddEditEventBatchScreen` and `SingleCalendarView` are all untouched. The two files that
+*are* modified — `CalendarCache` and its integration tests — changed additively
+(`AsyncStream` feed, plus a new `loadedCalendars()`), and the calendar-list `fetch()` is
+not on this path. Treat this as an existing defect that the refactor must not make
+worse, not as damage already done.
+
+### 16.3 Where to look — hypotheses, all UNVERIFIED
+
+None of these has been confirmed by running the repro. They are the places a reader
+should start, in the order given.
+
+1. **The removal path empties the batch.** `PCEventsSelectionManager.removeEvents(at:)`
+   removes by index; `AddEditEventListViewModel.remove(_:)` resolves that index through
+   `firstIndex(of:)` on value equality. If the row the view hands back is a stale copy,
+   the index can address the wrong event, and three removals could empty all four.
+   Symptom to distinguish: does the *editor* still show the Oct 7 event when Save is
+   pressed, or is it already gone?
+2. **`canSave` / the `didSave` branch treats an emptied batch as a delete.**
+   `AddEditEventBatchViewModel.canSave` only requires a name and a colour, never a
+   non-empty event list, so an emptied batch is committable. And
+   `AddEditEventBatchScreen` treats `viewModel.eventBatch?.events.isEmpty == true` as
+   "the batch was deleted" and navigates to the calendar root — the exact shape of the
+   reported AB, including a list that ends up empty.
+3. **`commit` drops the row.** In `PCEventsSelectionManager.commit`, a batch with no
+   events is removed from `batches` and not re-added. If hypothesis 1 or 2 empties the
+   event list, the row is deleted rather than updated. This is the most direct route to
+   "the batch list is empty".
+4. **`eventBatchId` is still 0 at the third save.** `AddEditEventBatchViewModel.eventBatchId`
+   is set once in `load()` and never refreshed after the store assigns a real id, so
+   commits keep relying on `persistedIDsByPendingTimestamp` to resolve identity. If that
+   adoption did not happen for this session, the final commit is keyed on a pending
+   UUID that no longer matches any row and appends instead of replacing.
+5. **The orphaned-event cleanup in the storage layer.**
+   `ObjectBoxCalendarStorage.saveCalendar` removes events no longer referenced by a
+   batch, and that file already carries a warning that getting the relation order wrong
+   makes `applyToDb()` fail and *silently empty* a batch's events. This repro removes
+   events, so it walks that path. Worth checking what is actually in the store after
+   step 6, directly via `store.box(for: PPEventBatch.self).all()`.
+6. **`date` drift, lower priority.** `AddEditEventBatchViewModel.date` is set only in
+   `load()` and is not updated when days are added, so the persisted batch keeps
+   `date == Oct 4` while holding an Oct 7 event. `PCEventsSelectionManager.batches(for:)`
+   also matches on `batch.date`, so this can affect which day a batch is listed under.
+
+Hypothesis 5 also has a cheap, decisive test: reproduce the six steps, then inspect the
+store directly rather than the UI. That separates "the row was deleted" from "the row is
+there but the list query misses it", which the UI alone cannot distinguish.
+
+### 16.4 Acceptance for the fix
+
+- A new UI test in `PinCalAppUITests/BatchEditor/`, encoding 16.1 step for step, asserting
+  the Oct 7 batch list contains exactly one batch with exactly one event. It must fail on
+  the current code first — verify by running it before the fix, as was done for
+  `CalendarListRefreshTests` (§14.6). A test that passes against the broken build is worse
+  than no test.
+- The pull gesture is a **coordinate press-drag, not `swipeDown`** — see
+  `CalendarListRefreshTests.pullToRefresh` for the measured reason.
+- Cards are identified by name text, not `card-name-field-<id>`, which only exists while a
+  card is being renamed.
+- The full suite must hold at the Stage 0 baseline in `TEST_BASELINE.md`, plus the tests
+  added since.
+- If the fix removes the `isEmpty`-means-delete behaviour, that is the moment
+  `BatchAssembly.resolved(against:)` (§5.4) takes over the decision, and hypothesis 2
+  becomes structurally impossible rather than merely guarded.

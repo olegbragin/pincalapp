@@ -7,7 +7,6 @@
 
 import Observation
 import Foundation
-import Combine
 import SwiftUI
 import CorePersistence
 import DSKit
@@ -68,7 +67,10 @@ public final class CalendarListViewModel {
     }
 
     @ObservationIgnored private var cardViewModels: [Int64: PCCalendarCardViewModel] = [:]
-    @ObservationIgnored private var cancellable: AnyCancellable?
+    /// The calendar list's change feed. Ends when the view model deallocates: the
+    /// loop's `guard let self` breaks, which terminates the task and releases the
+    /// stream.
+    @ObservationIgnored private var changesTask: Task<Void, Never>?
 
     var appVersion: String {
         let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "?"
@@ -82,11 +84,12 @@ public final class CalendarListViewModel {
         archiveCountdown.onComplete = { [weak self] in
             self?.undoWindowElapsed()
         }
-        cancellable = cache.changes
-            .receive(on: DispatchQueue.main)
-            .sink { [weak self] operation in
-                self?.applyChange(operation)
+        changesTask = Task { [weak self] in
+            for await operation in await cache.changes() {
+                guard let self else { return }
+                self.applyChange(operation)
             }
+        }
     }
 
     func cardViewModel(for calendar: CalendarDataSource) -> PCCalendarCardViewModel {
@@ -115,6 +118,14 @@ public final class CalendarListViewModel {
         return vm
     }
 
+    /// Loads the list and reads the result back.
+    ///
+    /// It does not wait for the `.refresh` broadcast that `loadActive`/`loadArchived`
+    /// just sent. The change feed is a push channel with no replay, and this view
+    /// model's subscription may not be live yet, so a first paint that awaited its own
+    /// echo would intermittently come up empty. The feed still earns its place: it
+    /// carries writes made elsewhere, which arrive long after this subscription is
+    /// established.
     func fetch() async {
         isLoading = true
         defer { isLoading = false }
@@ -122,6 +133,7 @@ public final class CalendarListViewModel {
         case .active: await cache.loadActive()
         case .archived: await cache.loadArchived()
         }
+        calendars = await cache.loadedCalendars()
     }
 
     func addCalendar(with name: String) {
