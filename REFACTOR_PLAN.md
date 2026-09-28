@@ -1272,7 +1272,56 @@ tests green at every stage, which the previous revision of this plan did not.
 | 2 | **`CoreDomain`.** Add `PinCalendar`, `CalendarEventBatch`, `CalendarEvent`, `CalendarPersisting`; make `PCCalendarDataProvider` `Equatable` so it can live in state. No behaviour change. | 247 unit |
 | 3 | **Composition-root mapping + additive fixes.** `EntityMappable`, `RootMapper` and `CalendarStore` added to `PinCalApp/Root/`, with their 22 tests in `PinCalAppTests` (which gains `CorePersistence` + `CoreDomain` package dependencies). `PinCalAppApp` assembles everything and owns the cache; `PCCalendarSession` exposes `persistence` only — no `cache` — and builds nothing. `CorePersistence` gains **no** dependency on `CoreDomain` and no new file — untouched apart from the dead assignment. **ObjectBox schema untouched.** | 268 unit |
 | 4a | **Combine → `AsyncStream`.** `CalendarCache` replaces `PassthroughSubject` with a continuation fan-out and loses `import Combine`; `SingleCalendarModel` and `CalendarListViewModel` consume `for await` in a `Task`; the 5 sinks in `CalendarCacheIntegrationTests` become awaited collectors. `CalendarCache.loadedCalendars()` is added so a first paint reads its own result instead of awaiting the broadcast it triggered. Combine leaves the app. | 269 unit, 7 UI |
-| 4b | **`CalendarListFeature` onto `PinCalendar`.** Nothing moves: the package stays at `Packages/CalendarListFeature`. Four files switch `CalendarDataSource` → `PinCalendar` (five scalars; the list never read the event graph), `ChangeOperation` follows, and `Package.swift` gains `CoreDomain` while **keeping** `CorePersistence`. `PCCalendarSession` gains `eventSelection`. | 229 / 29 |
+| 4b | **`CalendarListFeature` onto `PinCalendar`, and off `CorePersistence` entirely.** Nothing moves: the package stays at `Packages/CalendarListFeature`. The five scalars are `PinCalendar`'s whole surface, and the list never read the event graph. `ChangeOperation` follows as `PinCalendarChange`, bridged by `CalendarStore`. `Package.swift` swaps `CorePersistence` for `CoreDomain` — **not** "gains `CoreDomain` while keeping `CorePersistence`" as originally drafted; keeping it was only ever acceptable as a holding pattern, and the 8 management operations the list needs turned out to be closable (§4b.1). `PCCalendarSession` does **not** gain `eventSelection` in this stage — that was stale, the manager is Stage 6. | 275 unit, 10 UI |
+
+#### 4b.1 Why the 8 management operations are closable, and how
+
+The list needs more than `CalendarPersisting` offers. Not a change feed — a
+`CalendarPersisting` deliberately cannot have one, since it is stateless and a subscriber
+registering there would have to be remembered by a value with nowhere to put it. The
+problem is the 8 management calls: `loadActive`, `loadArchived`, `createCalendar`,
+`updateCalendar`, `archiveCalendar`, `restoreCalendar`, `permanentlyDeleteCalendar`, and
+the feed.
+
+Two options were put to the user. The narrow one keeps `CalendarCache` in the list for
+those 8 and adds only a domain change stream alongside it, leaving the package with two
+dependencies and still speaking DTOs. The chosen one adds `CalendarManaging` to
+`CoreDomain`, implemented by the `CalendarStore` that already exists, so the package
+takes a single port and drops `import CorePersistence` for good. `CalendarListFeature`
+was the only feature package still reaching into storage after 4b; `SingleCalendarFeature`
+remains, by decision, until Stage 9.
+
+Three things this surfaced, none of which the narrow option would have:
+
+1. **`loadActive()` / `loadArchived()` now return what they loaded.** The list used to
+   call a `Void` load and then wait for the `.refreshed` broadcast that call emitted —
+   the same self-echo §11.1.1 forbids, one layer down. Encoding the return value makes
+   the mistake unrepresentable rather than merely documented.
+2. **`applyChange` resolves every change against `mode`.** A store emits changes
+   relative to *its own* current list, which is whichever active-or-archived set was
+   loaded last — not necessarily the view model's. Restoring a calendar while viewing
+   Archived is published as an *addition*, when the net effect is that the calendar
+   leaves the list. The naive fold appended it, and the calendar stayed visible in
+   Archived while being un-archived in storage. Caught by a test that ran to its 2s
+   `waitUntil` timeout instead of failing outright; the assertion for it was also missing
+   and had to be added. Both the fold and the test are mutation-verified.
+3. **`CalendarStore.updateCalendar` writes field by field, never whole-value.**
+   `PinCalendar` carries no event graph, so mapping one back onto the DTO wholesale
+   writes an empty `eventBatches` and deletes real data. The DTO is re-read and only the
+   five management fields are touched. Mutation-verified: a whole-value overwrite turns
+   `batches.count` from 1 into 0.
+
+The test fake had to change shape too. The old tests stood up a real `CalendarCache` over
+an in-memory repository, which is no longer reachable — only the app target implements
+the port over a cache. They now use an in-memory `CalendarManaging`, and the coverage of
+the two layers underneath did not disappear, it moved to
+`CorePersistenceTests/CalendarCacheIntegrationTests` and `PinCalAppTests/CalendarStoreTests`.
+Keeping the fan-out shape in the fake reproduced a trap it has no defence against: a
+change yielded to a subscriber that has not started iterating yet is **dropped**, with no
+replay to recover it. The view model subscribes in `init`, so a test that writes in the
+same instant it constructs one is testing scheduler luck. Hence `waitForSubscribers()`,
+which every fixture awaits.
+
 | 5 | **`SingleCalendarFeature` UDF types.** `PCEventSelectionState`/`Stage`/`NavigationRequest`, `Action`, the reducer and the effect derivation, plus `PCCalendarMarkerProjector`. No caller wired yet. | 229 / 29, plus the new reducer suites |
 | 6 | **The store.** `PCEventSelectionManager` beside the old manager: `send`, projection, `perform`, `writeChain`; injected via `.environment`. `AppNavigation`: `pop()`, payload-free push routes, `BatchEditorSource`/`EventEditorSource` deleted. | 229 / 29, plus store suites |
 | 7 | **`DSKit`.** `onDayTapped` on `PCCalendarDaySelectionManager`; `Equatable`/`Hashable` on `PCColorOption`. Stop every screen observing `selectedDays`; dispatch from `onDayTapped` instead. | 229 / 29 |
@@ -1554,7 +1603,7 @@ like-for-like.
 | Risk | Mitigation |
 |---|---|
 | Stage 3 touches the data layer, where user data lives | No schema change (§3.3), so there is no migration and no write of a new format. `CalendarCacheIntegrationTests` (16) plus `SingleCalendarModelObjectBoxIntegrationTests` (19) must stay green unchanged. |
-| Stage 4 is wide but shallow — four modules retyped at once | Split if needed into 4a (`CorePersistence` consumers) and 4b (app root). Neither needs new tests. |
+| Stage 4 is wide but shallow — four modules retyped at once | Split, as done: 4a for the `AsyncStream` migration across `CorePersistence` consumers, 4b for the calendar list. The "neither needs new tests" half of this was wrong and cost real time — 4b's change in the port's shape surfaced three defects (the self-echoing load, the mode-blind change fold, the whole-value `updateCalendar`) that only new tests could catch. A stage that changes a port's contract needs tests written against the new contract, not just retyped ones. |
 | Stage 8 is large: five views rewritten, four models deleted | Split into 8a (event list + event editor) and 8b (batch editor + day list) if review warrants. Each half is independently reviewable; neither needs new tests. |
 | Removing the `selectedDays` observation changes tap behaviour on the main calendar | Stage 7 lands the callback and the dispatch together, behind the existing manager and selection-mode tests, before any view is rewritten. |
 | The duplicate-batch bug reappears through a path the tests miss | The adoption logic is one pure function in `syncCalendar` with one regression test, instead of a dictionary mutated from two call sites. |

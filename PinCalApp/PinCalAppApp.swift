@@ -3,6 +3,7 @@ import CorePersistence
 import CoreDomain
 import DSKit
 import SingleCalendarFeature
+import CalendarListFeature
 
 @main
 struct PinCalAppApp: App {
@@ -13,6 +14,11 @@ struct PinCalAppApp: App {
     /// injected as a SwiftUI environment *object* — that requires `Observable`, and
     /// `@Observable` cannot be applied to an actor.
     private let cache: CalendarCache
+    /// The same `CalendarStore` the session was built with, re-typed as the calendar
+    /// list's port. One instance, so the list and the session share one cache and one
+    /// change feed; injecting a second store would mean two independent subscriptions to
+    /// the same actor.
+    private let managing: any CalendarManaging
 
     init() {
         #if os(iOS)
@@ -25,10 +31,12 @@ struct PinCalAppApp: App {
         //
         // `CorePersistence` and `CoreDomain` do not depend on each other, so
         // `CalendarStore` — the one type that carries a cache and satisfies the domain
-        // port — is built here and handed to the session, rather than the session
+        // ports — is built here and handed to the session, rather than the session
         // building it for itself.
         let cache = CalendarCache(repository: CalendarRepositoryFactory.makeDefault())
         self.cache = cache
+        let store = CalendarStore(cache: cache)
+        self.managing = store
         let dataProvider = PCCalendarDataProvider()
         let columnCountResolver = PCCalendarSession.makeColumnCountResolver()
         let daySelectionManager = PCCalendarDaySelectionManager()
@@ -40,7 +48,7 @@ struct PinCalAppApp: App {
         )
         _session = State(
             initialValue: PCCalendarSession(
-                persistence: CalendarStore(cache: cache),
+                persistence: store,
                 dataProvider: dataProvider,
                 columnCountResolver: columnCountResolver,
                 daySelectionManager: daySelectionManager,
@@ -54,6 +62,7 @@ struct PinCalAppApp: App {
             RootView()
                 .environment(session)
                 .environment(\.calendarCache, cache)
+                .environment(\.calendarManaging, managing)
         }
     }
 }

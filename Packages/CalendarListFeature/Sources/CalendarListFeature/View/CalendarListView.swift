@@ -1,9 +1,9 @@
 import SwiftUI
-import CorePersistence
+import CoreDomain
 import DSKit
 
 public struct CalendarListView: View {
-    @Environment(\.calendarCache) private var cache
+    @Environment(\.calendarManaging) private var managing
     @State private var viewModel: CalendarListViewModel?
     @State private var isAddSheetPresented = false
     public var selectedCalendarID: Int64?
@@ -30,8 +30,8 @@ public struct CalendarListView: View {
         }
         .task {
             if viewModel == nil {
-                guard let cache else { return }
-                viewModel = CalendarListViewModel(mode: mode, cache: cache)
+                guard let managing else { return }
+                viewModel = CalendarListViewModel(mode: mode, managing: managing)
             }
             await viewModel?.fetch()
         }

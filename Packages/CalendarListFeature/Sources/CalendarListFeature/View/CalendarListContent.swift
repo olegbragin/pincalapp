@@ -1,17 +1,17 @@
 import SwiftUI
-import CorePersistence
+import CoreDomain
 import DSKit
 
 public struct CalendarListContent: View {
     @State private var focusedCardID: Int64?
 
-    public var calendars: [CalendarDataSource]
+    public var calendars: [PinCalendar]
     public var displayMode: DisplayMode
     public var isArchived: Bool
-    public var cardViewModelFactory: (CalendarDataSource) -> PCCalendarCardViewModel
-    public var onCalendarDelete: (CalendarDataSource) -> Void
-    public var onCalendarRestore: (CalendarDataSource) -> Void
-    public var onCalendarPermanentDelete: (CalendarDataSource) -> Void
+    public var cardViewModelFactory: (PinCalendar) -> PCCalendarCardViewModel
+    public var onCalendarDelete: (PinCalendar) -> Void
+    public var onCalendarRestore: (PinCalendar) -> Void
+    public var onCalendarPermanentDelete: (PinCalendar) -> Void
     /// `@Sendable` because the pull-to-refresh gesture fires it from a `Task` that
     /// `PCSafeRefreshableModifier` owns.
     public var onRefresh: @Sendable () async -> Void
@@ -19,13 +19,13 @@ public struct CalendarListContent: View {
     public var onSelectCalendar: (Int64) -> Void = { _ in }
 
     public init(
-        calendars: [CalendarDataSource],
+        calendars: [PinCalendar],
         displayMode: DisplayMode,
         isArchived: Bool,
-        cardViewModelFactory: @escaping (CalendarDataSource) -> PCCalendarCardViewModel,
-        onCalendarDelete: @escaping (CalendarDataSource) -> Void,
-        onCalendarRestore: @escaping (CalendarDataSource) -> Void,
-        onCalendarPermanentDelete: @escaping (CalendarDataSource) -> Void,
+        cardViewModelFactory: @escaping (PinCalendar) -> PCCalendarCardViewModel,
+        onCalendarDelete: @escaping (PinCalendar) -> Void,
+        onCalendarRestore: @escaping (PinCalendar) -> Void,
+        onCalendarPermanentDelete: @escaping (PinCalendar) -> Void,
         onRefresh: @escaping @Sendable () async -> Void,
         selectedCalendarID: Int64? = nil,
         onSelectCalendar: @escaping (Int64) -> Void = { _ in }
@@ -130,8 +130,8 @@ public struct CalendarListContent: View {
 #Preview("With Calendars") {
     CalendarListContent(
         calendars: [
-            CalendarDataSource(id: 1, name: "My Calendar", year: 2026, numberOfColumns: 3),
-            CalendarDataSource(id: 2, name: "Work", year: 2026, numberOfColumns: 2)
+            PinCalendar(id: 1, name: "My Calendar", year: 2026, numberOfColumns: 3),
+            PinCalendar(id: 2, name: "Work", year: 2026, numberOfColumns: 2)
         ],
         displayMode: .grid,
         isArchived: false,

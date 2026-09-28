@@ -1,4 +1,4 @@
-import CorePersistence
+import CoreDomain
 //
 //  AddEditCalendarViewModel.swift
 //  USkateAppV2
@@ -12,11 +12,11 @@ import Observation
 public final class AddEditCalendarViewModel {
     var id: Int64 = 0
     var label: String = ""
-    var calendar: CalendarDataSource?
-    
+    var calendar: PinCalendar?
+
     func save() -> Bool {
         guard !label.isEmpty else { return false }
-        calendar = CalendarDataSource(id: id, name: label, year: 2026, numberOfColumns: 1)
+        calendar = PinCalendar(id: id, name: label, year: 2026, numberOfColumns: 1)
         return true
     }
     

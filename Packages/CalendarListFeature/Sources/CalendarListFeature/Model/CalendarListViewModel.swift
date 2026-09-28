@@ -8,7 +8,7 @@
 import Observation
 import Foundation
 import SwiftUI
-import CorePersistence
+import CoreDomain
 import DSKit
 
 public enum CalendarListMode {
@@ -45,17 +45,17 @@ public enum DisplayMode: String, CaseIterable {
 @MainActor
 @Observable
 public final class CalendarListViewModel {
-    private let cache: CalendarCache
+    private let managing: any CalendarManaging
     let mode: CalendarListMode
 
-    var calendars: [CalendarDataSource] = []
+    var calendars: [PinCalendar] = []
     var displayMode: DisplayMode = .list
 
     var addEditCalendarViewModel = AddEditCalendarViewModel()
     var isLoading = true
 
     /// Calendar awaiting the archive timeout; nil when no toast is pending.
-    var pendingArchive: CalendarDataSource?
+    var pendingArchive: PinCalendar?
     var isArchiveToastPresented = false
     var archiveToastMessage = ""
     var archiveToastProgress: Double { archiveCountdown.progress }
@@ -78,21 +78,21 @@ public final class CalendarListViewModel {
         return "\(version) (\(build))"
     }
 
-    public init(mode: CalendarListMode = .active, cache: CalendarCache) {
+    public init(mode: CalendarListMode = .active, managing: any CalendarManaging) {
         self.mode = mode
-        self.cache = cache
+        self.managing = managing
         archiveCountdown.onComplete = { [weak self] in
             self?.undoWindowElapsed()
         }
         changesTask = Task { [weak self] in
-            for await operation in await cache.changes() {
+            for await operation in await managing.changes() {
                 guard let self else { return }
                 self.applyChange(operation)
             }
         }
     }
 
-    func cardViewModel(for calendar: CalendarDataSource) -> PCCalendarCardViewModel {
+    func cardViewModel(for calendar: PinCalendar) -> PCCalendarCardViewModel {
         if let existing = cardViewModels[calendar.id] {
             existing.name = calendar.name
             existing.numberOfColumns = calendar.numberOfColumns
@@ -118,42 +118,43 @@ public final class CalendarListViewModel {
         return vm
     }
 
-    /// Loads the list and reads the result back.
+    /// Loads the list and reads the result directly.
     ///
-    /// It does not wait for the `.refresh` broadcast that `loadActive`/`loadArchived`
-    /// just sent. The change feed is a push channel with no replay, and this view
-    /// model's subscription may not be live yet, so a first paint that awaited its own
-    /// echo would intermittently come up empty. The feed still earns its place: it
-    /// carries writes made elsewhere, which arrive long after this subscription is
-    /// established.
+    /// It does not wait for the `.refreshed` change the load just published. The change
+    /// feed is a push channel with no replay, and this view model's subscription may not
+    /// be live yet, so a first paint that awaited its own echo would intermittently come
+    /// up empty — the bug that shape of API used to invite. `loadActive`/`loadArchived`
+    /// hand back what they loaded, so there is nothing to wait for.
+    ///
+    /// The feed still earns its place: it carries writes made elsewhere, which arrive
+    /// long after this subscription is established.
     func fetch() async {
         isLoading = true
         defer { isLoading = false }
         switch mode {
-        case .active: await cache.loadActive()
-        case .archived: await cache.loadArchived()
+        case .active: calendars = await managing.loadActive()
+        case .archived: calendars = await managing.loadArchived()
         }
-        calendars = await cache.loadedCalendars()
     }
 
     func addCalendar(with name: String) {
         isLoading = true
         Task { [weak self] in
             guard let self else { return }
-            _ = try? await self.cache.createCalendar(name: name, year: 2026, numberOfColumns: 3)
+            _ = try? await self.managing.createCalendar(name: name, year: 2026, numberOfColumns: 3)
             self.isLoading = false
         }
     }
 
     /// Archives the calendar immediately and shows an undo toast. The toast's
     /// progress bar is the 5s window during which the user can undo.
-    func archiveCalendarInList(_ calendar: CalendarDataSource) {
+    func archiveCalendarInList(_ calendar: PinCalendar) {
         pendingArchive = calendar
         archiveToastMessage = "\(calendar.name) archived"
         isArchiveToastPresented = true
         archiveCountdown.start()
         Task { [weak self] in
-            try? await self?.cache.archiveCalendar(calendar)
+            try? await self?.managing.archiveCalendar(id: calendar.id)
         }
     }
 
@@ -172,21 +173,24 @@ public final class CalendarListViewModel {
         pendingArchive = nil
         isArchiveToastPresented = false
         archiveCountdown.cancel()
+        // No re-read here. The restore publishes a change that `applyChange` folds in,
+        // and this runs in the active list, where the restored calendar is visible. An
+        // extra `loadActive()` would only discard its own result while also refreshing
+        // the store's notion of which list is current.
         Task { [weak self] in
-            try? await self?.cache.restoreCalendar(calendar)
-            await self?.cache.loadActive()
+            try? await self?.managing.restoreCalendar(id: calendar.id)
         }
     }
 
-    func restoreCalendarInList(_ calendar: CalendarDataSource) {
+    func restoreCalendarInList(_ calendar: PinCalendar) {
         Task { [weak self] in
-            try? await self?.cache.restoreCalendar(calendar)
+            try? await self?.managing.restoreCalendar(id: calendar.id)
         }
     }
 
-    func permanentlyDeleteCalendar(_ calendar: CalendarDataSource) {
+    func permanentlyDeleteCalendar(_ calendar: PinCalendar) {
         Task { [weak self] in
-            try? await self?.cache.permanentlyDeleteCalendar(calendar)
+            try? await self?.managing.permanentlyDeleteCalendar(id: calendar.id)
         }
     }
 
@@ -199,31 +203,52 @@ public final class CalendarListViewModel {
             guard let self else { return }
             if var cal = self.calendars.first(where: { $0.id == id }) {
                 cal.name = newName
-                try? await self.cache.updateCalendar(cal)
+                try? await self.managing.updateCalendar(cal)
             }
         }
     }
 
-    private func applyChange(_ operation: ChangeOperation) {
-        switch operation {
-        case .refresh(let calendars):
+    /// Folds one change into the visible list.
+    ///
+    /// A store emits changes relative to *its own* current list, which is whichever
+    /// active-or-archived set was loaded last — and that is not necessarily this view
+    /// model's `mode`. Two cases make that visible: restoring a calendar while viewing
+    /// Archived is reported as an addition, even though the result is that the calendar
+    /// leaves this list; and a refresh can carry the other mode's contents. So instead
+    /// of trusting the operation's shape, every change is resolved against `mode`:
+    /// if the calendar belongs in the visible set it is upserted, otherwise it is taken
+    /// out. That makes the view model correct against any store, and independent of
+    /// which list the store happened to have loaded.
+    private func applyChange(_ change: PinCalendarChange) {
+        switch change {
+        case .refreshed(let list):
             withAnimation(.spring(response: 0.4, dampingFraction: 0.75)) {
-                self.calendars = calendars
+                calendars = list.filter(isVisible)
             }
-        case .add(let item):
+        case .added(let item), .changed(let item):
             withAnimation(.spring(response: 0.4, dampingFraction: 0.75)) {
-                calendars.append(item)
+                if isVisible(item) {
+                    if let idx = calendars.firstIndex(where: { $0.id == item.id }) {
+                        calendars[idx] = item
+                    } else {
+                        calendars.append(item)
+                    }
+                } else {
+                    calendars.removeAll { $0.id == item.id }
+                }
             }
-        case .delete(let item):
+        case .removed(let item):
             withAnimation(.spring(response: 0.4, dampingFraction: 0.75)) {
                 calendars.removeAll { $0.id == item.id }
             }
-        case .change(let item):
-            withAnimation(.spring(response: 0.4, dampingFraction: 0.75)) {
-                if let idx = calendars.firstIndex(where: { $0.id == item.id }) {
-                    calendars[idx] = item
-                }
-            }
+        }
+    }
+
+    /// Whether a calendar belongs in the list this view model is showing.
+    private func isVisible(_ calendar: PinCalendar) -> Bool {
+        switch mode {
+        case .active: return !calendar.isArchived
+        case .archived: return calendar.isArchived
         }
     }
 }
