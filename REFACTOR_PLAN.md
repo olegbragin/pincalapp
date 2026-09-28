@@ -1,663 +1,1405 @@
-# Refactor Plan: PinCal Architecture Cleanup & Single-Batch Assembler
+# Refactor Plan: Batch Assembly as a Unidirectional Pipeline
 
-## Overview
-
-Combined three-part refactor addressing: (1) naming clarity, (2) value-type view models (SF*), and (3) single-batch assembler pattern for `PCEventsSelectionManager`. Follows Swift conventions (protocol-oriented, value types, no `I*` prefixes).
+> **Status:** proposed. Stage 0 is complete. No refactoring code has been written.
+>
+> **Scope:** `Packages/CoreDomain`, `Packages/CorePersistence`,
+> `Packages/CalendarListFeature`, `Packages/SingleCalendarFeature`, plus the
+> additive changes in `Packages/DSKit` and `Packages/AppNavigation` they need.
+>
+> **Five requirements this plan is written against:**
+>
+> 1. Rename `AddEditListView` / `AddEditListViewModel` to
+>    `AddEditEventListView` / `AddEditEventListViewModel`.
+> 2. Refactor `PCEventsSelectionManager` into `PCEventSelectionManager` and make it
+>    the **only** channel through which the AddEdit flow talks. It behaves like an
+>    assembly line: enter from a view or from an existing batch, edit the batch,
+>    edit its event list, edit an event, and commit/save from any stage.
+> 3. Adopt [Unidirectional flow in Swift](https://swiftwithmajid.com/2023/07/11/unidirectional-flow-in-swift/)
+>    for every view involved in batch assembly: views read state and send actions,
+>    never mutate.
+> 4. Keep the `*DataSource` structs at the data level — inside the cache or the
+>    repository, nowhere else. `PCEventSelectionManager` speaks `CalendarEventBatch` and
+>    `CalendarEvent`, so all communication is in types the app defines.
+> 5. Record a full baseline including the UI suite before starting, and hold every
+>    stage to it. See `TEST_BASELINE.md`.
+>
+> **Naming note:** requirement 2 spells the new type `PCEventSelctionManager`.
+> This plan uses the correctly spelled `PCEventSelectionManager`. Say the word if
+> the typo is intentional. This type is the "assembler" the rest of this document
+> refers to; if you would rather name it for what it does, `PCEventBatchAssembler`
+> is the obvious alternative and renaming it now is free.
+>
+> **Naming note 2:** the domain models are `CalendarEvent` and `CalendarEventBatch`,
+> not `SFEvent` / `SFEventBatch`. The `SF` prefix stood for `SingleCalendarFeature`,
+> which they no longer live in (§3). The calendar itself is `PinCalendar`, not
+> `SCCalendar` and not `Calendar` — a type named `Calendar` in a module that also
+> imports `Foundation` shadows `Foundation.Calendar` in every file that sees both,
+> and this one holds a `Calendar` in `PCDayCalendar`.
 
 ---
 
-## 1. Rename & Semantic Alignment
+## 1. Naming
 
-### Files to Rename
 | Old | New |
-|-----|-----|
-| `AddEditListView.swift` | `AddEditEventListView.swift` |
-| `AddEditListViewModel.swift` | `AddEditEventListViewModel.swift` |
+|---|---|
+| `AddEditListView` | `AddEditEventListView` |
+| `AddEditListViewModel` | `AddEditEventListViewModel` (kept — see §8.1) |
+| `PCEventsSelectionManager` | `PCEventSelectionManager` |
+| `CalendarDataSource` | `PinCalendar`, moves to `CoreDomain`, becomes a domain model |
+| `AddEditEventBatchListView` | unchanged |
+| `AddEditEventBatchScreen` | unchanged |
+| `AddEditEventBatchView` | unchanged |
+| `AddEditEventView` | unchanged |
+| `BatchEditor*Layout` / `BatchEditor*Title` | unchanged |
 
-### References to Update
-- `AddEditEventBatchView.swift` (line 42)
-- All internal references to `AddEditListView`/`AddEditListViewModel`
-- Test files: `AddEditListViewModelTests.swift`, `EventBatchCreationTests.swift`
+A `typealias` shim for the two `AddEditList*` names is added in Stage 1 and removed
+in Stage 8, so no intermediate branch depends on a broken reference.
 
-### Compatibility Shim
-```swift
-// Temporary — remove after full migration
-typealias AddEditListView = AddEditEventListView
-typealias AddEditListViewModel = AddEditEventListViewModel
+### 1.1 Types that go away
+
+| Type | Disposition | Stage | Reason |
+|---|---|---|---|
+| `EventDataSource`, `EventBatchDataSource` | internal to `CorePersistence` | 3 | Requirement 4 |
+| `CalendarDataSource` | replaced by `PinCalendar` | 2, 4 | Requirement 4 |
+| `onEventsChanged` / `onEventApplied` closures | deleted | 10 | Last-writer-wins clobbering; replaced by `Action` |
+| `BatchEditorSource`, `EventEditorSource` | deleted | 6 | Route payloads move into store state |
+| `BatchMergeKey.unsaved(Int)` | deleted | 5 | `hashValue` is not a stable identity |
+| `persistedIDsByPendingTimestamp` | deleted | 5 | Replaced by `CalendarEventBatch.persistedID` |
+| `SFBatchMapper` in the feature package | deleted | 3 | Mapping belongs in the data layer |
+
+**The four view models are kept.** They become stateless projection facades over the
+assembler (§8.1) — views still talk to a view model, never to the store directly.
+Net across the four: **-484 lines of view-model code** (244 + 76 + 89 + 75) replaced
+by roughly 200 lines of projection, plus **-3 public DTO types** and **+~700 of
+state/action/reducer/effect**. Four independent copies of "pending batch state"
+collapse into one value.
+
+---
+
+## 2. The assembly line
+
+The store owns a `Stage`. Every user action is an `Action`; the reducer is the
+only thing that moves `Stage` forward or back.
+
+```
+                      tap day in SingleCalendarView
+                                  │  .dayTappedInCalendar
+                                  ▼
+                  ┌───────────────────────────────┐
+                  │  day has batches?              │
+                  └───┬───────────────────────┬───┘
+                 no  │                       │ yes
+                      ▼                       ▼
+            ┌──────────────────┐    ┌──────────────────────┐
+            │  .batchEditor    │◀───│     .dayList(day)    │
+            │                  │    │  AddEditEventBatch…  │
+            │ name field       │    │  · tap card → editor │
+            │ color picker     │    │  · "+" → editor      │
+            │ day calendar     │    │  · trash → commit    │
+            │ event list       │    └──────────────────────┘
+            │ toolbar Commit   │
+            │ toolbar Save     │
+            └────────┬─────────┘
+                     │ tap event row → .openEvent
+                     ▼
+            ┌──────────────────────┐
+            │  .eventEditor       │
+            │  date / name/color  │
+            │  Commit  Discard    │
+            └──────────────────────┘
+
+  Save from .batchEditor / .eventEditor → commit + pop one level
+  Save from .dayList                   → commit (no-op) + pop to root
+  Removing every event + Save          → commit deletes the batch, pop to root
+  Cancel from any stage                → discard the assembly, pop to root
 ```
 
+Entry points, all reachable from whichever screen owns the interaction:
+
+| Entry | Action | Where it is triggered |
+|---|---|---|
+| From a view (day tap) | `dayTappedInCalendar(_:)` | `SingleCalendarView` calendar |
+| From a view (new batch on an existing day) | `startNewBatch(on:)` | `AddEditEventBatchListView` "+" button |
+| From an existing batch grabbed off the tapped day | `openBatch(pendingID:)` | `AddEditEventBatchListView` card tap |
+| From a multi-select session | `confirmMultiSelectTapped` | `SingleCalendarView` toolbar |
+
+`openBatch(pendingID:)` resolves the batch out of `state.batches`; the day the user
+tapped is already `state.day`, so the batch is *grabbed from the tapped day*, as
+required.
+
 ---
 
-## 2. SF* Value-Type View Model Wrappers
+## 3. Module boundaries and the data layer
 
-### New Files
-| File | Purpose |
-|------|---------|
-| `SFEvent.swift` | View-model struct wrapper over `EventDataSource` |
-| `SFEventBatch.swift` | View-model struct wrapper over `EventBatchDataSource` |
+This is requirement 4, and it is the change that makes requirement 2 enforceable.
 
-### Design: Value Types, Not `@Observable`
+### 3.1 Target dependency graph
+
+```
+  ObjectBox  ──  PP* entities (PPCalendar, PPEventBatch, PPEvent)
+                  internal to CorePersistence, never referenced above it
+                          │
+  CorePersistence ─────────┼────  *DataSource structs
+  (persistence)            │      EventDataSource, EventBatchDataSource,
+                           │      CalendarDataSource  —  all internal
+                           ▼
+                   ObjectBoxCalendarStorage      CalendarRepository (protocol)
+                           └──────────┬──────────────┘
+                                      ▼
+                                 CalendarCache      ◄── the data edge
+                                      │                 (maps PP* ⇄ domain models)
+                                      │  PinCalendar / [CalendarEventBatch] in
+                                      │  numberOfColumns + [CalendarEventBatch] in
+                                      ▼
+  CoreDomain ────────────────────────────────────────────
+  (domain)     PinCalendar, CalendarEventBatch, CalendarEvent, PCDayCalendar,
+               PCCalendarDataProvider, PCCalendar*DataSource,
+               protocol CalendarPersisting
+                                      ▲
+                                      │
+  SingleCalendarFeature ──────────────┘
+  (feature)    PCEventSelectionManager + State/Action/Reducer/Effects
+               SingleCalendarModel, all AddEdit* views
+                                      ▲
+                                      │
+  DSKit (design system) ──────────────┘   PCCalendarYearModel, PCColorOption, …
+```
+
+### 3.2 The rule
+
+> `PP*` entities and `CorePersistence/DataSource/*` never appear above the
+> `CalendarCache` API. Everything above it speaks the domain models and `CoreDomain` value
+> types only. Concretely: no file in `SingleCalendarFeature/Model/` and no file in
+> `SingleCalendarFeature/View/` imports `CorePersistence`.
+
+The manager's persistence dependency is the `CalendarPersisting` protocol, declared
+in `CoreDomain`. The concrete `CalendarCache` is named exactly once, at the app root
+in `PCCalendarSession`, which already imports `CorePersistence`.
+
 ```swift
-// SFEvent.swift (in SingleCalendarFeature/Model/)
-public struct SFEvent: Identifiable, Hashable, Sendable {
-    public let id: Int64
-    public var name: String { didSet { /* placeholder sync if needed */ } }
-    public var color: String
-    public var date: Date
-    public let timestamp: UUID?
-    
-    // Default name for newly created events (e.g., via toggleDay in BatchAssembler)
-    static let defaultNewEventName = "New event"
-    
-    // Derived/computed properties for views
-    var formattedTime: String { date.formatted(date: .omitted, time: .shortened) }
-    var isEdited: Bool { id != 0 }
-    
-    init(from source: EventDataSource) {
-        self.id = source.id
-        self.name = source.name
-        self.color = source.color
-        self.date = source.date
-        self.timestamp = source.timestamp
-    }
-    
-    // Convenience init for new events — sets name to "New event" placeholder
-    init(newEventAt date: Date, color: String = "") {
-        self.id = 0
-        self.name = SFEvent.defaultNewEventName
-        self.color = color
-        self.date = date
-        self.timestamp = UUID()
-    }
-    
-    func toDataSource() -> EventDataSource {
-        EventDataSource(id: id, name: name, date: date, color: color, timestamp: timestamp)
-    }
+// CoreDomain
+public protocol CalendarPersisting: Sendable {
+    /// Reads the calendar and its batches, mapped into domain models.
+    func calendar(id: Int64) async throws -> PinCalendar?
+    /// Writes the batch list and column count. The store assigns ids; the caller
+    /// never supplies one.
+    func save(numberOfColumns: Int, eventBatches: [CalendarEventBatch], forCalendar id: Int64) async throws
 }
+```
 
-// SFEventBatch.swift (in SingleCalendarFeature/Model/)
-public struct SFEventBatch: Identifiable, Hashable, Sendable {
-    public let id: Int64
+Two methods, deliberately. The `CalendarCache.changes` stream stays off the protocol:
+the manager does not consume it, and `SingleCalendarModel` keeps its existing Combine
+subscription to the concrete `CalendarCache` for calendar metadata, exactly as today.
+
+This also gives tests an in-memory `CalendarPersisting` fake, which is what the
+write-ordering test in §12.3 needs.
+
+### 3.3 ObjectBox safety: no migration
+
+`PPCalendar.eventBatches` is `ToMany<PPEventBatch>` — an ObjectBox relation, **not**
+`[EventBatchDataSource]`. The `*DataSource` structs are plain Swift projections of
+the `PP*` entities, not entities themselves. So making them internal, and
+retargeting `CalendarCache` at the domain models, changes:
+
+- **not** the ObjectBox schema,
+- **not** `EntityInfo-CorePersistence.generated.swift`,
+- **not** `model-CorePersistence.json`,
+- **not** any stored row.
+
+The `GenerateObjectBox` codegen does not need to re-run and no store migration is
+required. User data on device is untouched. This is the fact that makes requirement
+4 cheap, and it is the reason the plan does not add a migration stage.
+
+### 3.4 Mapping lives in the data layer
+
+```swift
+// CorePersistence/Internal/PPMapping.swift — the only PP* ⇄ domain bridge
+enum PPMapping {
+    static func event(_ dto: PPEvent) -> CalendarEvent
+    static func eventBatch(_ dto: PPEventBatch, events: [PPEvent]) -> CalendarEventBatch
+    static func calendar(_ dto: PPCalendar) -> PinCalendar
+    static func apply(_ batches: [CalendarEventBatch], to entity: PPCalendar) throws
+}
+```
+
+DTO → domain assigns a fresh `pendingID` per row and copies the entity id into
+`persistedID`. Domain → DTO writes `persistedID ?? 0`, so ObjectBox sees `0` for a
+new row and auto-assigns, and an existing id for an update. `persistedID` is only
+ever copied from a row the store returned; nothing fabricates one.
+
+Two small corrections land in the same stage, both safe because the DTOs are
+internal:
+
+- `EventDataSource.timestamp` is deleted. Both DTO initialisers hard-set it to
+  `nil`, so it is a session identity that has never been persisted. Its replacement
+  is `CalendarEvent.pendingID`, which is what the identity logic in §5 actually uses.
+- `PPEvent.init` assigns `self.id` twice — once behind an `if id > 0` guard and once
+  unconditionally. Harmless today because `ObjectBox.Id` is `UInt64`, but it
+  contradicts the guard next to it and the identical code in `PPCalendar.init` and
+  `PPEventBatch.init`. The guard is kept, the stray assignment is removed.
+
+---
+
+## 4. File layout
+
+```
+Packages/CoreDomain/Sources/CoreDomain/          [no dependencies]
+  PinCalendar.swift                                # was CalendarDataSource
+  CalendarEventBatch.swift
+  CalendarEvent.swift
+  PCDayCalendar.swift
+  CalendarPersisting.swift                        # the data-layer port
+  PCCalendarDataProvider.swift                    # unchanged
+  PCCalendar{Year,Month,Week,Day}DataSource.swift # unchanged, domain value types
+
+Packages/CorePersistence/Sources/CorePersistence/
+  DataSource/EventDataSource.swift                # internal
+  DataSource/EventBatchDataSource.swift           # internal
+  CalendarCache.swift                             # conforms to CalendarPersisting
+  CalendarRepository.swift                        # returns PinCalendar
+  ObjectBoxCalendarStorage.swift                  # maps PP* ⇄ domain models
+  Internal/PPMapping.swift                        # new, the only bridge
+  DataModels/PP{Calendar,EventBatch,Event}.swift  # unchanged entities
+  CalendarCacheEnvironment.swift                  # unchanged
+
+Packages/SingleCalendarFeature/Sources/SingleCalendarFeature/
+  Model/
+    Selection/
+      PCEventSelectionState.swift                 # State, Stage, NavigationRequest
+      PCEventSelectionAction.swift                # Action
+      PCEventSelectionReducer.swift               # pure reduce
+      PCEventSelectionEffects.swift               # pure effect derivation
+      PCEventSelectionManager.swift               # the Store
+      PCEventSelectionBindings.swift              # Binding helpers
+    PCCalendarModelBuilder.swift                  # unchanged
+    PCCalendarMarkerProjector.swift               # extracted from two copies
+    SingleCalendarModel.swift                     # slimmed
+  View/                                           # unchanged filenames except the rename
+  PCEventSelectionEnvironment.swift               # iOS 17 object environment
+```
+
+`Packages/DSKit` gets one additive change (§8.2). `Packages/AppNavigation` gets two
+(§8.3). `Packages/CalendarListFeature` gets a retype from `CalendarDataSource` to
+`PinCalendar` and nothing else.
+
+---
+
+## 5. Value types
+
+All four live in `CoreDomain`, so the data layer can produce them and the feature
+layer can consume them without either importing the other.
+
+### 5.1 `PCDayCalendar`
+
+The reducer needs date comparison and must stay pure, so the calendar it compares
+with is part of the value state rather than an injected service. It also removes the
+two competing day-equality implementations that exist today —
+`PCCalendarDataProvider.isSameDay`, and the bare `Calendar.autoupdatingCurrent`
+call in `AddEditEventBatchListViewModel.eventsForDay`.
+
+```swift
+public struct PCDayCalendar: Equatable {
+    public var calendar: Calendar
+
+    public init(calendar: Calendar = Calendar(identifier: .gregorian)) {
+        self.calendar = calendar
+    }
+
+    public func startOfDay(for date: Date) -> Date { calendar.startOfDay(for: date) }
+    public func isSameDay(_ lhs: Date, _ rhs: Date) -> Bool {
+        calendar.isDate(lhs, inSameDayAs: rhs)
+    }
+    public func month(of date: Date) -> Int { calendar.component(.month, from: date) }
+    public var currentYear: Int { calendar.component(.year, from: .now) }
+    public var numberOfCurrentMonth: Int { calendar.component(.month, from: .now) }
+}
+```
+
+Not marked `Sendable`: it holds a `Calendar`, and the whole pipeline stays on
+`MainActor`, so there is nothing to gain and a conformance to get wrong.
+
+### 5.2 `CalendarEvent`
+
+```swift
+public struct CalendarEvent: Identifiable, Hashable, Sendable {
+    /// Stable identity for the lifetime of the edit session. Never persisted.
+    public let pendingID: UUID
+    /// The store-assigned id, once known. `nil` until the batch is written.
+    public var persistedID: Int64?
+
+    public var name: String
+    public var date: Date
+    public var colorName: String
+    /// `date` normalised to the start of its day. Stored, not computed, so the
+    /// one-event-per-day rule is a plain lookup.
+    public let dayKey: Date
+
+    public var id: UUID { pendingID }
+    public var isPersisted: Bool { persistedID != nil }
+
+    public init(
+        pendingID: UUID = UUID(),
+        persistedID: Int64? = nil,
+        name: String = "",
+        date: Date,
+        dayKey: Date,
+        colorName: String = ""
+    ) { … }
+
+    public func with(name: String) -> CalendarEvent
+    public func with(date: Date, dayKey: Date) -> CalendarEvent
+    public func with(colorName: String) -> CalendarEvent
+    public func with(pendingID: UUID) -> CalendarEvent
+    public func with(persistedID: Int64?) -> CalendarEvent
+}
+```
+
+Why this shape:
+
+- **`pendingID` is the `Identifiable` id.** Every `ForEach` over batches and events
+  is unique by construction. The current code uses `id: Int64` with `0` meaning "not
+  saved yet", and `AddEditEventBatchListView` iterates with `id: \.self`; two staged
+  batches both carry `id == 0`. A UUID removes that failure mode without a sentinel.
+- **No `timestamp`.** It is a session identity that has never been persisted, so it
+  becomes `pendingID` and leaves the DTOs entirely (§3.4).
+- **No `OrderedSet`.** The invariant is *one event per day*, not *distinct values*.
+  An `OrderedSet<CalendarEvent>` would dedupe fully-equal events, which does not enforce
+  the day rule, and would silently drop a legitimate event that happened to be
+  equal. `events` stays an array sorted by `date`; the day rule lives in
+  `BatchAssembly.toggling(day:days:)` (§5.4). No new package dependency.
+
+### 5.3 `CalendarEventBatch`
+
+```swift
+public struct CalendarEventBatch: Identifiable, Hashable, Sendable {
+    public let pendingID: UUID
+    public var persistedID: Int64?
+
     public var name: String
     public var colorName: String
-    public var events: [SFEvent]
-    public var date: Date?
-    public let timestamp: UUID?
-    
-    // View-specific logic
-    var isEmpty: Bool { events.isEmpty }
-    var eventCount: Int { events.count }
-    var firstEventDate: Date? { events.map(\.date).min() }
-    
-    init(from source: EventBatchDataSource) {
-        self.id = source.id
-        self.name = source.name
-        self.colorName = source.colorName
-        self.events = source.events.map(SFEvent.init)
-        self.date = source.date
-        self.timestamp = source.timestamp
+    /// Always sorted ascending by `date`, at most one event per `dayKey`.
+    public var events: [CalendarEvent]
+
+    public var id: UUID { pendingID }
+    public var isPersisted: Bool { persistedID != nil }
+    public var isEmpty: Bool { events.isEmpty }
+
+    /// Identity for matching an assembly against a committed row. Never a hash.
+    public var mergeKey: EventBatchKey {
+        persistedID.map(EventBatchKey.persisted) ?? .pending(pendingID)
     }
-    
-    func toDataSource() -> EventBatchDataSource {
-        EventBatchDataSource(
-            id: id,
-            name: name,
-            colorName: colorName,
-            events: events.map(\.toDataSource),
-            date: date,
-            timestamp: timestamp
-        )
-    }
+
+    /// First event's day, or `nil` when the batch is empty.
+    public var date: Date? { events.first?.date }
+
+    public func occurs(on day: Date, days: PCDayCalendar) -> Bool
+    public func with(name: String) -> CalendarEventBatch
+    public func with(colorName: String, propagateToEvents: Bool) -> CalendarEventBatch
+    public func with(events: [CalendarEvent]) -> CalendarEventBatch
+    public func with(persistedID: Int64?) -> CalendarEventBatch
+    /// Identity-free comparison, used to recognise a staged batch among the rows
+    /// that came back from a reload.
+    public func hasSameContent(as other: CalendarEventBatch, days: PCDayCalendar) -> Bool
+}
+
+public enum EventBatchKey: Hashable, Sendable {
+    case persisted(Int64)
+    case pending(UUID)
 }
 ```
 
-### Migration Rules
-- `*DataSource` (CorePersistence) → Pure DTOs for persistence, serialization, network transfer
-- `SF*` (SingleCalendarFeature) → Value-type view models with UI logic, formatting, derived state
+`date` is **derived**, not stored. Today `AddEditEventBatchViewModel` holds a `date`
+that `toggleEvent` never updates when it adds a day, so a batch's own date drifts
+away from its events. Deriving it deletes that bug rather than documenting it.
 
-### Files to Update
-| File | Changes |
-|------|---------|
-| `AddEditEventListViewModel.swift` | Return `[SFEvent]` instead of `[EventDataSource]` |
-| `AddEditEventBatchListViewModel.swift` | Use `SFEventBatch` / `SFEvent` |
-| `AddEditEventBatchViewModel.swift` | Use `SFEventBatch` / `SFEvent` |
-| `AddEditEventViewModel.swift` | Use `SFEvent` |
-| `PCEventsSelectionManager.swift` | Internally use `SFEvent`/`SFEventBatch`, expose `*DataSource` for persistence boundary |
-| `SingleCalendarModel.swift` | Use `SFEvent`/`SFEventBatch` |
-| View files | Consume `SF*` types |
+### 5.4 `BatchAssembly`
+
+The unit of work on the line. Pure transformations, no store, no clock.
+
+```swift
+public struct BatchAssembly: Equatable {
+    public private(set) var batch: CalendarEventBatch
+    public private(set) var origin: Origin
+    /// Set when a reload revealed this assembly's batch already exists in the
+    /// store under a different id, so a later commit updates that row instead of
+    /// appending a duplicate.
+    public var adoptedPersistedID: Int64?
+
+    public enum Origin: Equatable {
+        case new
+        case existing(pendingID: UUID)
+    }
+
+    public var isNew: Bool { origin == .new }
+    public var canSave: Bool {
+        !batch.name.isEmpty && !batch.colorName.isEmpty && !batch.events.isEmpty
+    }
+
+    // Identity
+    public static func new(anchor: Date, colorName: String, days: PCDayCalendar) -> BatchAssembly
+    public static func existing(_ batch: CalendarEventBatch) -> BatchAssembly
+
+    // Transformations — each returns a new value
+    public func renaming(_ name: String) -> BatchAssembly
+    public func recoloring(_ color: PCColorOption?) -> BatchAssembly
+    /// Removes any event on `day`, then appends a fresh placeholder, so a day
+    /// never holds two events whichever way the toggle goes.
+    public func toggling(day: Date, days: PCDayCalendar) -> BatchAssembly
+    public func removingEvent(pendingID: UUID) -> BatchAssembly
+    /// Replaces by `pendingID`; otherwise, if the incoming event lands on a day
+    /// that already has one, replaces that event, so moving an event onto an
+    /// occupied day moves it rather than duplicating it. Otherwise appends.
+    public func applying(_ event: CalendarEvent, days: PCDayCalendar) -> BatchAssembly
+    public func adopting(persistedID: Int64?) -> BatchAssembly
+    /// The row to write, or `nil` when the batch has been emptied and must be
+    /// removed from the calendar.
+    public func resolved(against batches: [CalendarEventBatch]) -> CalendarEventBatch?
+}
+```
+
+Sorting is applied inside every transformation that can change ordering, so
+`events` is sorted by construction and no caller has to remember.
+
+`resolved(against:)` is the single home of the duplicate-batch logic. It replaces
+three separate mechanisms: `BatchMergeKey`, `persistedIDsByPendingTimestamp`, and
+`contentEquals`.
+
+`recoloring` takes `PCColorOption?`, which lives in `DSKit`, so `BatchAssembly` is
+placed in `SingleCalendarFeature`, not `CoreDomain`. Only `CalendarEvent`,
+`CalendarEventBatch`, `PinCalendar` and `PCDayCalendar` are domain types.
 
 ---
 
-## 3. PCEventsSelectionManager — Single-Batch Assembler with Protocol Abstractions
+## 6. The UDF layer
 
-### Current Violations (Prioritized)
-| Principle | Issue |
-|-----------|-------|
-| **SRP** | Manages events, batches, calendar (yearModel), day selection mode, persistence, color, merge logic |
-| **DIP** | Depends on concretions (`PCCalendarDataProvider`, `PCCalendarDaySelectionManager`, `CalendarCache`), not abstractions |
-| **LSP** | No abstraction — concrete types throughout |
-| **ISP** | Single giant interface; callers depend on methods they don't use |
+Modelled on the article: a store per feature holding one `State`, mutated only by
+`send(_:)`, with a pure `reduce`. `PCEventSelectionManager` is the specialisation
+of `Store<State, Action>` — which is why it is also the single communication
+channel.
 
-### Proposed Decomposition (CalendarModel Unchanged)
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│                PCEventsSelectionManager (Facade)            │
-│  - Composes EventStore, BatchStore, CalendarModel           │
-│  - Exposes single-batch assembler API                       │
-└──────────────┬──────────────────────────────────────────────┘
-               │
-   ┌─────────────▼─────────────┐      ┌─────────────────────┐
-   │        EventStore         │      │    BatchStore       │
-   │  (events, colors,        │      │  (batches, merge,   │
-   │   timestamps, isSameDay) │      │   persist)          │
-   └─────────────┬─────────────┘      └─────────────┬─────────┘
-                 │                            │
-        ┌────────▼────────┐          ┌────────▼────────┐
-        │   CalendarModel │          │   (registry)    │
-        │   yearModel,    │          │   batches,      │
-        │   day markers   │          │   persistedIDs  │
-        └─────────────────┘          └─────────────────┘
-```
-
-### New Protocols (`*able` Suffix, Swift Convention)
+### 6.1 State
 
 ```swift
-// In SingleCalendarFeature/Model/Protocols/
-protocol EventStoreable: AnyObject {
-    var events: [SFEvent] { get set }
-    var selectedColor: PCColorOption? { get set }
-    func prepare(with events: [SFEvent])
-    func add(_ event: SFEvent)
-    func remove(at indices: IndexSet)
-    func apply(_ event: SFEvent)
-    func setColor(_ color: PCColorOption?)
-    func isSameDay(_ event: SFEvent, _ date: Date) -> Bool
+public enum PCEventSelectionStage: Equatable {
+    case idle
+    case dayList(day: Date)
+    case batchEditor
+    case eventEditor(batchPendingID: UUID, eventPendingID: UUID)
 }
 
-protocol BatchStoreable: AnyObject {
-    var batches: [SFEventBatch] { get }
-    func commit(_ batch: SFEventBatch)
-    func delete(_ batches: [SFEventBatch])
-    func batch(withId: Int64) -> SFEventBatch?
-    func batches(for day: Date) -> [SFEventBatch]
+public struct NavigationRequest: Equatable {
+    public let id: Int
+    public enum Target: Equatable {
+        case pushDayList
+        case pushBatchEditor
+        case pushEventEditor
+        case pop
+        case popToCalendarRoot
+    }
+    public let target: Target
+}
+
+public struct PCEventSelectionState: Equatable {
+    // Assembly line
+    public var stage: PCEventSelectionStage = .idle
+    public var assembly: BatchAssembly?
+    /// The event under edit while `stage == .eventEditor`.
+    public var eventDraft: CalendarEvent?
+    /// The day the day-list is scoped to, and the anchor the assembly scrolls to.
+    public var day: Date?
+
+    // Committed registry — mirror of the persisted calendar
+    public var calendarID: Int64 = 0
+    public var batches: [CalendarEventBatch] = []
+
+    // Editor calendar
+    public var editorYear: Int?
+    public var numberOfColumns: Int = 3
+    public var scrollAnchor: Date?
+    /// Day-marker payload: start-of-day → colour names. The year model is
+    /// projected from this after every action, in place.
+    public var dayEventColors: [Date: [String]] = [:]
+
+    // Main-calendar multi-select session
+    public var multiSelectMode = false
+    public var multiSelectDays: [Date] = []
+    public var multiSelectColor: PCColorOption?
+
+    // Environment the reducer needs (§5.1)
+    public var days = PCDayCalendar()
+
+    // Intent
+    public var isDirty = false
+    public var didSave = false
+    public var navigationRequest: NavigationRequest?
+
+    // MARK: - Derivations
+    public var dayBatches: [CalendarEventBatch] {
+        guard let day else { return [] }
+        return batches
+            .filter { $0.occurs(on: day, days: days) }
+            .sorted { ($0.date ?? .distantPast) < ($1.date ?? .distantPast) }
+    }
+    public var canSave: Bool { assembly?.canSave ?? false }
 }
 ```
 
-### Implementation Classes (Conforming to Protocols)
+`PCCalendarYearModel` is a `@MainActor` class and cannot live in a value state. It
+stays a property of the store and is **projected** from `state` after each action
+(§7.3). Stated rather than hidden: the state is a pure value, the calendar is a
+render target derived from it.
 
-| Class | Responsibility |
-|-------|----------------|
-| `EventStore` | Event CRUD, color propagation, timestamp management, `isSameDay` |
-| `BatchStore` | Batch merge keys, persistence coordination, `persistedIDsByPendingTimestamp` |
-| `CalendarModel` | **Unchanged** — year model lifecycle, day markers, column count |
-| `PCEventsSelectionManager` | **Facade** composing `EventStore`, `BatchStore`, `CalendarModel` |
-
-### Dependency Injection (Protocols, Not Concretions)
+### 6.2 Action
 
 ```swift
-public init(
-    eventStore: EventStoreable = EventStore(),
-    batchStore: BatchStoreable = BatchStore(),
-    calendarModel: CalendarModel = CalendarModel(),
-    dataProvider: PCCalendarDataProvider = PCCalendarDataProvider(),
-    daySelectionManager: PCCalendarDaySelectionManager = PCCalendarDaySelectionManager(),
-    cache: CalendarCache? = nil
-)
+public enum PCEventSelectionAction: Equatable {
+    // Entry
+    case ensureAssemblyStarted
+    case dayTappedInCalendar(Date)
+    case startNewBatch(on: Date)
+    case openBatch(pendingID: UUID)
+    case confirmMultiSelectTapped
+
+    // Stage transitions
+    case backTapped
+    case closeTapped
+    case cancelTapped
+    case navigationRequestHandled
+
+    // Batch editor
+    case setBatchName(String)
+    case setBatchColor(PCColorOption?)
+    case toggleDay(Date)
+    case removeEvent(pendingID: UUID)
+
+    // Event editor
+    case openEvent(pendingID: UUID)
+    case setEventName(String)
+    case setEventDate(Date)
+    case setEventColor(PCColorOption?)
+
+    // Persistence
+    case commitTapped
+    case saveTapped
+    case saveEventTapped
+    case discardEventTapped
+    case deleteBatches([CalendarEventBatch])
+
+    // Main calendar
+    case setMultiSelectMode(Bool)
+    case setMultiSelectColor(PCColorOption?)
+    case cancelMultiSelectTapped
+    case setNumberOfColumns(Int)
+    case setEditorYear(Int)
+    case setScrollAnchor(Date?)
+
+    // External sync
+    case syncCalendar(calendarID: Int64, batches: [CalendarEventBatch])
+    case resetSession
+}
 ```
 
-### New Public API (Assembler Facade)
+### 6.3 Reducer
+
+A free function. No `self`, no clock, no I/O.
 
 ```swift
-// MARK: - Assembly Lifecycle
-
-/// Start assembling a brand new batch.
-func startNewBatch() {
-    currentBatch = BatchAssembly(source: .new())
-    daySelectionManager.selectionMode = .multiple
-    daySelectionManager.selectedDays = []
-    setupCalendar()
-}
-
-/// Start assembling by editing an existing batch.
-func startEditingBatch(_ batch: SFEventBatch) {
-    currentBatch = BatchAssembly(
-        events: batch.events.map { $0 },  // copy
-        color: batch.colorName.isEmpty ? nil : PCColorOption(batch.colorName),
-        source: .existing(batch),
-        originalBatch: nil  // or converted from EventBatchDataSource
-    )
-    daySelectionManager.selectionMode = .multiple
-    daySelectionManager.selectedDays = Set(batch.events.map(\.date))
-    setupCalendar()
-}
-
-/// Finish assembly — returns the assembled batch ready for commit.
-func finishBatch() -> SFEventBatch? {
-    guard var assembly = currentBatch else { return nil }
-    let batch = assembly.toSFBatch()
-    currentBatch = nil
-    daySelectionManager.selectionMode = .single
-    return batch
-}
-
-/// Discard assembly without committing.
-func cancelBatch() {
-    currentBatch = nil
-    daySelectionManager.selectionMode = .single
-}
+public let pcEventSelectionReducer: (PCEventSelectionState, PCEventSelectionAction) -> PCEventSelectionState
 ```
 
-### Assembly State (`BatchAssembly`)
+#### Entry
+
+| Action | Guard | State change | Navigation |
+|---|---|---|---|
+| `ensureAssemblyStarted` | `assembly == nil`, `stage == .idle` | no change | none — idempotent no-op when the state already has an assembly |
+| `dayTappedInCalendar(d)` | `multiSelectMode` | `multiSelectDays` gains/loses `d`; `dayEventColors` updated for `d` | — |
+| `dayTappedInCalendar(d)` | `!multiSelectMode`, day has no batches | `day = d`; `assembly = .new(anchor: d, …)`; `stage = .batchEditor`; `scrollAnchor = d`; `editorYear = nil`; `isDirty = true` | `pushBatchEditor` |
+| `dayTappedInCalendar(d)` | `!multiSelectMode`, day has batches | `day = d`; `stage = .dayList(day: d)`; `assembly = nil` | `pushDayList` |
+| `startNewBatch(on: d)` | — | `day = d`; `assembly = .new(anchor: d, …)`; `stage = .batchEditor`; `scrollAnchor = d`; `isDirty = true` | `pushBatchEditor` |
+| `openBatch(pendingID:)` | batch found in `batches` | `day = batch.date`; `assembly = .existing(batch)`; `stage = .batchEditor`; `scrollAnchor = batch.date`; `editorYear = nil`; `isDirty = true` | `pushBatchEditor` |
+| `confirmMultiSelectTapped` | `multiSelectDays` non-empty | `assembly = .new(all: multiSelectDays, color: multiSelectColor)`; `stage = .batchEditor`; multi-select reset; `isDirty = true` | `pushBatchEditor` |
+
+#### Stage transitions
+
+| Action | Guard | State change | Navigation |
+|---|---|---|---|
+| `backTapped` | `stage == .eventEditor` | `eventDraft = nil`; `stage = .batchEditor` | `pop` |
+| `backTapped` | `stage == .batchEditor` | `stage = .dayList(day)` if `day != nil` else `.idle`; `assembly = nil` when leaving the line | `pop` |
+| `backTapped` | `stage == .dayList` | `stage = .idle`; `day = nil`; `assembly = nil` | `pop` |
+| `closeTapped` | — | `stage = .idle`; `day = nil`; `assembly = nil`; `eventDraft = nil`; `isDirty = false`; `dayEventColors` rebuilt from `batches` | `popToCalendarRoot` |
+| `cancelTapped` | — | as `closeTapped` | `popToCalendarRoot` |
+| `navigationRequestHandled` | — | `navigationRequest = nil` | — |
+
+#### Batch editor
+
+| Action | Guard | State change |
+|---|---|---|
+| `setBatchName(n)` | `assembly != nil` | `assembly = assembly.renaming(n)`; `isDirty = true` |
+| `setBatchColor(c)` | `assembly != nil` | `assembly = assembly.recoloring(c)`; `dayEventColors` updated; `isDirty = true` |
+| `toggleDay(d)` | `stage == .batchEditor`, `assembly != nil` | `assembly = assembly.toggling(day: d, days:)`; `dayEventColors` updated; `isDirty = true` |
+| `removeEvent(pendingID:)` | `assembly != nil` | `assembly = assembly.removingEvent(pendingID:)`; `dayEventColors` updated; `isDirty = true` |
+
+#### Event editor
+
+| Action | Guard | State change | Navigation |
+|---|---|---|---|
+| `openEvent(pendingID:)` | event found in `assembly.batch.events` | `eventDraft = event`; `stage = .eventEditor(batchPendingID:, eventPendingID:)` | `pushEventEditor` |
+| `setEventName(n)` | `eventDraft != nil` | `eventDraft = eventDraft.with(name: n)`; `isDirty = true` | — |
+| `setEventDate(d)` | `eventDraft != nil` | `eventDraft = eventDraft.with(date: d, dayKey: days.startOfDay(for: d))`; `isDirty = true` | — |
+| `setEventColor(c)` | `eventDraft != nil` | `eventDraft = eventDraft.with(colorName: c?.colorName ?? "")`; `isDirty = true` | — |
+| `saveEventTapped` | `eventDraft != nil`, name non-empty | `assembly = assembly.applying(eventDraft!, days:)`; `eventDraft = nil`; `stage = .batchEditor`; `dayEventColors` updated; `isDirty = true` | `pop` |
+| `discardEventTapped` | — | `eventDraft = nil`; `stage = .batchEditor` | `pop` |
+
+#### Persistence
+
+| Action | Guard | State change | Navigation |
+|---|---|---|---|
+| `commitTapped` | `assembly != nil`, `canSave` | assembly merged into `batches` by `mergeKey`; `isDirty = true` | — |
+| `saveTapped` | `stage == .dayList` | `stage = .idle`; `day = nil` | `popToCalendarRoot` |
+| `saveTapped` | `stage == .batchEditor`, `canSave`, resolved batch non-empty | merged into `batches`; `assembly = nil`; `stage = .dayList(day)`; `didSave = true`; `isDirty = false` | `pop` |
+| `saveTapped` | `stage == .batchEditor`, resolved batch `nil` | assembly's row removed from `batches` by `mergeKey`; `assembly = nil`; `stage = .idle`; `didSave = true`; `isDirty = false` | `popToCalendarRoot` |
+| `saveTapped` | `stage == .eventEditor`, `canSave` | draft applied to assembly, assembly merged into `batches`; `eventDraft = nil`; `assembly = nil`; `stage = .dayList(day)`; `didSave = true` | `pop` |
+| `deleteBatches(list)` | — | rows removed from `batches` by `mergeKey`; `isDirty = true`; `dayEventColors` rebuilt | `popToCalendarRoot` when `dayBatches` empties, else none |
+| `syncCalendar(id, incoming)` | `id == calendarID` | staged assembly adopted against `incoming` (§6.5); `batches = incoming`; `calendarID = id`; `isDirty = false` | — |
+| `resetSession` | — | `= .init(days: days)` | — |
+
+#### Main calendar and misc
+
+| Action | Guard | State change |
+|---|---|---|
+| `setMultiSelectMode(on)` | — | `multiSelectMode = on`; on `false`, also clears days and colour |
+| `setMultiSelectColor(c)` | — | `multiSelectColor = c` |
+| `cancelMultiSelectTapped` | — | `multiSelectDays = []`; `multiSelectColor = nil`; `dayEventColors` rebuilt |
+| `setNumberOfColumns(n)` | — | `numberOfColumns = n`; `isDirty = true` |
+| `setEditorYear(y)` | — | `editorYear = y` |
+| `setScrollAnchor(d)` | — | `scrollAnchor = d` |
+
+Every action has at least one row. There is no fall-through case, and no failed guard
+returns `.idle` — a rejected action leaves the state untouched, which is what stops a
+stray action from destroying committed work.
+
+### 6.4 Effects
+
+A second pure function, and the answer to "how does a *pure* reducer trigger a
+write?" — it does not. The effect derivation reads the post-action state and says
+what should happen; only the store executes it.
 
 ```swift
-struct BatchAssembly {
-    var events: OrderedSet<SFEvent> = []  // Uses OrderedSet for unique-items with order preservation
-    var color: PCColorOption?
-    var source: BatchSource
-    let originalBatch: SFEventBatch?  // nil for new batch, for diff
-    
-    enum BatchSource {
-        case new(timestamp: UUID = UUID())
-        case existing(SFEventBatch)
-    }
-    
-    var isEditingExisting: Bool {
-        if case .existing = source { return true }
-        return false
-    }
-    
-    var pendingTimestamp: UUID? {
-        if case .new(let ts) = source { return ts }
-        return originalBatch?.timestamp
-    }
-    
-    func toSFBatch() -> SFEventBatch {
-        SFEventBatch(
-            id: originalBatch?.id ?? 0,
-            name: originalBatch?.name ?? "",
-            colorName: color?.colorName ?? "",
-            events: events,  // OrderedSet conforms to Sequence, convertible or directly used
-            date: events.map(\.date).min(),
-            timestamp: pendingTimestamp
-        )
-    }
+public enum PCEventSelectionEffect: Equatable {
+    case writeCalendar(calendarID: Int64, numberOfColumns: Int, batches: [CalendarEventBatch])
 }
+
+public let pcEventSelectionEffects:
+    (PCEventSelectionAction, PCEventSelectionState, PCEventSelectionState) -> [PCEventSelectionEffect]
 ```
 
-**Note:** Requires adding `OrderedSet` as a dependency (e.g., via Swift Package `swift-collections` or similar). All event array references in the assembler and view models should use `OrderedSet` for deterministic ordering and uniqueness.
+| Action | Effect |
+|---|---|
+| `commitTapped` | `writeCalendar` when the merge changed `batches` |
+| `saveTapped` | `writeCalendar` |
+| `saveEventTapped` | none — an event save does not commit the batch |
+| `deleteBatches` | `writeCalendar` |
+| `setNumberOfColumns` | `writeCalendar` with the current batches |
+| `setBatchColor` / `toggleDay` / `removeEvent` / `setEventDate` / `setEventName` / `setBatchName` | none — staged only |
+| `syncCalendar` | `writeCalendar` **only** when an adoption reassigned a `persistedID` |
+| everything else | none |
+
+Effects carry `CalendarEventBatch`, never DTOs. The mapping happens in the data layer
+(§3.4), one call away.
+
+### 6.5 Reload adoption
+
+The reported duplicate-batch bug: a batch committed with `persistedID == nil` comes
+back from the store with a real id, so a later commit keyed on the pending UUID finds
+nothing and appends a second row. In `syncCalendar`:
+
+1. If `assembly` is `.new` and not yet adopted, look for a row in `incoming` with
+   `persistedID != nil` and `hasSameContent(as: assembly.batch, days:)` whose
+   `pendingID` is not already claimed in the registry. If found, set
+   `assembly.adoptedPersistedID = thatRow.persistedID`.
+2. `batches = incoming`, each row keeping the `pendingID` it had, so a staged row
+   that came back under a new id is still matchable.
+3. If an adoption happened, emit `writeCalendar` once so the reassignment lands.
+
+This is the whole of the old `persistedIDsByPendingTimestamp` + `contentEquals` pair,
+expressed once, in a pure function, and testable.
 
 ---
 
-### Assembly Mutations (called by BatchEditor / EventEditor)
+## 7. The store
+
+### 7.1 Type
 
 ```swift
-/// Add/remove day from assembly (calendar day tap).
-/// - Note: Toggling works independently of whether a batch color has been selected yet.
-///   The `color` property on the assembly is optional and is applied separately (e.g., via
-///   `setBatchColor(_:)`). Toggling days on/off does not require a color to be set first.
-func toggleDay(_ date: Date) {
-    guard var assembly = currentBatch else { return }
-    if assembly.isSameDay(date) {  // via EventStoreable
-        assembly.events.removeAll { $0.date.matches(date) }
-    } else {
-        let newEvent = SFEvent(newEventAt: date, color: assembly.color?.colorName ?? "")
-        assembly.events.append(newEvent)
-    }
-    assembly.events.sort { $0.date < $1.date }
-    currentBatch = assembly
-    updateYearModel()
-    onEventsChanged?()
-}
-
-/// Apply edited event from EventEditor.
-func applyEditedEvent(_ event: SFEvent) {
-    guard var assembly = currentBatch else { return }
-    if let idx = assembly.events.firstIndex(where: { $0.timestamp == event.timestamp }) {
-        assembly.events[idx] = event
-    } else {
-        assembly.events.append(event)
-    }
-    assembly.events.sort { $0.date < $1.date }
-    currentBatch = assembly
-    updateYearModel()
-    onEventsChanged?()
-    onEventApplied?()
-}
-
-/// Update batch color (propagates to all events).
-func setBatchColor(_ color: PCColorOption?) {
-    guard var assembly = currentBatch else { return }
-    assembly.color = color
-    if let color {
-        assembly.events = assembly.events.map { $0.withColor(color.colorName) }
-    }
-    currentBatch = assembly
-    updateYearModel()
-    onEventsChanged?()
-}
-```
-
-### Assembly Logic Notes
-
-**Point 3 — Date-Matching Sufficiency for Event Removal**
-
-The `toggleDay` removal uses `assembly.events.removeAll { $0.date.matches(date) }`, which matches events by date alone. This is sufficient for the intended use case because:
-
-- In normal batch assembly flow, each calendar day typically has **at most one event** toggled on/off at a time.
-- Events are sorted by date, and the `isSameDay` check (via `EventStoreable`) compares date components.
-- If a batch genuinely needs multiple events on the same date, a secondary `timestamp` check could be added, but the current design assumes date‑unique per‑day toggling.
-- **Conclusion:** `.matches(date)` check is adequate for the planned flow; a timestamp guard is unnecessary unless multi‑event‑per‑day becomes a requirement.
-
-**Point 4 — Deselecting the Initially Tapped Day (Sequence Safety)**
-
-User scenario: user taps a day in the calendar → `BatchAssembly` initialized with an event for that date. Later, the user selects other days, then deselects the originally tapped day.
-
-- The `toggleDay(_:)` function removes **all** events whose date matches the tapped date via `removeAll { $0.date.matches(date) }`.
-- Since the initially tapped day’s event has a unique date (or is the only event on that date), it is removed correctly.
-- All other events (selected in the interim) remain in the assembly untouched, because their dates do not match the tapped date.
-- **Result:** The batch continues normally — the first‑tapped event is removed, and the other selected days persist. No special-casing or state‑resetting is required beyond the regular `toggleDay` call.
-
----
-### Registry (Unchanged API, Operates on Committed Batches)
-
-```swift
-func commit(_ batch: SFEventBatch) { ... }  // converts to EventBatchDataSource for persistence
-func deleteBatches(_ batches: [SFEventBatch]) { ... }
-func batch(withId: Int64) -> SFEventBatch? { ... }
-func batches(for day: Date) -> [SFEventBatch] { ... }
-```
-
-### Calendar Delegation
-
-```swift
-var yearModel: PCCalendarYearModel { calendarModel.yearModel }
-func setupCalendar() { calendarModel.setup() }
-func switchYear(to: Int) { calendarModel.switchYear(to) }
-func setScrollTargetMonth(to: Date?) { calendarModel.setScrollTargetMonth(to) }
-var numberOfColumns: Int { get { calendarModel.numberOfColumns } set { calendarModel.numberOfColumns = newValue } }
-```
-
----
-
-## 4. Migration Steps
-
-| Step | Action |
-|------|--------|
-| **1** | Rename `AddEditListView` → `AddEditEventListView` + `ViewModel` |
-| **2** | Add `SFEvent.swift` / `SFEventBatch.swift` value-type wrappers |
-| **3** | Add `EventStoreable` / `BatchStoreable` protocols in `Model/Protocols/` |
-| **4** | Extract `EventStore` / `BatchStore` as protocol conformances |
-| **5** | Make `PCEventsSelectionManager` compose protocols (keep `CalendarModel` as-is) |
-| **6** | Update call sites to use protocol types where possible |
-| **7** | Add `BatchAssembly` struct + assembler API (`startNewBatch`, `finishBatch`, etc.) |
-| **8** | Replace `prepare(with:)` → callers use `startNewBatch()` / `startEditingBatch(_:)` |
-| **9** | Replace `addEvent/removeEvent/apply` → `toggleDay(_:)` / `applyEditedEvent(_:)` |
-| **10** | `commit(_:)` now called by BatchEditor with `finishBatch()` result |
-| **11** | Update `AddEditEventBatchViewModel`, `AddEditEventBatchListViewModel`, `SingleCalendarModel` |
-| **12** | Add unit tests: `BatchAssemblyTests`, `EventStoreTests`, `BatchStoreTests` |
-| **13** | Keep existing `PCEventsSelectionManagerTests` as integration tests |
-
----
-
-## 5. Caller Changes
-
-| Caller | Old API | New API |
-|--------|---------|---------|
-| `AddEditEventBatchViewModel` | `prepare(with:)` → user taps days → `commit(batch)` | `startNewBatch()` / `startEditingBatch(_:)` → user taps days → `finishBatch()` → `commit(_:)` (with `SFEventBatch`) |
-| `AddEditEventBatchListViewModel` | reads `events` | reads `eventStore.events` (via protocol) |
-| `AddEditEventViewModel` | `apply(_:)` on manager | `applyEditedEvent(_:)` on manager (or `eventStore.apply(_:)`) |
-| `SingleCalendarModel` | `setCalendar(id:, batches:)` | unchanged (registry API via `BatchStoreable`) |
-
----
-
-## 6. Benefits
-
-1. **Explicit assembly lifecycle** — can't accidentally commit half-assembled state
-2. **Single responsibility** — assembly vs registry vs calendar truly separated
-3. **Testable** — `BatchAssembly` is a pure value type; `finishBatch()` returns immutable result
-4. **No implicit state** — `events` array no longer floats freely; lives inside `currentBatch`
-5. **Clear ownership** — `BatchEditor` owns assembly lifecycle; `SingleCalendarModel` owns registry; `EventStore` owns event data
-6. **Protocol-driven** — DIP satisfied: manager depends on `EventStoreable`/`BatchStoreable`, not concretions
-7. **Value-type view models** — `SFEvent`/`SFEventBatch` are testable, hashable, sendable structs with derived UI state
-
----
-
-## 7. Testing Strategy
-
-| Test Tier | Scope |
-|-----------|-------|
-| **Unit** | `BatchAssembly` init, `toSFBatch()` conversions, `isEditingExisting`, `pendingTimestamp` |
-| **Unit** | `EventStoreable` protocol conformance (`EventStore`) — isolated from SwiftUI |
-| **Unit** | `BatchStoreable` protocol conformance (`BatchStore`) — persistence logic |
-| **Feature** | `startNewBatch()` → `toggleDay()` → `finishBatch()` → `commit()` end-to-end on manager |
-| **Integration** | Full `PCEventsSelectionManager` with real `PCCalendarDataProvider` + `PCCalendarDaySelectionManager` (run less frequently) |
-
----
-
-## 7. Unidirectional Flow Integration (BatchEditor State Management)
-
-### Intent
-
-Replace view-level booleans (`isCancelled`, `onDisappear` conditionals) with a **pure reducer** that drives state transitions from a single source of truth. The View only **sends Actions**; the **Reducer** produces new State. This makes batch lifecycle (cancel vs. commit) predictable, testable, and debuggable.
-
-### New Types
-
-#### `BatchEditorState` — encapsulates assembly intent
-
-```swift
-public enum BatchEditorState: Equatable {
-    case idle              // no batch in progress
-    case assembling(BatchAssembly)   // user selecting days/color
-    case committed(EventBatchDataSource)  // batch saved/persisted
-    case cancelled         // user dismissed via back — no persistence
-}
-```
-
-#### `BatchEditorAction` — the only way to mutate state
-
-```swift
-public enum BatchEditorAction {
-    case toggleDay(Date)                // calendar day tap
-    case changeColor(PCColorOption)     // color picker selection
-    case backButtonTapped               // user wants to discard
-    case doneButtonTapped               // user wants to save/commit
-}
-```
-
-#### `BatchEditorStore` — observable store with reducer
-
-```swift
+@MainActor
 @Observable
-final class BatchEditorStore {
-    private(set) var state: BatchEditorState = .idle
-    private let reducer: (BatchEditorState, BatchEditorAction) -> BatchEditorState
+public final class PCEventSelectionManager {
+    public private(set) var state: PCEventSelectionState
+    /// The batch editor's calendar. A render target projected from `state`; see
+    /// §6.1 for why it is not part of the state.
+    public private(set) var yearModel: PCCalendarYearModel
 
-    init(
-        initialState: BatchEditorState = .idle,
-        reducer: @escaping (BatchEditorState, BatchEditorAction) -> BatchEditorState = { ... }
-    ) {
-        self.state = initialState
-        self.reducer = reducer
-    }
+    private let persistence: any CalendarPersisting
+    private let columnCountResolver: (Int) -> Int
+    private let dataProvider: PCCalendarDataProvider
+    private var writeChain: Task<Void, Never>?
 
-    // Public API — view sends actions, never mutates state directly
-    func send(_ action: BatchEditorAction) {
-        self.state = reducer(self.state, action)
-    }
+    public init(
+        initialState: PCEventSelectionState = .init(),
+        persistence: any CalendarPersisting,
+        dataProvider: PCCalendarDataProvider = PCCalendarDataProvider(),
+        columnCountResolver: @escaping (Int) -> Int = { $0 }
+    ) { … }
+
+    public func send(_ action: PCEventSelectionAction)
 }
 ```
 
-#### Reducer — pure function, fully testable
+`import` list for this file: `Foundation`, `Observation`, `CoreDomain`, `DSKit`.
+Not `CorePersistence` — the dependency is the `CalendarPersisting` port, and the
+concrete `CalendarCache` is named only in `PCCalendarSession`.
+
+`columnCountResolver` and `numberOfColumns` are preserved because they carry the
+`-UITestColumns` launch-argument override the UI suite depends on. Losing them breaks
+every UI test that relies on large tap targets.
+
+`dataProvider` is retained for one job: building the year matrix through
+`PCCalendarModelBuilder`. The reducer never consults it.
+
+### 7.2 `send`
 
 ```swift
-// In a separate file, e.g. BatchEditorReducer.swift
-let batchEditorReducer: (BatchEditorState, BatchEditorAction) -> BatchEditorState = { state, action in
-    var newState = state
-
-    switch action {
-    case let .toggleDay(date):
-        guard case .assembling(var assembly) = newState else { return .idle }
-        if assembly.isSameDay(date) {
-            assembly.events.removeAll { $0.date.matches(date) }
-        } else {
-            let newEvent = SFEvent(id: 0, name: "", date: date,
-                                   color: assembly.color?.colorName ?? "", timestamp: UUID())
-            assembly.events.append(newEvent)
-        }
-        assembly.events.sort { $0.date < $1.date }
-        currentBatch = assembly  // mutate manager's assembler state
-        return .assembling(assembly)
-
-    case .backButtonTapped:
-        // Cancel — clear assembly, reset selection mode
-        manager.cancelBatch()     // from the refactoring plan
-        return .cancelled
-
-    case .doneButtonTapped:
-        // Commit — finish assembly and persist
-        if let batch = manager.finishBatch() {
-            manager.commit(batch)  // persists as EventBatchDataSource
-            return .committed(batch)
-        }
-        return .idle                // finishBatch() returned nil — nothing to persist
-    }
-
-    return newState
+public func send(_ action: PCEventSelectionAction) {
+    let previous = state
+    let next = pcEventSelectionReducer(previous, action)
+    if next != previous { state = next }
+    projectCalendar()
+    let effects = pcEventSelectionEffects(action, previous, next)
+    guard !effects.isEmpty else { return }
+    for effect in effects { perform(effect) }
 }
 ```
 
-### View Integration — Minimal Logic
+No `didSet`, no property observers on the `@Observable` property — reconciliation
+happens in `send`, where it is explicit.
+
+### 7.3 Projection and persistence
 
 ```swift
-struct BatchEditor: View {
-    // Store is typically provided via @Bindable or dependency injection
-    @Bindable var store: BatchEditorStore
+private func projectCalendar() {
+    // Rebuild the matrix only when the year or column count changed; otherwise
+    // mutate `day.events` in place. PCCalendarYearModel.months documents that the
+    // views bind to these day-model instances, so a per-action rebuild would stop
+    // observation.
+    if yearModel.months.isEmpty
+        || yearModel.year != (state.editorYear ?? dataProvider.currentYear)
+        || yearModel.numberOfColumns != resolvedColumns {
+        yearModel = PCCalendarModelBuilder.makeYearModel(…)
+    }
+    PCCalendarMarkerProjector.apply(state.dayEventColors, to: yearModel, days: state.days)
+    yearModel.scrollTargetMonth = state.scrollAnchor.map { state.days.month(of: $0) }
+}
 
-    var body: some View {
-        VStack(spacing: 20) {
-            // UI reads state — never binds to boolean flags
-            BatchContentView(state: store.state)
-
-            // Actions dispatched via UI interactions — no `isCancelled` tracking
-            HStack {
-                Button("Back") { store.send(.backButtonTapped) }
-                    .buttonStyle(.bordered)
-
-                Spacer()
-
-                Button("Done") { store.send(.doneButtonTapped) }
-                    .buttonStyle(.borderedProminent)
-            }
-        }
-        .onAppear { /* store state already reflects initial idle state */ }
+private func perform(_ effect: PCEventSelectionEffect) {
+    guard case .writeCalendar(let id, let columns, let batches) = effect, id != 0
+    else { return }
+    let previous = writeChain
+    // Serialised: a write begins only after the one before it finished, and always
+    // reflects the latest state. Two concurrent writers were the cause of silently
+    // dropped calendar updates.
+    writeChain = Task { [persistence] in
+        await previous?.value
+        try? await persistence.save(numberOfColumns: columns, eventBatches: batches, forCalendar: id)
     }
 }
 ```
 
-### Benefits vs. Old Approach
-
-| Concern | Old Approach | UDF Approach |
-|---------|-------------|--------------|
-| **View tracks `isCancelled`** | ❌ Boolean flag in View | ✅ Eliminated — state in Store |
-| **`onDisappear` conditional logic** | ❌ `if isCancelled { cancelBatch() }` | ✅ Reducer handles transition; `onDisappear` becomes a no-op or simple safety-net |
-| **Cancel vs. commit logic scattered** | ❌ Across View + Manager | ✅ Single reducer — one source of truth |
-| **Testability** | ❌ Integration-style, hard to isolate | ✅ Reducer is pure `(State, Action) -> State` — unit-testable in isolation |
-| **Debuggability** | ❌ Scattered state changes | ✅ Log every `send(action)` — full history reconstructible |
-| **Modularity** | ❌ View knows about manager internals | ✅ View only knows `Store` API — completely decoupled |
-
-### Migration Path
-
-| Step | Action |
-|------|--------|
-| **1** | Add `BatchEditorState.swift`, `BatchEditorAction.swift`, `BatchEditorStore.swift`, `BatchEditorReducer.swift` to feature module |
-| **2** | Refactor `BatchEditor` View to use `@Bindable var store` and dispatch actions via UI taps |
-| **3** | Replace `isCancelled` boolean + `onDisappear` conditional with `store.send(.backButtonTapped)` / `store.send(.doneButtonTapped)` |
-| **4** | Add unit tests for `batchEditorReducer` covering all action → state transitions |
-| **5** | Remove old `onDisappear` batch-cancel logic (kept only as redundant safety-net if desired) |
-
-### How This Integrates With Existing Plan
-
-| Existing Phase | UDF Integration Touchpoint |
-|---------------|---------------------------|
-| **Phase 4** (Assembler) | `BatchAssembly` state transitions (`toggleDay`, `backButtonTapped`, `doneButtonTapped`) now go through the **reducer** instead of View-level booleans |
-| **Phase 5** (Caller Updates) | View models/`BatchEditor` now call `store.send(action)` — the reducer handles `currentBatch` mutations, `finishBatch()`, `cancelBatch()` |
-| **Phase 6** (Testing) | New unit tests for `batchEditorReducer` are added alongside existing `BatchAssemblyTests`/`EventStoreTests` |
-
-### Result
-
-- **Zero** `isCancelled` flags in View code
-- **Zero** `onDisappear` conditionals checking booleans
-- **Single source of truth** for batch lifecycle state
-- **Predictable**: back always → `.cancelled`, done always → `.committed` (or `.idle` if nil)
-- **Testable**: reducer covered 100% by pure-function unit tests
-- **Debuggable**: every state change is an explicit action dispatched through a central point
+`writeChain` replaces the two uncoordinated `Task`s in
+`PCEventsSelectionManager.persistBatches` and `SingleCalendarModel.save(for:)`,
+which both read-modify-write the same `PPCalendar`. It also makes the 350 ms debounce
+in `SingleCalendarView` unnecessary: trailing writes coalesce naturally, so the
+`Task.sleep` and its `onDisappear` flush are deleted.
 
 ---
 
-1. **Rename** (mechanical, safe, immediate win)
-2. **SF* Wrappers** (foundation: value types, computed UI state; enables later protocol work)
-3. **Protocols** (`EventStoreable`/`BatchStoreable`, `CalendarModel` intact) — DIP foundation
-4. **Assembler** (`BatchAssembly` + lifecycle methods) — consumes protocols, not concretions
-5. **Caller Updates** (view models, models wired to protocol types)
-6. **Testing** (unit → feature → integration)
-7. **UDF Integration** (unidirectional flow for BatchEditor — state enums, store, reducer, action dispatching; eliminates `isCancelled` flag and `onDisappear` conditional logic)
+## 8. Wiring
 
-This ordering ensures each phase builds on a solid architectural foundation while delivering incremental value. The `BatchAssembly` assembler is a **consumer** of protocols, not a standalone addition — avoiding the "SOLID-lite" anti-pattern where protocols are defined but not properly injected. Phase 7 introduces unidirectional flow so that UI state transitions (back vs. done) are driven by a pure reducer, not view-level booleans.
+### 8.1 `SingleCalendarFeature`
 
-## Git Branching Strategy
+**Marker projector.** Extracted once, used by the store and by `SingleCalendarModel`
+for the main calendar:
 
-Each phase executes on its own feature branch to enable isolated development, independent reviews, and granular rollbacks:
-
-| Phase | Branch | Description |
-|-------|--------|-------------|
-| **0** | `feature/batcheditor/stage-0` | Initial repo state — no changes. Baseline for all subsequent branches. |
-| **1** | `feature/batcheditor/stage-1` | Rename `AddEditListView` → `AddEditEventListView` + ViewModel (mechanical, safe win). |
-| **2** | `feature/batcheditor/stage-2` | Add `SFEvent.swift` / `SFEventBatch.swift` value-type wrappers; update view models. |
-| **3** | `feature/batcheditor/stage-3` | Add `EventStoreable` / `BatchStoreable` protocols; extract `EventStore` / `BatchStore`. |
-| **4** | `feature/batcheditor/stage-4` | Make `PCEventsSelectionManager` compose protocols; keep `CalendarModel` intact. |
-| **5** | `feature/batcheditor/stage-5` | Caller updates: view models/models wired to protocol types; API surface stabilizes. |
-| **6** | `feature/batcheditor/stage-6` | Testing: unit tests for `BatchAssembly`, `EventStore`, `BatchStore`; feature tests end-to-end. |
-| **7** | `feature/batcheditor/stage-7` | UDF Integration: add `BatchEditorState`/`Action`/Store/Reducer; eliminate `isCancelled`/`onDisappear` conditionals. |
-
-### Branch Workflow
-
-1. **Start from `main`** (or `develop`) — always reset to Stage 0 baseline before beginning a new phase.
-2. **Create branch** `feature/batcheditor/stage-N` from the completed Stage N-1 branch (or `main` for Stage 1).
-3. **Implement only the phase's deliverables** — no cross-phase leakage.
-4. **Open PR** against the Stage N-1 branch (or `main`) for review.
-5. **Merge PR**, then optionally delete the stage branch (kept for history if needed).
-6. **Proceed to next stage** — create `feature/batcheditor/stage-(N+1)` from the newly merged code.
-
-### Benefits of This Strategy
-
-- **Isolation** — each phase's changes are encapsulated; no unintended side effects on other phases.
-- **Parallel work** — different teams can work on non-dependent phases simultaneously (e.g., Stage 2 SF* wrappers and Stage 3 protocols can start once Stage 1 is merged).
-- **Granular rollback** — if a phase introduces a regression, revert only that stage's branch.
-- **PR hygiene** — each PR has a focused scope (one phase), making reviews faster and more thorough.
-- **Safety net** — Stage 0 branch is the immutable baseline; can always reset to it if a later stage goes badly wrong.
-
-### Example Branch Commands (bash)
-
-```bash
-# From main, reset to baseline
-git checkout main
-git pull origin main
-
-# Create Stage 1 branch from baseline
-git checkout -b feature/batcheditor/stage-1
-
-# After Stage 1 is done and reviewed, merge to main
-git checkout main
-git merge --no-ff feature/batcheditor/stage-1
-git push origin main
-
-# Create Stage 2 branch from new main
-git checkout -b feature/batcheditor/stage-2 main
-
-# ...repeat for stages 3-7
+```swift
+@MainActor
+enum PCCalendarMarkerProjector {
+    static func apply(
+        _ colorsByDay: [Date: [String]],
+        to yearModel: PCCalendarYearModel,
+        days: PCDayCalendar
+    )
+    static func colorsByDay(from batches: [CalendarEventBatch], days: PCDayCalendar) -> [Date: [String]]
+}
 ```
 
-This branching strategy works hand-in-hand with the 7-phase execution order, ensuring that each architectural increment is delivered, reviewed, and stabilized independently before the next is attempted.
+This deletes the two near-identical copies in
+`PCEventsSelectionManager.updateYearModel`/`eventColorsByDay` and
+`SingleCalendarModel.updateYearModel`/`colorsByStartOfDay`, plus the linear day scan
+in `SingleCalendarModel.dayModel(for:)` that existed only for a single-day fast path.
+
+**Environment.** iOS 17 observable objects in the environment, so no wrapper is
+needed. One line at the app root:
+
+```swift
+// PinCalAppApp
+.environment(session)
+.environment(session.eventSelection)   // the PCEventSelectionManager
+.environment(\.calendarCache, session.cache)
+```
+
+Views read it with `@Environment(PCEventSelectionManager.self) private var store`.
+`PCCalendarSession` remains the composition root, and is the only file in the app
+that names both `CalendarCache` and `PCEventSelectionManager`. Its field
+`eventsSelectionManager` is renamed `eventSelection`.
+
+**View models survive as stateless projection facades.** Requirement 2's companion
+decision: views keep talking to a view model, and the view model talks to the
+assembler. Nothing in a view constructs or reads the store.
+
+The rule that makes this work rather than reproduce the current dual-source problem:
+
+> A view model may hold **view-scoped** state. It may never hold **domain** state.
+
+| Allowed in a view model | Forbidden in a view model |
+|---|---|
+| List edit mode and delete staging (`isEditing`, `eventBatchesToDelete`) | `events`, `batches`, a stored copy of either |
+| Focus, expansion flags, transient animation state | `eventBatchId`, `eventBatchName`, `date`, `timestamp` |
+| Derived title/format strings | `selectedColor`, `event: CalendarEvent`, `eventId` |
+| A reference to the assembler | Any stored copy of anything the reducer owns |
+
+Today all four view models break this rule: `AddEditEventBatchViewModel` holds
+`eventBatchId`/`eventBatchName`/`date`/`timestamp`/`eventBatch`; `AddEditEventBatchListViewModel`
+holds a stored `eventBatches` copy; `AddEditEventViewModel` holds its own
+`event: EventDataSource`. Collapsing those into `state` is what removes the four
+copies of "pending batch state" the plan is for.
+
+**Shape: a plain struct, not `@Observable`.**
+
+```swift
+@MainActor
+public struct AddEditEventBatchViewModel {
+    let assembler: PCEventSelectionManager
+
+    init(assembler: PCEventSelectionManager) { self.assembler = assembler }
+
+    // Projection — read by the view, never stored
+    var batchName: String { assembler.state.assembly?.batch.name ?? "" }
+    var canSave: Bool { assembler.state.canSave }
+    var events: [CalendarEvent] { assembler.state.assembly?.batch.events ?? [] }
+    var preferredTitle: String? { … }
+    var compactTitle: String? { … }
+
+    // Two-way controls
+    var nameBinding: Binding<String> {
+        Binding(get: { batchName }, set: { assembler.send(.setBatchName($0)) })
+    }
+    var colorBinding: Binding<PCColorOption?> {
+        Binding(get: { assembler.state.assembly?.batch.colorName.flatMap(PCColorOption.init) },
+                set: { assembler.send(.setBatchColor($0)) })
+    }
+
+    // Commands — the only way a view model changes anything
+    func save() { assembler.send(.saveTapped) }
+    func commit() { assembler.send(.commitTapped) }
+    func toggle(_ day: Date) { assembler.send(.toggleDay(day)) }
+    func remove(_ event: CalendarEvent) { assembler.send(.removeEvent(pendingID: event.pendingID)) }
+    func open(_ event: CalendarEvent) { assembler.send(.openEvent(pendingID: event.pendingID)) }
+}
+```
+
+Making the view models non-`@Observable` structs is deliberate and it is what removes
+an observation hazard rather than adding one. The assembler is the *only*
+`@Observable` object in the graph. A view reads `viewModel.canSave`, which calls
+`assembler.state.canSave` during body evaluation, so the `@Observable` registrar
+records the read on `state` and any `send` invalidates the view. There is no second
+observation registration to keep in sync, and no stored copy that can go stale.
+
+This is also why the VMs become cheap to construct: they hold one reference, so a
+view builds one inline per render instead of storing it in `@State`.
+
+```swift
+public struct AddEditEventBatchScreen: View {
+    @Environment(PCEventSelectionManager.self) private var assembler
+    public let calendarID: Int64
+
+    public var body: some View {
+        AddEditEventBatchView(
+            viewModel: AddEditEventBatchViewModel(assembler: assembler),
+            calendarID: calendarID
+        )
+        .task { assembler.send(.ensureAssemblyStarted) }
+    }
+}
+```
+
+The one place a view model still needs its own storage is
+`AddEditEventBatchListViewModel`, because list edit mode and delete confirmation are
+genuinely view-scoped and not part of the batch domain:
+
+```swift
+@MainActor @Observable
+public final class AddEditEventBatchListViewModel {
+    private let assembler: PCEventSelectionManager
+
+    // View-scoped only — permitted by the rule above
+    var isEditing = false
+    var pendingDeletion: [CalendarEventBatch] = []
+    var confirmation: ConfirmationDialogState?
+
+    // Projected — never stored
+    var eventBatches: [CalendarEventBatch] { assembler.state.dayBatches }
+    var selectedDay: Date? { assembler.state.day }
+
+    func remove(_ batch: CalendarEventBatch) { pendingDeletion = [batch] }
+    func confirmDelete() {
+        assembler.send(.deleteBatches(pendingDeletion))
+        pendingDeletion = []
+    }
+    func cancel() { pendingDeletion = []; isEditing = false }
+}
+```
+
+`eventBatches` is a **computed** property, never a stored copy. The current
+implementation stores a copy and re-primes it in `onAppear` and
+`onChange(of: eventBatchesToDelete)`, precisely because a computed version was found
+not to refresh. That work-around exists only to compensate for holding a duplicate;
+once the reducer owns the only copy, the computed property is correct and the
+re-priming calls disappear. §12.5 pins this with a regression test so it cannot
+regress silently.
+
+**View signatures.** Views keep taking a view model, as today. Only the manager
+parameter becomes the environment lookup:
+
+| View | Before | After |
+|---|---|---|
+| `AddEditEventBatchScreen` | `(eventsSelectionManager:calendarId:source:eventBatch:)` | `(calendarID: Int64)` |
+| `AddEditEventBatchListView` | `(eventsSelectionManager:daySelectionManager:calendarId:selectedDay:)` | `(calendarID: Int64)` |
+| `AddEditEventView` | `(eventsSelectionManager:source:)` | `()` |
+| `AddEditEventListView` | `(manager:)` | `()` |
+
+**Navigation fulfilment.** `state.navigationRequest` is read by the *view model's
+host view*, which is the one object that already holds `RootNavigation`:
+
+```swift
+.onChange(of: viewModel.navigationRequest) {
+    navigation.goTo($0.target.route)
+    viewModel.didFulfilNavigationRequest()
+}
+```
+
+where `route` maps the target onto an `AppRoute`. The mapping is the only place a
+navigation request becomes a route, so the view models stay free of `AppNavigation`
+except for that one file.
+
+**Entry is dispatched, never initialised.** No view `init` and no
+`@State(initialValue:)` may send an action, and no view model may mutate the assembler
+from `init`. Entry happens from `.task`/`.onAppear` of the **visible** screen only,
+once, guarded. Speculative `navigationDestination` construction runs view `init`s for
+screens the user has not reached; if entry ran there it would commit phantom batches
+and steal day markers onto year models that are not on screen. This is the single
+most valuable invariant in the plan, which is why it is called out in §10.
+
+### 8.2 `DSKit` (additive)
+
+`PCCalendarDaySelectionManager` gains one callback:
+
+```swift
+public var onDayTapped: ((Date) -> Void)?
+
+public func select(day: PCCalendarDayModel) {
+    guard day.isInCurrentMonth, let date = day.date else { return }
+    switch selectionMode { … }               // unchanged
+    onDayTapped?(date)
+}
+```
+
+This is the whole DSKit change, and it is the one that matters most. `selectedDays`
+is today a mutable message bus: `AddEditEventBatchScreen` observes it with `onChange`
+and calls `toggleEvent`, while `SingleCalendarView` observes the same set and routes
+navigation. Two observers on one set is why seeding
+`selectedDays = Set(batch.events.map(\.date))` on open would silently toggle a real
+event off, and why `prepare(with:)` has to defensively clear it. A direct tap callback
+has no such failure mode, and `selectedDays` becomes purely presentational.
+
+`PCColorOption` gains explicit `: Equatable, Hashable` so it can sit in state.
+
+### 8.3 `AppNavigation` (additive)
+
+`AppRoute`'s three push cases lose their payloads, because the payload now lives in
+the store:
+
+```swift
+case dayBatches          // was dayBatches(Date)
+case batchEditor         // was batchEditor(BatchEditorSource)
+case eventEditor         // was eventEditor(EventEditorSource)
+```
+
+`BatchEditorSource` and `EventEditorSource` are deleted. `RootNavigation` gains:
+
+```swift
+public func pop() { if !path.isEmpty { path.removeLast() } }
+```
+
+`navigationStyle` is unchanged (`.push` for all three), so `goTo` needs no new arm.
+`RootNavigationTests` needs the `batchEditor`/`dayBatches` assertions at lines
+184-192 updated, four cases removed, and a new `pop` case added.
+
+### 8.4 `CorePersistence` and `CalendarListFeature`
+
+`CalendarCache` conforms to `CalendarPersisting`:
+
+```swift
+public actor CalendarCache: CalendarPersisting {
+    public func calendar(id: Int64) async throws -> PinCalendar? { … }
+    public func save(numberOfColumns: Int, eventBatches: [CalendarEventBatch], forCalendar id: Int64) async throws { … }
+}
+```
+
+`save` keeps the current re-fetch-and-publish behaviour so store-assigned ids flow
+back to observers. `updateCalendar`, `archiveCalendar`, `restoreCalendar`,
+`permanentlyDeleteCalendar`, `createCalendar`, `loadActive`, `loadArchived`,
+`getAllCalendars` and `changes` all retype `CalendarDataSource` → `PinCalendar` and
+`EventBatchDataSource` → `CalendarEventBatch`. `CalendarListFeature`'s
+`CalendarListViewModel` and `AddEditCalendarViewModel` retype likewise, and
+`CalendarCacheIntegrationTests` follows. No behaviour change in either module.
 
 ---
+
+## 9. What `SingleCalendarModel` keeps
+
+| Kept | Removed — now store state or actions |
+|---|---|
+| `calendarid`, `label`, `isArchived`, `state` | `originalBatches` (proxied to the manager) |
+| `yearModel` (the **main** panel) | `addedEvents`, `selectedColor` |
+| `fetch(force:)`, `switchYear(to:)` | `route(for:)`, `handleSelectionConfirmation()` |
+| `daySelectionManager` | `prepareNewBatchEvents`, `prepareAddEditEventBatchViewModel` |
+| `columnCountResolver` | `makeBatchEditor()`, `changeEvent(_:)` |
+| `columnCountSaveTask` → deleted | `commitPendingBatch`, `cancelMultipleChanges` |
+| | `batches(for:)`, `batch(withId:)`, `batch(for:)` |
+| | `deleteBatches(_:for:)`, `save(for:)` |
+| | `onBatchListDismissed`, `resetSelectedDays`, `reset` |
+| | `updateYearModel`, `updateDayModel`, `dayModel(for:)`, `colorsByStartOfDay` |
+
+`fetch` maps the persisted calendar and sends one action:
+
+```swift
+let calendar = try await persistence.calendar(id: calendarid)
+eventSelection.send(.syncCalendar(calendarID: calendarid, batches: calendar.batches))
+```
+
+The main calendar's markers are projected with
+`PCCalendarMarkerProjector.colorsByDay(from: state.batches, days:)`, so both panels
+read the same committed registry through the same code.
+
+`SingleCalendarModel` keeps its Combine subscription to `CalendarCache.changes` for
+calendar metadata (`label`, `year`, `isArchived`, column count). It is the calendar's
+own metadata, not batch state, and the manager is the only writer and the only owner
+of batches. §13 records why the alternative was rejected.
+
+Two independent `PCCalendarYearModel` trees remain: the main calendar and the editor
+each navigate years independently, and the UI tests target the editor's calendar by
+its `batch-editor-calendar` identifier. What is removed is the duplicated *logic* —
+construction through one builder, markers through one projector.
+
+---
+
+## 10. Invariants
+
+Each is checkable, and each maps to a test in §12.
+
+1. **One writer.** `CalendarPersisting.save` for this calendar is called from exactly
+   one place, `PCEventSelectionManager.perform`. No other type holds the write path.
+2. **Writes are serialised.** A write begins only after the previous one finished.
+3. **No DTO above the data edge.** `EventDataSource`, `EventBatchDataSource`,
+   `CalendarDataSource` and every `PP*` entity are internal to `CorePersistence`. No
+   file in `SingleCalendarFeature/Model/` or `/View/` imports `CorePersistence`.
+4. **No `hashValue` in identity.** A batch is identified by `persistedID ?? pendingID`,
+   both stable for the batch's lifetime.
+5. **Unique view identity.** `CalendarEvent` and `CalendarEventBatch` are `Identifiable` by
+   `pendingID`. No `0` sentinel reaches a `ForEach`.
+6. **Events are date-sorted and day-unique.** Enforced in `BatchAssembly`, asserted
+   after every transformation.
+7. **`CalendarEventBatch.date` is derived.** Nothing stores it, so it cannot drift.
+8. **No entry from `init`.** Actions are dispatched from `.task`/`.onAppear` of
+   visible screens, once, guarded.
+9. **The reducer is pure.** No clock, no I/O, no service lookup. Persistence comes
+   only from the effect derivation.
+10. **The day tap has exactly one listener at a time.** `onDayTapped` is installed by
+    the visible screen and cleared on disappear. No screen observes `selectedDays` to
+    decide what a tap means.
+11. **Stage is the only navigation input.** A view never decides to push; it reads
+    `state.stage` and `state.navigationRequest`.
+12. **View models hold no domain state.** A view model may hold view-scoped state
+    (list edit mode, pending deletion, focus) and a reference to the assembler, and
+    nothing else. Every domain value is read from `assembler.state` through a computed
+    property and changed only by `send`.
+13. **The assembler is the only `@Observable` object in the batch flow.** View models
+    are plain structs, except `AddEditEventBatchListViewModel`, which is `@Observable`
+    for its own view-scoped state only and projects everything else.
+14. **No ObjectBox schema change.** `PPCalendar`, `PPEventBatch`, `PPEvent` and the
+    generated `EntityInfo` are untouched by this refactor, so no store migration and
+    no codegen re-run.
+
+---
+
+## 11. Stages
+
+Each stage ends with the suite at or above the `TEST_BASELINE.md` numbers and is one
+branch, `feature/batch-assembly/stage-N`. The order guarantees the project builds and
+tests green at every stage, which the previous revision of this plan did not.
+
+| Stage | Work | Green gate |
+|---:|---|---|
+| **0** | **Baseline.** Record the full suite including UI tests. | **Done** — see `TEST_BASELINE.md`: 229 unit, 29 UI, 0 failures |
+| 1 | **Rename** `AddEditListView` → `AddEditEventListView` and its model (requirement 1). Add `typealias` shims. Update `AddEditEventBatchView`, previews, `AddEditListViewModelTests`. | 229 / 29 |
+| 2 | **`CoreDomain`.** Add `PinCalendar`, `CalendarEventBatch`, `CalendarEvent`, `PCDayCalendar`, `CalendarPersisting`. `CalendarDataSource` becomes `PinCalendar`. Zero behaviour change. | 229 / 29 |
+| 3 | **`CorePersistence`.** `PPMapping` added; `ObjectBoxCalendarStorage`, `CalendarRepository`, `CalendarCache` retargeted at the domain models; the three `*DataSource` structs become `internal`; `timestamp` removed; `PPEvent.init` double-assign fixed. **ObjectBox schema untouched.** | 229 / 29 |
+| 4 | **`CalendarListFeature` + app root** retype `CalendarDataSource` → `PinCalendar`; `PCCalendarSession` gains `eventSelection`. | 229 / 29 |
+| 5 | **`SingleCalendarFeature` UDF types.** `PCEventSelectionState`/`Stage`/`NavigationRequest`, `Action`, the reducer and the effect derivation, plus `PCCalendarMarkerProjector`. No caller wired yet. | 229 / 29, plus the new reducer suites |
+| 6 | **The store.** `PCEventSelectionManager` beside the old manager: `send`, projection, `perform`, `writeChain`; injected via `.environment`. `AppNavigation`: `pop()`, payload-free push routes, `BatchEditorSource`/`EventEditorSource` deleted. | 229 / 29, plus store suites |
+| 7 | **`DSKit`.** `onDayTapped` on `PCCalendarDaySelectionManager`; `Equatable`/`Hashable` on `PCColorOption`. Stop every screen observing `selectedDays`; dispatch from `onDayTapped` instead. | 229 / 29 |
+| 8 | **Thread the assembler through the view models.** Keep all four view models and rebuild each as a projection facade over `PCEventSelectionManager`: no stored domain state, computed projections, commands that `send`. `AddEditEventListView` takes `AddEditEventListViewModel(assembler:)`. Delete the `typealias` shims. | 29 UI, incl. `BatchEditCommitTests` |
+| 9 | **Slim `SingleCalendarModel`** to §9. Route `fetch` through `syncCalendar`. Remove `save(for:)`, `commitPendingBatch`, `deleteBatches`, `route(for:)`, `updateYearModel`, `dayModel(for:)`, `colorsByStartOfDay`, the `addedEvents` staging and the 350 ms debounce. | 29 UI |
+| 10 | **Delete the leftovers.** The `onEventsChanged` / `onEventApplied` closures, `columnCountSaveTask`, and `PCEventsSelectionManager` itself. | 229 / 29 |
+| 11 | **Close out the UI suite.** New multi-day scenario: tap two days, save, assert one batch with two days. | 29 + 1 UI |
+
+Stage 8 before Stage 9 is deliberate: the view models are what stand between the
+views and the assembler, so rebuilding them first makes the `SingleCalendarModel`
+slimming a mechanical follow-through rather than one combined diff. Stage 3 before
+Stage 4 is deliberate because `CalendarListFeature` cannot be retyped until the data
+layer actually produces the domain models.
+
+### 11.1 Per-stage test routine
+
+Wall-clock figures measured from `TEST_BASELINE.md`, so each stage's gate is a known
+duration rather than an open-ended suite.
+
+| Gate | What runs | Wall clock | When |
+|---|---|---:|---|
+| **Inner loop** | `SingleCalendarFeatureTests` (132) | ~35 s | while writing a stage |
+| **Inner loop** | `BatchEditCommitTests` (7) | ~267 s | while writing stages 6-9, which touch the batch UI |
+| **Stage end** | the two unit batches | ~90 s | before opening the PR |
+| **Stage end** | `BatchEditCommitTests` (7) | ~267 s | before opening the PR |
+| **Stage end** | remaining UI (22) | ~578 s | stages touching views, and every 3rd stage otherwise |
+| **Full** | everything | ~15.6 min | at Stage 0, Stage 8, Stage 9, Stage 11 |
+
+The remaining 22 UI tests are `KeyboardAvoidance*`, `EditorKeyboardAvoidance*`,
+`PerfScrollTests`, `PinCalAppUITests` and `PinCalAppUITestsLaunchTests`. They are
+unaffected by stages 1-7 (renames, additions, data-layer retype, DSKit callback), so
+they run at stage end rather than on every iteration. Skipping them on a stage that
+touches no view is the single biggest time saving available: 578 s of the 936 s
+total.
+
+---
+
+## 12. Test plan
+
+Every stage is held to `TEST_BASELINE.md`. Nothing below replaces a baseline suite; it
+adds to it.
+
+### 12.1 Reducer, pure
+
+One test per row of the §6.3 and §6.4 tables. Plus:
+
+- every `PCEventSelectionAction` case appears in at least one test, enforced by
+  iterating an `allActions` list and asserting each either changes state or emits an
+  effect, so a newly added action cannot ship unhandled;
+- a rejected action leaves state byte-identical — in particular `setBatchName` with
+  no assembly, and `openEvent` with an unknown id;
+- `toggleDay` twice on the same day returns the original event count;
+- applying an event onto an occupied day moves it rather than duplicating it.
+
+### 12.2 Assembly and value types
+
+- `BatchAssembly`: `.new(anchor:)` seeds exactly one event; `toggling` both ways;
+  `resolved(against:)` returns `nil` when emptied; `resolved` reuses the row matched
+  by `mergeKey`; `canSave` requires name, colour and a non-empty event list.
+- `CalendarEventBatch.hasSameContent` ignores identity, compares name, colour and day set.
+- `PPMapping` round-trips: a persisted id survives; `nil` `persistedID` maps to entity
+  id `0`; `timestamp` is neither read nor written.
+
+### 12.3 Store
+
+- `syncCalendar` adoption: a staged batch returns under a real id; the next
+  `saveTapped` updates that row rather than appending. **This is the regression test
+  for the reported duplicate bug**, replacing `EventEditorThenBatchSaveDuplicateTests`
+  in its current form.
+- `writeChain` ordering, against an in-memory `CalendarPersisting` fake: N rapid
+  `setNumberOfColumns` produce N sequential writes whose final payload equals the
+  final state. This is the test that the double-persist bug can never return.
+- The store's only `import` list contains no `CorePersistence` — asserted by a
+  grep-based test or a lint rule in CI.
+
+### 12.4 View models
+
+Each of the four view models gets a test that constructs it with a real assembler and
+asserts that its projections reflect the store, and that its commands move the state.
+They are plain structs, so no observation machinery is needed to test them.
+
+- `AddEditEventListViewModel.events` is empty, then reports the assembly's events
+  after `toggleDay`; `remove(_:)` dispatches `removeEvent`.
+- `AddEditEventBatchViewModel.canSave` is false for an unnamed assembly and true once
+  `setBatchName` lands; `nameBinding`'s setter dispatches rather than assigning.
+- `AddEditEventBatchListViewModel.eventBatches` is **computed**: delete a batch via
+  `assembler.send(.deleteBatches(...))` directly, bypassing the view model, and assert
+  the projection drops it. This is the regression test for the stored-copy work-around
+  the current code needs — §12.5.
+- `AddEditEventViewModel` projections track `state.eventDraft`; `save()` dispatches
+  `saveEventTapped`.
+- No view model exposes a settable domain property. Asserted by keeping the four files
+  free of `var` declarations other than the permitted view-scoped ones, checked in
+  review and by a grep in CI.
+
+### 12.5 The list-refresh regression
+
+`AddEditEventBatchListViewModel.eventBatches` is currently a *stored* copy that must be
+re-primed by hand in `onAppear` and `onChange(of: eventBatchesToDelete)`, because a
+computed version was found not to re-render after a deletion. That work-around exists
+only to compensate for holding a duplicate of state the reducer owns.
+
+Two tests pin it so it cannot regress silently:
+
+- unit: a batch deleted through the assembler — not through the view model — is absent
+  from `AddEditEventBatchListViewModel.eventBatches` on the next read (§12.4);
+- UI: `BatchEditCommitTests` already covers delete-to-empty navigation. The Stage 11
+  addition covers delete-then-stay, where the day list must still show the remaining
+  batches.
+
+### 12.6 Integration and UI
+
+- End-to-end on the store: `dayTappedInCalendar` → `toggleDay` → `setBatchName` →
+  `saveTapped` yields one row in `batches` and one `writeCalendar` effect.
+- Existing suites kept as-is: `SingleCalendarModelTests` (21),
+  `EventBatchCreationTests` (37), `TwoSingleDayBatchesReproTests` (6),
+  `SingleCalendarModelObjectBoxIntegrationTests` (19),
+  `CalendarCacheIntegrationTests` (16), `AppNavigationTests` (21),
+  `CoreDomainTests` (16), `DSKitTests` (17), `CalendarListFeatureTests` (18),
+  `SettingsFeatureTests` (9).
+- UI: `BatchEditCommitTests` (7) unchanged as the acceptance gate, plus the new
+  multi-day scenario at Stage 11.
+
+---
+
+## 13. Decisions taken, and what was rejected
+
+| Decision | Rejected alternative | Why |
+|---|---|---|
+| Manager *is* the store (`send`/`state`) | Manager exposing plain methods, plus a separate editor store | Two objects means two sources of truth and the reducer is unreachable from the views. Collapsing them is what makes requirements 2 and 3 the same change. |
+| Generic `Store<State, Action>` as a reusable type | Non-generic specialised store | A generic store would need the year model, the persistence port and the write chain as generic parameters. The specialisation is the same code with real types. The article's shape is preserved: one state, one `reduce`, one `send`. |
+| Separate pure `effects` derivation | Effects folded into the reducer | A reducer that writes cannot be unit-tested without a database. The derivation is a pure function returning `Equatable` values; only `perform` touches IO. |
+| Navigation as state (`navigationRequest` + ack) | Effects that navigate | Navigation is a state transition a screen fulfils; keeping it in state means the reducer tests cover it. `AppRoute` stays payload-free because the payload is state. |
+| Domain models in `CoreDomain`; DTOs internal to `CorePersistence`; `CalendarPersisting` port | Keep the models in the feature and map at the feature's persist edge | The feature cannot both keep the DTOs private and have the data layer produce the models without a shared module. `CoreDomain` already has zero dependencies, so adding it to `CorePersistence` cannot cycle. |
+| Close the rule on all three DTOs, including `CalendarDataSource` → `PinCalendar` | Confine only `EventDataSource` / `EventBatchDataSource` | A half-enforced boundary is re-leaked within two commits. The cost is retyping `CalendarListFeature` and `CalendarCacheIntegrationTests` — mechanical, no behaviour change. |
+| `SingleCalendarModel` keeps its Combine subscription for calendar metadata | The manager subscribes to `CalendarCache.changes` and owns everything | Label, year, `isArchived` and column count are calendar metadata, not batch state. Putting them in the selection manager would widen its responsibility past its name. The manager remains the only *writer* of batches and the only owner of batch state. |
+| `pendingID: UUID` + `persistedID: Int64?` | `id: Int64` with a `0` sentinel | Removes the `ForEach` duplicate-identity failure, removes `hashValue` from identity, and makes "not saved yet" a value rather than a magic number. |
+| `events: [CalendarEvent]`, sorted, day-unique in the assembly | `OrderedSet<CalendarEvent>` | `OrderedSet` dedupes by value, which is not the day rule, and would drop a legitimate event that happens to equal another. It would also add a package dependency to the feature layer for no benefit. |
+| `onDayTapped` callback | `onChange(of: selectedDays)` | Removes the shared-mutable-bus failure mode and makes pre-seeding days safe by construction. |
+| `writeChain` | Two concurrent `Task`s, or a debounce | Serialises writes so a later write cannot be lost behind an earlier one, and removes the only `Task.sleep` in the feature layer. |
+| Keep all four view models, rebuilt as stateless projection facades | Delete them outright; or keep them as they are | Requirement 1 asks for the `AddEditListViewModel` rename and the companion decision is that views keep talking to a view model. Rebuilding them as projections is what removes the four copies of pending batch state; leaving them as they are is what causes it. §8.1 has the full shape and the view-scoped/domain-scoped rule. |
+| View models as plain structs, not `@Observable` | Keep them `@Observable` | The assembler is the only `@Observable` object in the graph, so a computed projection read during body evaluation registers on `state` and refreshes correctly. Two observation registrations — one on the store, one on each view model — is a second thing to keep in sync for no benefit. `AddEditEventBatchListViewModel` stays `@Observable` because it has real view-scoped state. |
+| Two year models, one builder, one projector | One shared year model | The main calendar and the editor navigate years independently and the UI tests target the editor's calendar. The duplication worth removing is the *logic*, and that is extracted. |
+| No ObjectBox migration stage | Add one for safety | Not needed: `PPCalendar.eventBatches` is `ToMany<PPEventBatch>`, and the `*DataSource` structs are plain projections, not entities. The schema, the generated `EntityInfo` and every stored row are untouched (§3.3). |
+
+---
+
+## 14. Test execution
+
+The suite is 258 tests. 229 unit tests take 90 s; the 29 UI tests take 847 s. **90% of
+the wall clock is XCUITest**, and that is what makes the run hard to fit in a tool
+call.
+
+### 14.1 What went wrong, and the fix
+
+`MobileBuildMCP_test_sim` has a client-side request timeout. With no `-only-testing`
+filter it runs the whole `PinCalApp.xctestplan` — 229 unit plus 29 UI, ~15.6 min — and
+the call fails with `MCP error -32001: Request timed out` before the suite finishes.
+Nothing is wrong with the tests; the call outlasts the request.
+
+The fix is `timeoutMs` on the tool, which is a real parameter and was verified up to
+40 minutes:
+
+```jsonc
+{ "extraArgs": ["-only-testing:…"], "progress": false, "timeoutMs": 2400000 }
+```
+
+### 14.2 What was measured, including what did not work
+
+| Change | Result |
+|---|---|
+| `timeoutMs: 600000` / `1800000` / `2400000` | **Works.** Batches complete reliably; the 40-minute ceiling was not reached by any batch. |
+| Batching by target (`-only-testing` per group) | **Works.** Four calls, each well inside the limit, and each yields a per-target number for the baseline. This is what `TEST_BASELINE.md` records. |
+| `-parallel-testing-enabled YES` + `-maximum-parallel-testing-workers 4`, 97 unit tests | **No gain: 55.7 s → 53.0 s.** The unit runs are dominated by build, install and launch, not by test execution, so there is nothing to parallelise. |
+| `-parallel-testing-enabled YES` + 4 workers, 7 UI tests | **No gain: 268.3 s → 266.4 s.** Flags are accepted, but the UI tests do not actually run concurrently. Each XCUITest test relaunches the app and drives real taps, scrolls and waits, and the suite is already at its intrinsic cost. |
+| `-default-test-execution-time-allowance 120` / `180` | **Accepted, no false positives.** Observed per-test cost is 26-38 s for UI, so a 180 s ceiling is ~5x headroom. Its value is not speed: a hung test now fails at the allowance instead of stalling the batch until the request times out. |
+
+So: **there is no meaningful way to make the suite itself faster.** The cost is
+intrinsic to XCUITest. What can be made constant is the *shape* of the run.
+
+### 14.3 The constant-time routine
+
+Use per-stage gates with a known duration rather than one open-ended suite
+(§11.1). Three shapes, all bounded:
+
+```jsonc
+// A. Inner loop — ~35 s
+{ "extraArgs": ["-only-testing:SingleCalendarFeatureTests"],
+  "progress": false, "timeoutMs": 300000 }
+
+// B. Batch-UI gate — ~267 s
+{ "extraArgs": ["-only-testing:PinCalAppUITests/BatchEditCommitTests",
+                "-parallel-testing-enabled", "YES",
+                "-maximum-parallel-testing-workers", "4",
+                "-default-test-execution-time-allowance", "180"],
+  "progress": false, "timeoutMs": 600000 }
+
+// C. Full gate — ~15.6 min
+{ "extraArgs": [], "progress": false, "timeoutMs": 2400000 }
+```
+
+The parallel and allowance flags are kept in the routine even though they do not speed
+anything up: they are free, and the allowance is what converts a hang from a
+15-minute stall into a 3-minute failure.
+
+### 14.4 Bypassing the timeout entirely
+
+For a full-suite run, do not go through the tool. Two options, both already available:
+
+- `xcodebuild test` against `PinCalApp.xcworkspace` with the same `-only-testing`
+  batches, in a terminal. No request timeout at all, and the same `.xcresult` bundles
+  are produced for baseline comparison.
+- `Packages/AutoTestRunner`, an executable target that already exists in the repo for
+  this purpose and is currently not referenced by the Xcode project. Wiring it as a
+  scheme is a small task and is worth doing before Stage 0 if full-suite runs are
+  expected to be frequent.
+
+### 14.5 A caution on the baseline
+
+The baseline was recorded as four separate batches, not one unfiltered run. A single
+unfiltered `test_sim` with a raised `timeoutMs` is expected to work but has not been
+verified end to end; batching is the verified path and it has the side benefit of
+producing the per-target counts the baseline file needs. If a future stage does run it
+unfiltered, record the split it into the baseline file anyway so the comparison stays
+like-for-like.
+
+---
+
+## 15. Risks
+
+| Risk | Mitigation |
+|---|---|
+| Stage 3 touches the data layer, where user data lives | No schema change (§3.3), so there is no migration and no write of a new format. `CalendarCacheIntegrationTests` (16) plus `SingleCalendarModelObjectBoxIntegrationTests` (19) must stay green unchanged. |
+| Stage 4 is wide but shallow — four modules retyped at once | Split if needed into 4a (`CorePersistence` consumers) and 4b (app root). Neither needs new tests. |
+| Stage 8 is large: five views rewritten, four models deleted | Split into 8a (event list + event editor) and 8b (batch editor + day list) if review warrants. Each half is independently reviewable; neither needs new tests. |
+| Removing the `selectedDays` observation changes tap behaviour on the main calendar | Stage 7 lands the callback and the dispatch together, behind the existing manager and selection-mode tests, before any view is rewritten. |
+| The duplicate-batch bug reappears through a path the tests miss | The adoption logic is one pure function in `syncCalendar` with one regression test, instead of a dictionary mutated from two call sites. |
+| UI tests depend on accessibility identifiers | `TEST_BASELINE.md` records every one the suite asserts. Keeping them is a stated constraint on Stage 8. |
+| Requirement 4 is easy to re-leak | Invariant 3, plus the Stage 6 store test that asserts the manager's import list, plus a grep-based CI check on `SingleCalendarFeature`. |
