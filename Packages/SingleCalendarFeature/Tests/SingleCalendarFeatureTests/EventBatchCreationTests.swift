@@ -54,10 +54,10 @@ struct EventBatchCreationTests {
         return try batchBox.all().count >= expected
     }
     
-    // MARK: - AddEditListViewModel
+    // MARK: - AddEditEventListViewModel
     
     @Test func prepareAssignsUniqueTimestampsAndSortsByDate() {
-        let viewModel = AddEditListViewModel()
+        let viewModel = AddEditEventListViewModel()
         let later = event("B", day: 15, timestamp: nil)
         let earlier = event("A", day: 3, timestamp: nil)
         
@@ -70,7 +70,7 @@ struct EventBatchCreationTests {
     }
     
     @Test func prepareKeepsExistingTimestamps() {
-        let viewModel = AddEditListViewModel()
+        let viewModel = AddEditEventListViewModel()
         let timestamp = UUID()
         viewModel.prepare(with: [event(day: 3, timestamp: timestamp)])
         
@@ -78,7 +78,7 @@ struct EventBatchCreationTests {
     }
     
     @Test func applyReplacesSingleEventByTimestamp() {
-        let viewModel = AddEditListViewModel()
+        let viewModel = AddEditEventListViewModel()
         viewModel.prepare(with: [event(day: 3), event(day: 4)])
         let edited = viewModel.events[0]
         
@@ -95,7 +95,7 @@ struct EventBatchCreationTests {
     }
     
     @Test func applyAppendsWhenNoTimestampMatches() {
-        let viewModel = AddEditListViewModel()
+        let viewModel = AddEditEventListViewModel()
         viewModel.prepare(with: [event(day: 3)])
         let stranger = event("X", day: 5, timestamp: UUID())
         
@@ -106,7 +106,7 @@ struct EventBatchCreationTests {
     }
     
     @Test func recolorAllRecolorsEveryEventPreservingOtherFields() {
-        let viewModel = AddEditListViewModel()
+        let viewModel = AddEditEventListViewModel()
         viewModel.prepare(with: [event(day: 3), event(day: 4, color: "eventColorOption2")])
         
         viewModel.recolorAll(to: "eventColorOption4")

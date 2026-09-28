@@ -1,5 +1,5 @@
 //
-//  AddEditListViewModel.swift
+//  AddEditEventListViewModel.swift
 //  PinCalApp
 //
 //  Created by Oleg Bragin on 07.07.2026.
@@ -13,7 +13,7 @@ import Observation
 
 @MainActor
 @Observable
-public final class AddEditListViewModel {
+public final class AddEditEventListViewModel {
     /// Shared events store. `PCEventsSelectionManager` owns the data; this view
     /// model is a thin adapter over it (kept for call sites that expect a list
     /// view model).

@@ -5,8 +5,8 @@ import DSKit
 @testable import SingleCalendarFeature
 
 @MainActor
-@Suite("AddEditListViewModel Tests")
-struct AddEditListViewModelTests {
+@Suite("AddEditEventListViewModel Tests")
+struct AddEditEventListViewModelTests {
 
     private func day(_ year: Int, _ month: Int, _ dayOfMonth: Int) -> Date {
         Calendar.autoupdatingCurrent.date(from: DateComponents(year: year, month: month, day: dayOfMonth))!
@@ -25,14 +25,14 @@ struct AddEditListViewModelTests {
 
     @Test("init defaults to an empty list")
     func initIsEmpty() {
-        let vm = AddEditListViewModel()
+        let vm = AddEditEventListViewModel()
         #expect(vm.events.isEmpty)
         #expect(vm.selectedDay == nil)
     }
 
     @Test("init keeps the provided events")
     func initKeepsEvents() {
-        let vm = AddEditListViewModel(events: [event("A", day: 1)])
+        let vm = AddEditEventListViewModel(events: [event("A", day: 1)])
         #expect(vm.events == [event("A", day: 1)])
     }
 
@@ -42,7 +42,7 @@ struct AddEditListViewModelTests {
     func prepareSortsAndStampsTimestamps() {
         let later = event("Later", day: 2)
         let earlier = event("Earlier", day: 1)
-        let vm = AddEditListViewModel(events: [later, earlier])
+        let vm = AddEditEventListViewModel(events: [later, earlier])
 
         vm.prepare(with: [later, earlier])
 
@@ -53,7 +53,7 @@ struct AddEditListViewModelTests {
     @Test("prepare preserves an existing timestamp")
     func preparePreservesTimestamp() {
         let ts = UUID()
-        let vm = AddEditListViewModel(events: [event(day: 1, timestamp: ts)])
+        let vm = AddEditEventListViewModel(events: [event(day: 1, timestamp: ts)])
 
         vm.prepare(with: [event(day: 1, timestamp: ts)])
 
@@ -65,7 +65,7 @@ struct AddEditListViewModelTests {
     @Test("apply appends when nothing matches and notifies")
     func applyAppendsAndNotifies() {
         var changeCount = 0
-        let vm = AddEditListViewModel()
+        let vm = AddEditEventListViewModel()
         vm.onEventsChanged = { changeCount += 1 }
         let newEvent = event("A", day: 1)
 
@@ -78,7 +78,7 @@ struct AddEditListViewModelTests {
     @Test("apply replaces an event with a matching timestamp")
     func applyReplacesByTimestamp() {
         let ts = UUID()
-        let vm = AddEditListViewModel(events: [event("Old", day: 1, timestamp: ts)])
+        let vm = AddEditEventListViewModel(events: [event("Old", day: 1, timestamp: ts)])
         let updated = event("New", day: 2, color: "eventColorOption3", timestamp: ts)
 
         vm.apply(with: updated)
@@ -92,7 +92,7 @@ struct AddEditListViewModelTests {
     @Test("apply replaces an event by id when timestamps differ")
     func applyReplacesById() {
         let stored = EventDataSource(id: 5, name: "Old", date: day(2026, 6, 1), color: "eventColorOption1", timestamp: UUID())
-        let vm = AddEditListViewModel(events: [stored])
+        let vm = AddEditEventListViewModel(events: [stored])
         let updated = EventDataSource(id: 5, name: "New", date: day(2026, 6, 2), color: "eventColorOption2", timestamp: UUID())
 
         vm.apply(with: updated)
@@ -107,7 +107,7 @@ struct AddEditListViewModelTests {
 
     @Test("addEvent appends with a timestamp and keeps sorting")
     func addEventAppendsSorted() {
-        let vm = AddEditListViewModel(events: [event("Later", day: 2)])
+        let vm = AddEditEventListViewModel(events: [event("Later", day: 2)])
 
         vm.addEvent(event("Earlier", day: 1))
 
@@ -117,7 +117,7 @@ struct AddEditListViewModelTests {
 
     @Test("removeEvent removes all events on the same day")
     func removeEventOnDay() {
-        let vm = AddEditListViewModel(events: [event("A", day: 1), event("B", day: 2)])
+        let vm = AddEditEventListViewModel(events: [event("A", day: 1), event("B", day: 2)])
 
         vm.removeEvent(on: day(2026, 6, 1))
 
@@ -127,7 +127,7 @@ struct AddEditListViewModelTests {
     @Test("removeEvents removes by index and notifies")
     func removeEventsByIndexSet() {
         var changeCount = 0
-        let vm = AddEditListViewModel(events: [
+        let vm = AddEditEventListViewModel(events: [
             event("A", day: 1),
             event("B", day: 2),
             event("C", day: 3)
@@ -143,7 +143,7 @@ struct AddEditListViewModelTests {
     @Test("remove removes a single event by identity")
     func removeSingleEvent() {
         var changeCount = 0
-        let vm = AddEditListViewModel(events: [
+        let vm = AddEditEventListViewModel(events: [
             event("A", day: 1),
             event("B", day: 2)
         ])
@@ -159,7 +159,7 @@ struct AddEditListViewModelTests {
 
     @Test("hasEvent reports presence on the same calendar day")
     func hasEventOnDay() {
-        let vm = AddEditListViewModel(events: [event("A", day: 1)])
+        let vm = AddEditEventListViewModel(events: [event("A", day: 1)])
 
         #expect(vm.hasEvent(on: day(2026, 6, 1)))
         #expect(!vm.hasEvent(on: day(2026, 6, 2)))
@@ -167,7 +167,7 @@ struct AddEditListViewModelTests {
 
     @Test("recolorAll changes every event color")
     func recolorAll() {
-        let vm = AddEditListViewModel(events: [event("A", day: 1)])
+        let vm = AddEditEventListViewModel(events: [event("A", day: 1)])
 
         vm.recolorAll(to: "eventColorOption4")
 
@@ -176,7 +176,7 @@ struct AddEditListViewModelTests {
 
     @Test("reset clears events and selection")
     func resetClears() {
-        let vm = AddEditListViewModel(events: [event("A", day: 1)])
+        let vm = AddEditEventListViewModel(events: [event("A", day: 1)])
 
         vm.reset()
 

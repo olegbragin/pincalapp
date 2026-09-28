@@ -1,5 +1,5 @@
 //
-//  AddEditListView.swift
+//  AddEditEventListView.swift
 //  PinCalApp
 //
 //  Created by Oleg Bragin on 07.07.2026.
@@ -9,13 +9,13 @@ import SwiftUI
 import DSKit
 import AppNavigation
 
-public struct AddEditListView: View {
-    @State private var viewModel: AddEditListViewModel
+public struct AddEditEventListView: View {
+    @State private var viewModel: AddEditEventListViewModel
     @Environment(RootNavigation.self) private var navigation
     @Environment(\.pcVibe) private var vibe
 
     public init(manager: PCEventsSelectionManager) {
-        _viewModel = State(initialValue: AddEditListViewModel(eventsSelectionManager: manager))
+        _viewModel = State(initialValue: AddEditEventListViewModel(eventsSelectionManager: manager))
     }
     
     public var body: some View {
@@ -76,5 +76,5 @@ public struct AddEditListView: View {
 }
 
 #Preview {
-    AddEditListView(manager: .init(events: [.init(name: "1", date: Date(), color: "eventColorOption1")]))
+    AddEditEventListView(manager: .init(events: [.init(name: "1", date: Date(), color: "eventColorOption1")]))
 }
