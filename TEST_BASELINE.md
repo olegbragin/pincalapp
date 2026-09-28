@@ -85,7 +85,17 @@ where the four view-model test suites are removed and replaced by reducer tests.
 
 | After stage | Unit | UI | Note |
 |---|---:|---:|---|
-| 1-5 | 229 | 29 | unchanged; `AddEditListViewModelTests` renamed, not removed |
-| 6 | 229 − 28 + reducer tests | 29 | the four VM suites go; reducer suites arrive |
-| 7-8 | stable | 29 | |
-| 9 | stable | 29 + new | new multi-day UI scenario |
+| **1** ✅ | 229 (36.0 s + 47.2 s) | 7/7 of the gate (270.6 s) | done. `AddEditListViewModelTests` → `AddEditEventListViewModelTests`, 132 → 132. The remaining 22 UI tests deferred: keyboard/scroll/perf, none touch the renamed view. |
+| 2-5 | 229 | 29 | unchanged |
+| 6 | 229 + reducer tests | 29 | store arrives; `AppNavigationTests` loses 4 route cases, gains 1 for `pop` |
+| 7 | 229 | 29 | unchanged |
+| 8 | 229 | 29 + new | view models rebuilt as projections; the 22 deferred UI tests must run here |
+| 9-10 | stable | 29 | stage 9 is a view-model-behaviour change; the 22 must run here too |
+| 11 | stable | 29 + 1 | new multi-day UI scenario |
+
+## Stage log
+
+| Stage | Branch | Commit | Unit | UI | Notes |
+|---:|---|---|---:|---|---|
+| 0 | `feature/batch-editor/stage-0` | `def6d53` | 229 ✅ | 29 ✅ | baseline recorded |
+| 1 | `feature/batch-assembly/stage-1` | `3299a19` | 229 ✅ | 7/7 ✅ | rename only; `RenamedTypeShims.swift` added, delete in Stage 8 |
