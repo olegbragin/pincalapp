@@ -247,8 +247,11 @@ the narrow port, and all of which are that screen's job. So it gains `CoreDomain
 `PinCalendar` and keeps `CorePersistence` for `CalendarCache`.
 
 The rule in this section is therefore scoped: **no file in `SingleCalendarFeature` imports
-`CorePersistence`.** `CalendarListFeature` still does, for the cache and nothing else —
-it just stops naming a DTO.
+`CorePersistence`.** `CalendarListFeature` was scoped the same way, and Stage 4b found
+the difference is not as expensive as this section assumed — the 8 management operations
+that kept it in storage all fit on one port (§4b.1), so as of 4b it imports
+`CorePersistence` not at all. `SingleCalendarFeature` remains the last package that does,
+by decision, until Stage 9.
 
 This also gives tests an in-memory `CalendarPersisting` fake, which is what the
 write-ordering test in §12.3 needs.
@@ -359,6 +362,7 @@ Packages/CorePersistence/Sources/CorePersistence/
 Packages/SingleCalendarFeature/Sources/SingleCalendarFeature/
   Model/
     Selection/
+      BatchAssembler.swift                       # §5.4 — Stage 5a, no caller yet
       PCEventSelectionState.swift                 # State, Stage, NavigationRequest
       PCEventSelectionAction.swift                # Action
       PCEventSelectionReducer.swift               # pure reduce
@@ -373,8 +377,9 @@ Packages/SingleCalendarFeature/Sources/SingleCalendarFeature/
 ```
 
 `Packages/DSKit` gets one additive change (§8.2). `Packages/AppNavigation` gets two
-(§8.3). `Packages/CalendarListFeature` gets a retype from `CalendarDataSource` to
-`PinCalendar` and nothing else.
+(§8.3). `Packages/CalendarListFeature` got a retype from `CalendarDataSource` to
+`PinCalendar` and a swap of `CorePersistence` for `CoreDomain` (Stage 4b, §4b.1); the
+swap was not in the original layout, which had it keep `CorePersistence` for the cache.
 
 ---
 
@@ -461,7 +466,7 @@ Why this shape:
   An `OrderedSet<CalendarEvent>` would dedupe fully-equal events, which does not enforce
   the day rule, and would silently drop a legitimate event that happened to be
   equal. `events` stays an array sorted by `date`; the day rule lives in
-  `BatchAssembly.toggling(day:using:)` (§5.4). No new package dependency.
+  `BatchAssembler.toggling(day:using:)` (§5.4). No new package dependency.
 - **No `dayKey`, and no `PCCalendarDataProvider`.** Two earlier drafts added a
   `dayKey: Date` — `date` normalised to its start-of-day — so the day rule would be a
   dictionary lookup, and threaded a calendar type into the value to derive it. Both
@@ -517,12 +522,12 @@ public enum EventBatchKey: Hashable, Sendable {
 that `toggleEvent` never updates when it adds a day, so a batch's own date drifts
 away from its events. Deriving it deletes that bug rather than documenting it.
 
-### 5.4 `BatchAssembly`
+### 5.4 `BatchAssembler`
 
 The unit of work on the line. Pure transformations, no store, no clock.
 
 ```swift
-public struct BatchAssembly: Equatable {
+public struct BatchAssembler: Equatable, Sendable {
     public private(set) var batch: CalendarEventBatch
     public private(set) var origin: Origin
     /// Set when a reload revealed this assembly's batch already exists in the
@@ -541,24 +546,25 @@ public struct BatchAssembly: Equatable {
     }
 
     // Identity
-    public static func new(anchor: Date, colorName: String, using: PCCalendarDataProvider) -> BatchAssembly
-    public static func existing(_ batch: CalendarEventBatch) -> BatchAssembly
+    public static func new(anchor: Date, colorName: String, using: PCCalendarDataProvider) -> BatchAssembler
+    public static func new(all days: [Date], color: PCColorOption?, using: PCCalendarDataProvider) -> BatchAssembler
+    public static func existing(_ batch: CalendarEventBatch) -> BatchAssembler
 
     // Transformations — each returns a new value
-    public func renaming(_ name: String) -> BatchAssembly
-    public func recoloring(_ color: PCColorOption?) -> BatchAssembly
+    public func renaming(_ name: String) -> BatchAssembler
+    public func recoloring(_ color: PCColorOption?) -> BatchAssembler
     /// Removes any event on `day`, then appends a fresh placeholder, so a day
     /// never holds two events whichever way the toggle goes.
-    public func toggling(day: Date, using: PCCalendarDataProvider) -> BatchAssembly
-    public func removingEvent(pendingID: UUID) -> BatchAssembly
+    public func toggling(day: Date, using: PCCalendarDataProvider) -> BatchAssembler
+    public func removingEvent(pendingID: UUID) -> BatchAssembler
     /// Replaces by `pendingID`; otherwise, if the incoming event lands on a day
     /// that already has one, replaces that event, so moving an event onto an
     /// occupied day moves it rather than duplicating it. Otherwise appends.
-    public func applying(_ event: CalendarEvent, using: PCCalendarDataProvider) -> BatchAssembly
-    public func adopting(persistedID: Int64?) -> BatchAssembly
+    public func applying(_ event: CalendarEvent, using: PCCalendarDataProvider) -> BatchAssembler
+    public func adopting(persistedID: Int64?) -> BatchAssembler
     /// The row to write, or `nil` when the batch has been emptied and must be
-    /// removed from the calendar.
-    public func resolved(against batches: [CalendarEventBatch]) -> CalendarEventBatch?
+    /// removed from the calendar. See §5.4.1 for why there is no `against:`.
+    public func resolved() -> CalendarEventBatch?
 }
 ```
 
@@ -569,9 +575,69 @@ Sorting is applied inside every transformation that can change ordering, so
 three separate mechanisms: `BatchMergeKey`, `persistedIDsByPendingTimestamp`, and
 `contentEquals`.
 
-`recoloring` takes `PCColorOption?`, which lives in `DSKit`, so `BatchAssembly` is
+`recoloring` takes `PCColorOption?`, which lives in `DSKit`, so `BatchAssembler` is
 placed in `SingleCalendarFeature`, not `CoreDomain`. Only `CalendarEvent`,
 `CalendarEventBatch` and `PinCalendar` are domain types.
+
+#### 5.4.1 Three places §5.4 is not yet precise enough to implement
+
+Both were found while writing Stage 5a, and both would have been silent bugs rather
+than compile errors.
+
+**`toggling(day:using:)` cannot be "remove, then append".** §5.4 describes it as
+*"Removes any event on `day`, then appends a fresh placeholder, so a day never holds two
+events whichever way the toggle goes."* Read literally that always ends with an event on
+that day, so a toggle could never turn a day off, and §12.1's own check — *"`toggleDay`
+twice on the same day returns the original event count"* — would fail. The "removes
+first" half is the invariant; the "then appends" half is conditional on nothing having
+survived the removal. The implementation is:
+
+1. Drop every event whose day is `day`. This alone guarantees the day holds at most one
+   event, which is the actual invariant, and it makes a duplicate impossible to reach.
+2. If anything was dropped, stop — the toggle was off.
+3. Otherwise append a placeholder on `day` and re-sort.
+
+**`new(all:color:)` is missing from the API list.** The `confirmMultiSelectTapped` row in
+§6.3 calls `.new(all: multiSelectDays, color: multiSelectColor)`, and no such factory
+appears in §5.4. It has been added to the list there, taking
+`using: PCCalendarDataProvider` so both factories normalise to start-of-day the same way.
+
+It is the one factory that takes a colour *option* rather than a colour *name*, since
+multi-select has no reason to have picked a concrete colour yet. `color` may be `nil`,
+which leaves the batch unsavable until a colour is chosen — the same rule as a
+single-day batch. `days` are sorted, so the result does not depend on tap order.
+
+**`resolved(against:)` had an `against:` parameter that could not do anything.** §5.4
+called it *"the single home of the duplicate-batch logic"* and had it *"reuse the row
+matched by `mergeKey`"*, and §12.2 asked for a test that it does. It cannot. If a row `r`
+matches `batch.mergeKey`, then either `batch.persistedID` is non-nil — so the key is
+`.persisted(id)` and `r.persistedID == batch.persistedID` — or it is nil, so the key is
+`.pending(uuid)`, which never equals `.persisted(_)`, so `r.persistedID` is nil too.
+Either way the lookup returned what the batch already carried, and removing it changed no
+test. Found by mutation: deleting the lookup left all 25 tests green.
+
+So the parameter is gone, and `resolved()` resolves `adoptedPersistedID ??
+batch.persistedID`. This also settles a question the plan left open. Identity has exactly
+two real sources — an explicit reassignment from a reload, which only
+`adoptedPersistedID` knows, and the id the batch was opened with — and matching across a
+reload is §6.5's content-based job, not a `mergeKey` lookup. The reason is worth keeping:
+**a DTO carries no `pendingID`** (Stage 2 removed the timestamp), so the mapper mints a
+fresh UUID per row on every load, and a reloaded row's `mergeKey` is `.persisted(id)`
+where a staged one is `.pending(uuid)`. No equality between them is possible, ever. The
+two mechanisms are complementary, and a third inert one is the "second source of truth"
+this section exists to prevent.
+
+Two smaller decisions, stated rather than left implicit:
+
+- **`recoloring(nil)` clears the colour.** It writes an empty `colorName`, and `canSave`
+  then reports `false` for want of a colour. Any other reading would let a colourless
+  batch be saved.
+- **`resolved()` applies `adoptedPersistedID` on its way out.** It returns the batch to
+  write carrying `persistedID = adoptedPersistedID ?? batch.persistedID`, so the
+  reassignment §6.5 performs lands in the same value the writer receives. It returns
+  `nil` whenever the batch is empty — an emptied row must leave the calendar, and an
+  emptied `.new` assembly was never in it, so `nil` is the right answer in both cases.
+
 
 ---
 
@@ -607,7 +673,7 @@ public struct NavigationRequest: Equatable {
 public struct PCEventSelectionState: Equatable {
     // Assembly line
     public var stage: PCEventSelectionStage = .idle
-    public var assembly: BatchAssembly?
+    public var assembly: BatchAssembler?
     /// The event under edit while `stage == .eventEditor`.
     public var eventDraft: CalendarEvent?
     /// The day the day-list is scoped to, and the anchor the assembly scrolls to.
@@ -628,7 +694,9 @@ public struct PCEventSelectionState: Equatable {
     // Main-calendar multi-select session
     public var multiSelectMode = false
     public var multiSelectDays: [Date] = []
-    public var multiSelectColor: PCColorOption?
+    // DEFERRED to Stage 7 — see the 5b row. `PCColorOption` is not `Equatable` yet,
+    // and this state must be.
+    // public var multiSelectColor: PCColorOption?
 
     // Environment the reducer needs (§5.1)
     public var dataProvider = PCCalendarDataProvider()
@@ -663,7 +731,9 @@ public enum PCEventSelectionAction: Equatable {
     case dayTappedInCalendar(Date)
     case startNewBatch(on: Date)
     case openBatch(pendingID: UUID)
-    case confirmMultiSelectTapped
+    // DEFERRED to Stage 7, with `multiSelectColor`: an assembly cannot be built
+    // without a colour. See the 5b row.
+    // case confirmMultiSelectTapped
 
     // Stage transitions
     case backTapped
@@ -692,7 +762,7 @@ public enum PCEventSelectionAction: Equatable {
 
     // Main calendar
     case setMultiSelectMode(Bool)
-    case setMultiSelectColor(PCColorOption?)
+    // case setMultiSelectColor(PCColorOption?)   // DEFERRED to Stage 7
     case cancelMultiSelectTapped
     case setNumberOfColumns(Int)
     case setEditorYear(Int)
@@ -722,7 +792,7 @@ public let pcEventSelectionReducer: (PCEventSelectionState, PCEventSelectionActi
 | `dayTappedInCalendar(d)` | `!multiSelectMode`, day has batches | `day = d`; `stage = .dayList(day: d)`; `assembly = nil` | `pushDayList` |
 | `startNewBatch(on: d)` | — | `day = d`; `assembly = .new(anchor: d, …)`; `stage = .batchEditor`; `scrollAnchor = d`; `isDirty = true` | `pushBatchEditor` |
 | `openBatch(pendingID:)` | batch found in `batches` | `day = batch.date`; `assembly = .existing(batch)`; `stage = .batchEditor`; `scrollAnchor = batch.date`; `editorYear = nil`; `isDirty = true` | `pushBatchEditor` |
-| `confirmMultiSelectTapped` | `multiSelectDays` non-empty | `assembly = .new(all: multiSelectDays, color: multiSelectColor)`; `stage = .batchEditor`; multi-select reset; `isDirty = true` | `pushBatchEditor` |
+| `confirmMultiSelectTapped` | | **DEFERRED to Stage 7** with `multiSelectColor` | |
 
 #### Stage transitions
 
@@ -773,7 +843,7 @@ public let pcEventSelectionReducer: (PCEventSelectionState, PCEventSelectionActi
 | Action | Guard | State change |
 |---|---|---|
 | `setMultiSelectMode(on)` | — | `multiSelectMode = on`; on `false`, also clears days and colour |
-| `setMultiSelectColor(c)` | — | `multiSelectColor = c` |
+| `setMultiSelectColor(c)` | | **DEFERRED to Stage 7** | |
 | `cancelMultiSelectTapped` | — | `multiSelectDays = []`; `multiSelectColor = nil`; `dayEventColors` rebuilt |
 | `setNumberOfColumns(n)` | — | `numberOfColumns = n`; `isDirty = true` |
 | `setEditorYear(y)` | — | `editorYear = y` |
@@ -828,6 +898,46 @@ nothing and appends a second row. In `syncCalendar`:
 
 This is the whole of the old `persistedIDsByPendingTimestamp` + `contentEquals` pair,
 expressed once, in a pure function, and testable.
+
+### 6.6 Four places §6 is not yet precise enough to implement
+
+Found while writing Stage 5b. The first two were silent logic bugs; the last two are
+consequences worth writing down, because a test that cannot see them is not a test.
+
+**A first `syncCalendar` was indistinguishable from a mismatched one.** §6.5 does not say
+which calendar a sync is for, and "reject when it is not the one we loaded" reads as
+`calendarID != state.calendarID`. A session opens at `calendarID == 0` and has not loaded
+anything yet, so that reading rejects the *first* sync of every session and the screen
+never appears. The guard accepts either a matching id or an unloaded state:
+`calendarID == state.calendarID || state.calendarID == 0`. Only the first sync may match
+the `0`; a later reload of a real calendar still has to match for real.
+
+**§6.5's adoption could never fire, because `hasSameContent` was stricter than §6.5.**
+The per-event comparison already used `isSameDay` (§5.1), but the batch-level `date`
+comparison used exact instant equality. The batch `date` is derived from `events.first`,
+and the event the mapper rebuilds on load is `startOfDay` of the day the user tapped —
+an instant the staged batch never held. Same day, different instant, so equality said no,
+adoption never ran, and the duplicate-batch bug §6.5 exists to fix stayed unfixed. The
+batch-level comparison is now `isSameDay` like its per-event counterpart. Mutation: reverting
+that one line to `==` fails `syncCalendar adopts the persisted id of a staged batch that
+came back` on all three of its assertions, and drops the `writeCalendar` effect entirely.
+
+**The reducer is a function of its inputs except for the ids it mints.** A `.new`
+assembly needs a `pendingID` and none exists yet, so `startNewBatch` and
+`startNewBatchAll` generate one. Two runs of the same input therefore differ, and §12.2's
+"same inputs, same outputs" cannot be asserted on `==` without normalising first. The
+purity test canonicalises every minted id — batch, event, draft and assembly origin — to a
+fixed placeholder. This is the documented impurity, not a defect; §6.4's effects are the
+part that has to be exactly reproducible, and they are.
+
+**The plan's own day-granularity test was vacuous in Moscow.** §5.1 makes
+`PCCalendarDataProvider` the only place that decides what a day is, and
+`PCCalendarDataProvider.init` pins itself to the current time zone — so a test cannot
+choose the zone its fixtures are built in. A fixture that means "later the same day" by
+setting 22:00 on a UTC-pinned calendar is 01:00 of the *next* day east of UTC+2. The
+multi-select tap test was therefore comparing two different days and passing for the wrong
+reason. `evening(of:)` now builds its instant in the current time zone, so the day the tap
+names is the day the assertion talks about in every zone the suite can run in.
 
 ---
 
@@ -1234,7 +1344,7 @@ Each is checkable, and each maps to a test in §12.
    both stable for the batch's lifetime.
 5. **Unique view identity.** `CalendarEvent` and `CalendarEventBatch` are `Identifiable` by
    `pendingID`. No `0` sentinel reaches a `ForEach`.
-6. **Events are date-sorted and day-unique.** Enforced in `BatchAssembly`, asserted
+6. **Events are date-sorted and day-unique.** Enforced in `BatchAssembler`, asserted
    after every transformation.
 7. **`CalendarEventBatch.date` is derived.** Nothing stores it, so it cannot drift.
 8. **No entry from `init`.** Actions are dispatched from `.task`/`.onAppear` of
@@ -1322,14 +1432,15 @@ replay to recover it. The view model subscribes in `init`, so a test that writes
 same instant it constructs one is testing scheduler luck. Hence `waitForSubscribers()`,
 which every fixture awaits.
 
-| 5 | **`SingleCalendarFeature` UDF types.** `PCEventSelectionState`/`Stage`/`NavigationRequest`, `Action`, the reducer and the effect derivation, plus `PCCalendarMarkerProjector`. No caller wired yet. | 229 / 29, plus the new reducer suites |
+| 5a | **`BatchAssembler` (§5.4), and nothing else.** One new file in `SingleCalendarFeature`, plus its §12.2 tests. No caller, no wiring, no view touched. Split out of the old Stage 5 because it is a hard prerequisite for the UDF layer — `PCEventSelectionState.assembly` and every reducer row in §6.3 reference it — and because it is the single home of the duplicate-batch logic. It is also the one stage in the plan that is pure value semantics with no actor, no store and no I/O, so it is worth landing and gating on its own. | 275 unit, 10 UI, plus the §12.2 assembly suites. Achieved: 280 unit, 0 fail; UI unchanged by the stage |
+| 5b | **The UDF value types, reducer and effect derivation.** `PCEventSelectionState`/`Stage`/`NavigationRequest`, `PCEventSelectionAction`, `pcEventSelectionReducer`, `PCEventSelectionEffect` + `pcEventSelectionEffects`, and `PCCalendarMarkerProjector` extracted from its two near-identical copies. Still no caller wired — Stage 6 is the store, Stage 8 the view models. **Blocked on 5a**, since the state holds a `BatchAssembler?`. **`multiSelectColor` is deferred to Stage 7**: `PCEventSelectionState` must be `Equatable` for `send`'s `next != previous`, and `PCColorOption` only becomes `Equatable` in Stage 7. The field is dropped rather than the conformance, because splitting the state type across two stages is worse than landing part of it now. Two actions go with it — `setMultiSelectColor`, and `confirmMultiSelectTapped`, which cannot build an assembly without a colour to build it with. `setMultiSelectMode` and `cancelMultiSelectTapped` need no colour and land in 5b. | 275 unit, 10 UI, plus the §12.1 reducer suites. Achieved: 334 unit, 0 fail, plus the 3 mutation-verified `CalendarListRefreshTests`; the full 10-test UI gate is still unrun and owed at the next UI-touching stage |
 | 6 | **The store.** `PCEventSelectionManager` beside the old manager: `send`, projection, `perform`, `writeChain`; injected via `.environment`. `AppNavigation`: `pop()`, payload-free push routes, `BatchEditorSource`/`EventEditorSource` deleted. | 229 / 29, plus store suites |
 | 7 | **`DSKit`.** `onDayTapped` on `PCCalendarDaySelectionManager`; `Equatable`/`Hashable` on `PCColorOption`. Stop every screen observing `selectedDays`; dispatch from `onDayTapped` instead. | 229 / 29 |
 | 8 | **Thread the assembler through the view models.** Keep all four view models and rebuild each as a projection facade over `PCEventSelectionManager`: no stored domain state, computed projections, commands that `send`. `AddEditEventListView` takes `AddEditEventListViewModel(assembler:)`. Delete the `typealias` shims. | 29 UI, incl. `BatchEditCommitTests` |
 | 9 | **Slim `SingleCalendarModel`** to §9. Route `fetch` through `syncCalendar`. Remove `save(for:)`, `commitPendingBatch`, `deleteBatches`, `route(for:)`, `updateYearModel`, `dayModel(for:)`, `colorsByStartOfDay`, the `addedEvents` staging and the 350 ms debounce. | 29 UI |
 | 10 | **Delete the leftovers.** The `onEventsChanged` / `onEventApplied` closures, `columnCountSaveTask`, and `PCEventsSelectionManager` itself. | 229 / 29 |
 | 11 | **Close out the UI suite.** New multi-day scenario: tap two days, save, assert one batch with two days. | 29 + 1 UI |
-| 12 | **The bug in §16**, once 4b–11 are green. Not before — the refactor replaces the machinery it lives in. | §16.4 |
+| 12 | **The bug in §16**, once 4b through 11 are green. Not before — the refactor replaces the machinery it lives in. | §16.4 |
 
 ### 11.1.1 The rule Stage 4a established
 
@@ -1415,6 +1526,12 @@ One test per row of the §6.3 and §6.4 tables. Plus:
 - every `PCEventSelectionAction` case appears in at least one test, enforced by
   iterating an `allActions` list and asserting each either changes state or emits an
   effect, so a newly added action cannot ship unhandled;
+  - `allActions` is derived from the enum, so the two cases deferred to Stage 7
+    (`setMultiSelectColor`, `confirmMultiSelectTapped`) drop out of it by construction
+    rather than by being remembered to be excluded. When Stage 7 restores them they
+    reappear in the list and the coverage requirement resumes automatically. This is the
+    reason `allActions` is derived and not hand-written: a hand-written list is a second
+    source of truth that drifts the first time an action is added or deferred.
 - a rejected action leaves state byte-identical — in particular `setBatchName` with
   no assembly, and `openEvent` with an unknown id;
 - `toggleDay` twice on the same day returns the original event count;
@@ -1422,9 +1539,16 @@ One test per row of the §6.3 and §6.4 tables. Plus:
 
 ### 12.2 Assembly and value types
 
-- `BatchAssembly`: `.new(anchor:)` seeds exactly one event; `toggling` both ways;
-  `resolved(against:)` returns `nil` when emptied; `resolved` reuses the row matched
-  by `mergeKey`; `canSave` requires name, colour and a non-empty event list.
+Split by stage. The `BatchAssembler` bullet is **Stage 5a's** gate; the `DomainMapping`
+one was covered by Stage 3 and is listed here only for completeness.
+
+- `BatchAssembler` (5a): `.new(anchor:)` seeds exactly one event; `toggling` both ways,
+  including the §12.1 invariant that two toggles on one day restore the original count
+  and that no path yields two events on a day; `applying` onto an occupied day moves
+  rather than duplicates; `resolved()` returns `nil` when emptied and carries `adoptedPersistedID` out
+  (§5.4.1: it has no `against:`, and cannot need one); `canSave` requires name,
+  colour and a non-empty event list; `recoloring(nil)` clears the colour and makes the
+  batch unsavable.
 - `CalendarEventBatch.hasSameContent` ignores identity, compares name, colour and day set.
 - `DomainMapping` round-trips: a persisted id survives; `nil` `persistedID` maps to DTO
   id `0`; a staged batch never gains an id; the DTO `timestamp` is never read.
@@ -1615,7 +1739,7 @@ like-for-like.
 
 ## 16. Known bug — fix last
 
-Recorded, not fixed. Do not start this until Stages 4b–11 are done and green: the
+Recorded, not fixed. Do not start this until Stages 4b through 11 are done and green: the
 refactor replaces the machinery this bug lives in, so fixing it first risks fixing
 behaviour that is about to be deleted.
 
@@ -1699,5 +1823,5 @@ there but the list query misses it", which the UI alone cannot distinguish.
 - The full suite must hold at the Stage 0 baseline in `TEST_BASELINE.md`, plus the tests
   added since.
 - If the fix removes the `isEmpty`-means-delete behaviour, that is the moment
-  `BatchAssembly.resolved(against:)` (§5.4) takes over the decision, and hypothesis 2
+  `BatchAssembler.resolved()` (§5.4) takes over the decision, and hypothesis 2
   becomes structurally impossible rather than merely guarded.

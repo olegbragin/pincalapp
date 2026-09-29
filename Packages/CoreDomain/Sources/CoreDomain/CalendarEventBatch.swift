@@ -97,12 +97,27 @@ public struct CalendarEventBatch: Identifiable, Hashable, Sendable {
     /// Identity-free comparison, used to recognise a staged batch among the rows that
     /// came back from a reload. Mirrors what
     /// `PCEventsSelectionManager.contentEquals` does, on domain types.
+    ///
+    /// Days are compared, never instants, at both levels. `BatchAssembler` normalises every
+    /// event it stages to the start of its day, while a row read back through the mapper
+    /// carries whatever time component the DTO held — so comparing the two by instant
+    /// equality would mean a staged batch and its own persisted row never match, and the
+    /// adoption in §6.5 could never fire. The per-event comparison has always been
+    /// day-granular; this brings the batch-level check in line with it.
     public func hasSameContent(as other: CalendarEventBatch, using dataProvider: PCCalendarDataProvider) -> Bool {
         guard name == other.name,
               colorName == other.colorName,
-              (date ?? .distantFuture) == (other.date ?? .distantFuture),
               events.count == other.events.count,
               !events.isEmpty
+        else {
+            return false
+        }
+        // `date` is derived from `events.first`, and both are non-empty and the same
+        // length here, so both are non-nil.
+        guard
+            let day = date,
+            let otherDay = other.date,
+            dataProvider.isSameDay(day, otherDay)
         else {
             return false
         }

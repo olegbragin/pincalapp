@@ -26,7 +26,12 @@ public struct SingleCalendarView: View {
             SingleCalendarStateView(state: viewModel.state) {
                 AnyView(
                     VStack(spacing: 0) {
-                        if viewModel.daySelectionManager.selectionMode == .multiple {
+                        // `isAtRoot` mirrors the toolbar's own guard below. The batch
+                        // editor shares this `daySelectionManager` and flips the mode to
+                        // `.multiple` when it stages a batch, so without it a tap on an
+                        // empty day (which stages one, then pushes the editor) flashed the
+                        // picker on the calendar behind the sheet.
+                        if navigation.isAtRoot, viewModel.daySelectionManager.selectionMode == .multiple {
                             PCExpandedColorPicker(selectedColor: $viewModel.selectedColor)
                                 .disabled(viewModel.isColorPickerDisabled)
                         }
