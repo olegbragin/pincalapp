@@ -768,6 +768,98 @@ struct PCEventSelectionReducerTests {
         #expect(effects.isEmpty)
     }
 
+    // MARK: - The multi-select session (Stage 7: colour, and confirming it)
+
+    @Test("setMultiSelectColor stores the colour without touching anything else")
+    func setMultiSelectColor() {
+        let state = multiSelecting(session(), days: [day(4)])
+        let (next, effects) = reduce(state, .setMultiSelectColor(.option3))
+
+        #expect(next.multiSelectColor == .option3)
+        #expect(next.multiSelectDays == state.multiSelectDays, "picking a colour selects nothing")
+        #expect(next.multiSelectMode)
+        #expect(effects.isEmpty, "a colour choice is not a write")
+    }
+
+    @Test("Leaving multi-select clears the days *and* the colour")
+    func leavingMultiSelectClearsColour() {
+        var state = multiSelecting(session(), days: [day(4)])
+        state.multiSelectColor = .option2
+
+        let next = reduce(state, .setMultiSelectMode(false)).next
+
+        #expect(!next.multiSelectMode)
+        #expect(next.multiSelectDays.isEmpty)
+        #expect(
+            next.multiSelectColor == nil,
+            "a stale colour would silently colour the next session's batch"
+        )
+    }
+
+    @Test("confirmMultiSelectTapped builds one batch spanning every selected day")
+    func confirmMultiSelectBuildsTheBatch() throws {
+        var state = multiSelecting(session(), days: [day(6), day(4)])
+        state.multiSelectColor = .option2
+        let (next, effects) = reduce(state, .confirmMultiSelectTapped)
+
+        let assembly = try #require(next.assembly)
+        #expect(assembly.batch.colorName == "eventColorOption2", "the session's colour is the batch's colour")
+        #expect(
+            assembly.batch.events.map(\.date) == [day(4), day(6)].map(provider.startOfDay(for:)),
+            "one placeholder per selected day, in date order and normalised"
+        )
+        #expect(next.stage == .batchEditor)
+        #expect(next.navigationRequest?.target == .pushBatchEditor)
+        #expect(next.day == day(4), "the anchor is the earliest selected day")
+        #expect(next.scrollAnchor == day(4))
+        #expect(next.isDirty)
+        #expect(effects.isEmpty, "confirming stages the batch; the editor's save writes it")
+    }
+
+    @Test("Confirming ends the session, so the calendar behind the editor is not left mid-selection")
+    func confirmMultiSelectClearsTheSession() throws {
+        var state = multiSelecting(session(), days: [day(4), day(5)])
+        state.multiSelectColor = .option1
+
+        let next = reduce(state, .confirmMultiSelectTapped).next
+
+        #expect(!next.multiSelectMode)
+        #expect(next.multiSelectDays.isEmpty)
+        #expect(next.multiSelectColor == nil)
+        #expect(next.assembly != nil, "the session became a staged batch, not a discarded one")
+        #expect(
+            next.dayEventColors
+                == PCCalendarMarkerProjector.colorsByDay(
+                    from: state.batches,
+                    includingStaged: next.assembly,
+                    using: provider
+                ),
+            "the markers have to describe the staged batch, not just the committed one"
+        )
+    }
+
+    @Test("confirmMultiSelectTapped is rejected without a colour, without days, and outside the session")
+    func confirmMultiSelectIsRejected() throws {
+        let committed = session()
+
+        let uncoloured = multiSelecting(committed, days: [day(4)])
+        #expect(reduce(uncoloured, .confirmMultiSelectTapped).next == uncoloured, "no colour, no batch")
+
+        var colouless = multiSelecting(committed, days: [])
+        colouless.multiSelectColor = .option1
+        #expect(reduce(colouless, .confirmMultiSelectTapped).next == colouless, "no days, nothing to confirm")
+
+        // Days and colour but *not* in a session: only the mode guard can reject this, so
+        // it is the case that pins that guard down.
+        var notSelecting = committed
+        notSelecting.multiSelectDays = [day(4)]
+        notSelecting.multiSelectColor = .option1
+        #expect(
+            reduce(notSelecting, .confirmMultiSelectTapped).next == notSelecting,
+            "the toolbar only offers this in a session"
+        )
+    }
+
     @Test("setNumberOfColumns writes, and does so only when the count really changes")
     func setNumberOfColumns() {
         let state = session()
@@ -804,6 +896,11 @@ struct PCEventSelectionReducerTests {
         let editing = editing(idle, on: 1)
         let staged = stagedSession()
         let multi = multiSelecting(idle, days: [day(4)])
+        // `confirmMultiSelectTapped` needs a colour to build with, so the session it runs
+        // against is a *coloured* one — confirming an uncoloured session is rejected and
+        // covered separately.
+        var multiColoured = multi
+        multiColoured.multiSelectColor = .option3
 
         let openable = idle
         let openablePendingID = try! #require(openable.batches.first?.pendingID)
@@ -832,6 +929,8 @@ struct PCEventSelectionReducerTests {
             ("discardEventTapped", staged, .discardEventTapped),
             ("deleteBatches", idle, .deleteBatches(idle.batches)),
             ("setMultiSelectMode", idle, .setMultiSelectMode(true)),
+            ("setMultiSelectColor", idle, .setMultiSelectColor(.option2)),
+            ("confirmMultiSelectTapped", multiColoured, .confirmMultiSelectTapped),
             ("cancelMultiSelectTapped", multi, .cancelMultiSelectTapped),
             ("setNumberOfColumns", idle, .setNumberOfColumns(4)),
             ("setEditorYear", idle, .setEditorYear(2027)),
@@ -860,7 +959,7 @@ struct PCEventSelectionReducerTests {
             Set(cases.map(\.name)).isSuperset(of: inertByDesign),
             "the inert set names actions that are not in the case list"
         )
-        #expect(cases.count == 28, "30 cases in §6.2, minus the two deferred to Stage 7")
+        #expect(cases.count == 30, "the 30 cases of §6.2, now that Stage 7's two have landed")
     }
 
     @Test("A rejected action leaves the state byte-identical")
@@ -929,8 +1028,9 @@ struct PCEventSelectionReducerTests {
 
     // MARK: - Action inventory
 
-    /// 30 cases in §6.2. `confirmMultiSelectTapped` and `setMultiSelectColor` are deferred
-    /// to Stage 7 with `multiSelectColor`, which is why this is 28.
+    /// All 30 cases in §6.2. These walks run against a plain session, so the multi-select
+    /// cases are exercised in their *rejected* form here; the accepted form is covered by
+    /// `everyActionIsCovered` and the dedicated multi-select tests.
     private var allActions: [(name: String, action: PCEventSelectionAction)] {
         [
             ("ensureAssemblyStarted", .ensureAssemblyStarted),
@@ -955,6 +1055,8 @@ struct PCEventSelectionReducerTests {
             ("discardEventTapped", .discardEventTapped),
             ("deleteBatches", .deleteBatches([])),
             ("setMultiSelectMode", .setMultiSelectMode(true)),
+            ("setMultiSelectColor", .setMultiSelectColor(.option1)),
+            ("confirmMultiSelectTapped", .confirmMultiSelectTapped),
             ("cancelMultiSelectTapped", .cancelMultiSelectTapped),
             ("setNumberOfColumns", .setNumberOfColumns(4)),
             ("setEditorYear", .setEditorYear(2027)),

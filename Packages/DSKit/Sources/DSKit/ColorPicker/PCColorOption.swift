@@ -5,7 +5,12 @@
 //  Created by Oleg Bragin on 05.09.2026.
 //
 
-public enum PCColorOption: CaseIterable {
+/// A colour the user can pick. `Equatable` because it is held in the batch-assembly
+/// state, which is compared with `==` to decide whether a transition changed anything
+/// (`PCEventSelectionManager.send`). Without it a state carrying a colour could not be
+/// `Equatable`, and the whole store would have to be split across stages. `Hashable`
+/// because a `BatchAssembler` treats colour identity as a value, not a reference.
+public enum PCColorOption: CaseIterable, Equatable, Hashable {
     case option1,
          option2,
          option3,

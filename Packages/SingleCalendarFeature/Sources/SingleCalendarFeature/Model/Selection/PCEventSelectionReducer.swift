@@ -308,10 +308,39 @@ public func pcEventSelectionReducer(
         next.multiSelectMode = on
         if !on {
             next.multiSelectDays = []
+            next.multiSelectColor = nil
         }
+
+    case .setMultiSelectColor(let color):
+        next.multiSelectColor = color
+
+    case .confirmMultiSelectTapped:
+        // An assembly cannot be built without a colour to build it with, and there is
+        // nothing to confirm without days. Either way the session is left exactly as it
+        // was — a rejected action never half-builds a batch.
+        guard state.multiSelectMode, !state.multiSelectDays.isEmpty, let color = state.multiSelectColor
+        else { break }
+        let anchor = state.multiSelectDays.min() ?? state.day
+        next.assembly = BatchAssembler.new(all: state.multiSelectDays, color: color, using: provider)
+        next.day = anchor
+        next.stage = .batchEditor
+        next.scrollAnchor = anchor
+        next.isDirty = true
+        // The session has become a batch; leaving `multiSelectMode` on would keep the
+        // calendar behind the editor presenting itself as mid-selection.
+        next.multiSelectMode = false
+        next.multiSelectDays = []
+        next.multiSelectColor = nil
+        next.dayEventColors = PCCalendarMarkerProjector.colorsByDay(
+            from: state.batches,
+            includingStaged: next.assembly,
+            using: provider
+        )
+        requesting(&next, .pushBatchEditor)
 
     case .cancelMultiSelectTapped:
         next.multiSelectDays = []
+        next.multiSelectColor = nil
         next.dayEventColors = PCCalendarMarkerProjector.colorsByDay(from: state.batches, using: provider)
 
     case .setNumberOfColumns(let columns):

@@ -24,8 +24,10 @@ public enum PCEventSelectionAction: Equatable {
     case dayTappedInCalendar(Date)
     case startNewBatch(on: Date)
     case openBatch(pendingID: UUID)
-    // `confirmMultiSelectTapped` is DEFERRED to Stage 7, with `multiSelectColor`: an
-    // assembly cannot be built without a colour to build it with. See the 5b row.
+    /// "Turn this multi-select session into a batch." Needs a colour to build the batch
+    /// with, so the reducer declines while `multiSelectColor` is `nil`. It was deferred to
+    /// Stage 7 along with the colour itself.
+    case confirmMultiSelectTapped
 
     // MARK: Stage transitions
 
@@ -62,7 +64,7 @@ public enum PCEventSelectionAction: Equatable {
     // MARK: Main calendar
 
     case setMultiSelectMode(Bool)
-    // `setMultiSelectColor` is DEFERRED to Stage 7, with `multiSelectColor`.
+    case setMultiSelectColor(PCColorOption?)
     case cancelMultiSelectTapped
     case setNumberOfColumns(Int)
     case setEditorYear(Int)

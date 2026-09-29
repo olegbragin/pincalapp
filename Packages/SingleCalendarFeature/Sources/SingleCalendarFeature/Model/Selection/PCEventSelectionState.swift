@@ -7,6 +7,7 @@
 
 import Foundation
 import CoreDomain
+import DSKit
 
 /// Where the user is on the assembly line. One enum rather than a navigation stack,
 /// because the line has a fixed order and the state says which room we are in.
@@ -73,13 +74,14 @@ public struct PCEventSelectionState: Equatable {
     public var dayEventColors: [Date: [String]] = [:]
 
     // MARK: Main-calendar multi-select session
-    //
-    // `multiSelectColor` is deferred to Stage 7 — see the 5b row of the plan. The session
-    // is therefore incomplete but not incoherent: days can be selected, and confirming
-    // them cannot happen yet.
 
     public var multiSelectMode = false
     public var multiSelectDays: [Date] = []
+    /// The colour the multi-select session is building its batch in. `nil` until the user
+    /// picks one, and an assembly cannot be confirmed without it — which is why this field
+    /// and `confirmMultiSelectTapped` were both deferred to Stage 7, where `PCColorOption`
+    /// becomes `Equatable` and a state carrying one can still be compared with `==`.
+    public var multiSelectColor: PCColorOption?
 
     // MARK: Environment the reducer needs (§5.1)
 

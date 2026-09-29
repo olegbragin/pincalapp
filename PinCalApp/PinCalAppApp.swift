@@ -19,6 +19,12 @@ struct PinCalAppApp: App {
     /// change feed; injecting a second store would mean two independent subscriptions to
     /// the same actor.
     private let managing: any CalendarManaging
+    /// The batch-assembly store (Stage 6). Built here and injected, but nothing reads it
+    /// yet — the view models are rewired onto it in Stage 8, and the old
+    /// `PCEventsSelectionManager` stays live until then. Constructing it now is what
+    /// proves the composition root can actually satisfy it from the `CalendarPersisting`
+    /// port alone, without the feature layer naming `CorePersistence`.
+    private let eventSelection: PCEventSelectionManager
 
     init() {
         #if os(iOS)
@@ -39,6 +45,15 @@ struct PinCalAppApp: App {
         self.managing = store
         let dataProvider = PCCalendarDataProvider()
         let columnCountResolver = PCCalendarSession.makeColumnCountResolver()
+        // The store keeps its own `dataProvider` inside its state rather than taking one
+        // here, because the reducer needs it and the state has to be `Equatable`. Handing
+        // it the session's instance is what keeps the store and the session agreeing about
+        // which day a timestamp names.
+        self.eventSelection = PCEventSelectionManager(
+            initialState: PCEventSelectionState(dataProvider: dataProvider),
+            persistence: store,
+            columnCountResolver: columnCountResolver
+        )
         let daySelectionManager = PCCalendarDaySelectionManager()
         let eventsSelectionManager = PCEventsSelectionManager(
             cache: cache,
@@ -63,6 +78,7 @@ struct PinCalAppApp: App {
                 .environment(session)
                 .environment(\.calendarCache, cache)
                 .environment(\.calendarManaging, managing)
+                .environment(eventSelection)
         }
     }
 }

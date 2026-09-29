@@ -68,10 +68,12 @@ public func pcEventSelectionEffects(
          .openEvent, .discardEventTapped, .openBatch, .startNewBatch,
          .dayTappedInCalendar, .backTapped, .closeTapped, .cancelTapped,
          .ensureAssemblyStarted, .navigationRequestHandled, .resetSession,
-         .setMultiSelectMode, .cancelMultiSelectTapped, .setEditorYear,
-         .setScrollAnchor:
+         .setMultiSelectMode, .setMultiSelectColor, .confirmMultiSelectTapped,
+         .cancelMultiSelectTapped, .setEditorYear, .setScrollAnchor:
         // Everything here is staged or view-only. Touching a batch in the editor must not
-        // write; only committing or saving does.
+        // write; only committing or saving does. `confirmMultiSelectTapped` builds a staged
+        // assembly but does not commit it, so it is inert too — the write happens when the
+        // editor's own save runs.
         return []
     }
 }

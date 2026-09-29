@@ -694,9 +694,10 @@ public struct PCEventSelectionState: Equatable {
     // Main-calendar multi-select session
     public var multiSelectMode = false
     public var multiSelectDays: [Date] = []
-    // DEFERRED to Stage 7 — see the 5b row. `PCColorOption` is not `Equatable` yet,
-    // and this state must be.
-    // public var multiSelectColor: PCColorOption?
+    /// The colour the multi-select session is building its batch in. Deferred to Stage 7
+    /// with `PCColorOption: Equatable`, because this state must be `Equatable` for
+    /// `send`'s `next != previous` to mean anything.
+    public var multiSelectColor: PCColorOption?
 
     // Environment the reducer needs (§5.1)
     public var dataProvider = PCCalendarDataProvider()
@@ -733,7 +734,7 @@ public enum PCEventSelectionAction: Equatable {
     case openBatch(pendingID: UUID)
     // DEFERRED to Stage 7, with `multiSelectColor`: an assembly cannot be built
     // without a colour. See the 5b row.
-    // case confirmMultiSelectTapped
+    case confirmMultiSelectTapped
 
     // Stage transitions
     case backTapped
@@ -762,7 +763,7 @@ public enum PCEventSelectionAction: Equatable {
 
     // Main calendar
     case setMultiSelectMode(Bool)
-    // case setMultiSelectColor(PCColorOption?)   // DEFERRED to Stage 7
+    case setMultiSelectColor(PCColorOption?)
     case cancelMultiSelectTapped
     case setNumberOfColumns(Int)
     case setEditorYear(Int)
@@ -792,7 +793,7 @@ public let pcEventSelectionReducer: (PCEventSelectionState, PCEventSelectionActi
 | `dayTappedInCalendar(d)` | `!multiSelectMode`, day has batches | `day = d`; `stage = .dayList(day: d)`; `assembly = nil` | `pushDayList` |
 | `startNewBatch(on: d)` | — | `day = d`; `assembly = .new(anchor: d, …)`; `stage = .batchEditor`; `scrollAnchor = d`; `isDirty = true` | `pushBatchEditor` |
 | `openBatch(pendingID:)` | batch found in `batches` | `day = batch.date`; `assembly = .existing(batch)`; `stage = .batchEditor`; `scrollAnchor = batch.date`; `editorYear = nil`; `isDirty = true` | `pushBatchEditor` |
-| `confirmMultiSelectTapped` | | **DEFERRED to Stage 7** with `multiSelectColor` | |
+| `confirmMultiSelectTapped` | `multiSelectMode`, days non-empty, colour set | `assembly = .new(all: multiSelectDays, color:, using:)`; `day`/`scrollAnchor` = earliest selected day; `stage = .batchEditor`; the whole session is then cleared | `pushBatchEditor` |
 
 #### Stage transitions
 
@@ -843,7 +844,7 @@ public let pcEventSelectionReducer: (PCEventSelectionState, PCEventSelectionActi
 | Action | Guard | State change |
 |---|---|---|
 | `setMultiSelectMode(on)` | — | `multiSelectMode = on`; on `false`, also clears days and colour |
-| `setMultiSelectColor(c)` | | **DEFERRED to Stage 7** | |
+| `setMultiSelectColor(c)` | — | `multiSelectColor = c`. Selecting a colour selects no days, so nothing else moves | — |
 | `cancelMultiSelectTapped` | — | `multiSelectDays = []`; `multiSelectColor = nil`; `dayEventColors` rebuilt |
 | `setNumberOfColumns(n)` | — | `numberOfColumns = n`; `isDirty = true` |
 | `setEditorYear(y)` | — | `editorYear = y` |
@@ -1034,6 +1035,50 @@ private func perform(_ effect: PCEventSelectionEffect) {
 which both read-modify-write the same `PPCalendar`. It also makes the 350 ms debounce
 in `SingleCalendarView` unnecessary: trailing writes coalesce naturally, so the
 `Task.sleep` and its `onDisappear` flush are deleted.
+
+Mutation-verified: deleting `await previous?.value` (so writes stop being serialised)
+fails `Rapid column changes write sequentially and the last write is the final state`
+with a maximum overlap of 4 and the payload arriving as `[1, 3, 2, 4]`. That is the
+double-persist bug returning in its original shape, so this is the test the plan means
+when it says the bug "can never return" — and it only catches it because the fake holds
+the port for a few milliseconds, since unordered writes that happen to finish in order
+are indistinguishable from ordered ones.
+
+### 7.1 Two corrections to §7
+
+**The store has no `dataProvider` of its own; it uses `state.dataProvider`.** §7.1 lists
+one as a stored property and §7.3 then uses *both* — `dataProvider.currentYear` on one
+line and `state.dataProvider` on the next. Two providers is one bug waiting: the
+projection decides which day a marker belongs to, the reducer decides which day a toggle
+affects, and if those disagree the calendar shows one thing while the state means
+another. `PCCalendarDataProvider.init` pins the current time zone and locale, so a second
+instance is not a hypothetical — it is a second object that *looks* interchangeable and
+is not. The state already carries one, and `PCCalendarDataProvider` is `Equatable`
+precisely so it can live there, so the store projects with `state.dataProvider`
+throughout. The composition root hands the session's own instance to the initial state
+for the same reason.
+
+**The `AppNavigation` changes in the Stage 6 row cannot happen in Stage 6.** The row
+bundles `pop()` and the payload-free routes with the store, but the routes still carry
+`Date`/`BatchEditorSource`/`EventEditorSource` payloads that the *live* old views read:
+`SingleCalendarView` matches `.dayBatches(let day)`, `.batchEditor(let source)` and
+`.eventEditor(let source)`, and `AddEditEventBatchScreen`, `AddEditEventListView` and
+`AddEditEventView` all construct and read those payloads. Stripping the payloads is
+Stage 8's rewiring of those views, not a store change — doing it here would break the
+build on five files that Stage 8 then has to rewrite anyway. So Stage 6 is the store
+alone, injected through `.environment` with no reader yet, and the route surgery moves
+to Stage 8 where the consumers of those payloads are being replaced. `pop()` moves with
+it: the store never touches navigation — the reducer emits a `NavigationRequest` and the
+*view* carries it out — so `pop()` has no caller until a view does.
+
+One more decision, made because the alternative is a structural repeat of the bug fixed
+in `SingleCalendarView`: **the store owns its own `PCCalendarDaySelectionManager`** rather
+than taking the session's. `PCCalendarModelBuilder` requires one to wire the day cells,
+but the authoritative selection is `state.multiSelectDays`, so this instance is a
+projection of it, rewritten on every `projectCalendar`. The old code shared one manager
+between the main calendar and the editor, and `PCEventsSelectionManager.prepare(with:)`
+flipping `selectionMode` on it is what made a tap on an empty day flash the multiselect
+picker on the screen behind the sheet. Nothing shared, nothing to leak.
 
 ---
 
@@ -1433,10 +1478,10 @@ same instant it constructs one is testing scheduler luck. Hence `waitForSubscrib
 which every fixture awaits.
 
 | 5a | **`BatchAssembler` (§5.4), and nothing else.** One new file in `SingleCalendarFeature`, plus its §12.2 tests. No caller, no wiring, no view touched. Split out of the old Stage 5 because it is a hard prerequisite for the UDF layer — `PCEventSelectionState.assembly` and every reducer row in §6.3 reference it — and because it is the single home of the duplicate-batch logic. It is also the one stage in the plan that is pure value semantics with no actor, no store and no I/O, so it is worth landing and gating on its own. | 275 unit, 10 UI, plus the §12.2 assembly suites. Achieved: 280 unit, 0 fail; UI unchanged by the stage |
-| 5b | **The UDF value types, reducer and effect derivation.** `PCEventSelectionState`/`Stage`/`NavigationRequest`, `PCEventSelectionAction`, `pcEventSelectionReducer`, `PCEventSelectionEffect` + `pcEventSelectionEffects`, and `PCCalendarMarkerProjector` extracted from its two near-identical copies. Still no caller wired — Stage 6 is the store, Stage 8 the view models. **Blocked on 5a**, since the state holds a `BatchAssembler?`. **`multiSelectColor` is deferred to Stage 7**: `PCEventSelectionState` must be `Equatable` for `send`'s `next != previous`, and `PCColorOption` only becomes `Equatable` in Stage 7. The field is dropped rather than the conformance, because splitting the state type across two stages is worse than landing part of it now. Two actions go with it — `setMultiSelectColor`, and `confirmMultiSelectTapped`, which cannot build an assembly without a colour to build it with. `setMultiSelectMode` and `cancelMultiSelectTapped` need no colour and land in 5b. | 275 unit, 10 UI, plus the §12.1 reducer suites. Achieved: 334 unit, 0 fail, plus the 3 mutation-verified `CalendarListRefreshTests`; the full 10-test UI gate is still unrun and owed at the next UI-touching stage |
-| 6 | **The store.** `PCEventSelectionManager` beside the old manager: `send`, projection, `perform`, `writeChain`; injected via `.environment`. `AppNavigation`: `pop()`, payload-free push routes, `BatchEditorSource`/`EventEditorSource` deleted. | 229 / 29, plus store suites |
-| 7 | **`DSKit`.** `onDayTapped` on `PCCalendarDaySelectionManager`; `Equatable`/`Hashable` on `PCColorOption`. Stop every screen observing `selectedDays`; dispatch from `onDayTapped` instead. | 229 / 29 |
-| 8 | **Thread the assembler through the view models.** Keep all four view models and rebuild each as a projection facade over `PCEventSelectionManager`: no stored domain state, computed projections, commands that `send`. `AddEditEventListView` takes `AddEditEventListViewModel(assembler:)`. Delete the `typealias` shims. | 29 UI, incl. `BatchEditCommitTests` |
+| 5b | **The UDF value types, reducer and effect derivation.** `PCEventSelectionState`/`Stage`/`NavigationRequest`, `PCEventSelectionAction`, `pcEventSelectionReducer`, `PCEventSelectionEffect` + `pcEventSelectionEffects`, and `PCCalendarMarkerProjector` extracted from its two near-identical copies. Still no caller wired — Stage 6 is the store, Stage 8 the view models. **Blocked on 5a**, since the state holds a `BatchAssembler?`. **`multiSelectColor` is deferred to Stage 7**: `PCEventSelectionState` must be `Equatable` for `send`'s `next != previous`, and `PCColorOption` only becomes `Equatable` in Stage 7. The field is dropped rather than the conformance, because splitting the state type across two stages is worse than landing part of it now. Two actions go with it — `setMultiSelectColor`, and `confirmMultiSelectTapped`, which cannot build an assembly without a colour to build it with. `setMultiSelectMode` and `cancelMultiSelectTapped` need no colour and land in 5b. **Paid off in Stage 7**, which is where all three landed. | 275 unit, 10 UI, plus the §12.1 reducer suites. Achieved: 334 unit, 0 fail, plus the 3 mutation-verified `CalendarListRefreshTests`; the full 10-test UI gate is still unrun and owed at the next UI-touching stage |
+| 6 | **The store.** `PCEventSelectionManager` beside the old manager: `send`, projection, `perform`, `writeChain`; injected via `.environment`. **The `AppNavigation` half of this stage is not executable here and moves to Stage 8** — see §7.1. Achieved: 343 unit, 0 fail, plus the 3 mutation-verified `CalendarListRefreshTests`; the full 10-test UI gate is still unrun and owed at the next UI-touching stage |
+| 7 | **`DSKit`, and the two actions 5b deferred.** `onDayTapped` on `PCCalendarDaySelectionManager`; `Equatable`/`Hashable` on `PCColorOption`; then `multiSelectColor`, `setMultiSelectColor` and `confirmMultiSelectTapped` land — the state is equatable at last, so they can. **"Stop every screen observing `selectedDays`" moves to Stage 8**, for the same reason the route payloads did: the screens doing the observing are the ones Stage 8 rewrites (§8.2). Achieved: 356 unit, 0 fail, plus the 3 mutation-verified `CalendarListRefreshTests`; the full 10-test UI gate is still unrun and owed |
+| 8 | **Thread the assembler through the view models.** Keep all four view models and rebuild each as a projection facade over `PCEventSelectionManager`: no stored domain state, computed projections, commands that `send`. `AddEditEventListView` takes `AddEditEventListViewModel(assembler:)`. Delete the `typealias` shims. **Also lands the `AppNavigation` half of the old Stage 6**: `pop()`, payload-free `dayBatches`/`batchEditor`/`eventEditor`, and `BatchEditorSource`/`EventEditorSource` deleted — deferred here because these five live views are the only readers of those payloads, and they are exactly what this stage rewrites (§7.1). | 29 UI, incl. `BatchEditCommitTests` |
 | 9 | **Slim `SingleCalendarModel`** to §9. Route `fetch` through `syncCalendar`. Remove `save(for:)`, `commitPendingBatch`, `deleteBatches`, `route(for:)`, `updateYearModel`, `dayModel(for:)`, `colorsByStartOfDay`, the `addedEvents` staging and the 350 ms debounce. | 29 UI |
 | 10 | **Delete the leftovers.** The `onEventsChanged` / `onEventApplied` closures, `columnCountSaveTask`, and `PCEventsSelectionManager` itself. | 229 / 29 |
 | 11 | **Close out the UI suite.** New multi-day scenario: tap two days, save, assert one batch with two days. | 29 + 1 UI |
@@ -1526,12 +1571,22 @@ One test per row of the §6.3 and §6.4 tables. Plus:
 - every `PCEventSelectionAction` case appears in at least one test, enforced by
   iterating an `allActions` list and asserting each either changes state or emits an
   effect, so a newly added action cannot ship unhandled;
-  - `allActions` is derived from the enum, so the two cases deferred to Stage 7
-    (`setMultiSelectColor`, `confirmMultiSelectTapped`) drop out of it by construction
-    rather than by being remembered to be excluded. When Stage 7 restores them they
-    reappear in the list and the coverage requirement resumes automatically. This is the
-    reason `allActions` is derived and not hand-written: a hand-written list is a second
-    source of truth that drifts the first time an action is added or deferred.
+  - ~~`allActions` is derived from the enum~~ — **this was wrong, and Stage 7 proved it.**
+    `allActions` is hand-written, and it has to be: `dayTappedInCalendar(Date)` and
+    `openBatch(pendingID:)` need a payload that only matches a particular state, so the
+    list cannot be built from the enum. The consequence was demonstrated rather than
+    predicted — when Stage 7 added `setMultiSelectColor` and `confirmMultiSelectTapped`,
+    the list stayed at 28 entries and `#expect(cases.count == 28)` still passed, so the
+    coverage test was silently no longer covering either new action. A hand-written list
+    is a second source of truth, and a count assertion against a hand-written constant
+    checks nothing at all.
+    The list is now at 30 with both cases added, and the count is the one thing a future
+    stage must update when it adds an action. Turning that into a real guard needs the
+    enum to publish its own case names (`PCEventSelectionAction.caseNames`), so the test
+    can assert the hand-written list *covers* that set rather than merely has the right
+    length. That is left undone deliberately: adding production API purely to police a
+    test is its own kind of coupling, and it is Stage 8's job to decide when the action
+    set stops moving.
 - a rejected action leaves state byte-identical — in particular `setBatchName` with
   no assembly, and `openEvent` with an unknown id;
 - `toggleDay` twice on the same day returns the original event count;
