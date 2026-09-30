@@ -1,6 +1,6 @@
 //
 //  AddEditEventBatchScreen.swift
-//  PinCalApp
+//  SingleCalendarFeature
 //
 //  Created by Oleg Bragin on 07.08.2026.
 //
@@ -8,49 +8,54 @@
 import SwiftUI
 import DSKit
 import AppNavigation
-import CorePersistence
 
+/// The batch editor.
+///
+/// Takes only the calendar it belongs to. Which batch is being edited is `state.assembly`,
+/// and the day it was opened from no longer has to be reconstructed from a
+/// `BatchEditorSource` — the stage and the anchor day are both in the state.
 public struct AddEditEventBatchScreen: View {
-    @State private var viewModel: AddEditEventBatchViewModel
-
-    public var calendarId: Int64
-    private let source: BatchEditorSource
-
-    @Environment(\.dismiss) private var dismiss
+    @Environment(PCEventSelectionManager.self) private var store
     @Environment(RootNavigation.self) private var navigation
     @Environment(\.pcVibe) private var vibe
 
-    public init(
-        eventsSelectionManager: PCEventsSelectionManager,
-        calendarId: Int64,
-        source: BatchEditorSource,
-        eventBatch: EventBatchDataSource?
-    ) {
-        let selectedDay: Date?
-        if case .newDay(let day) = source {
-            selectedDay = day
-        } else {
-            selectedDay = nil
-        }
-        _viewModel = State(initialValue: AddEditEventBatchViewModel(
-            eventsSelectionManager: eventsSelectionManager,
-            calendarId: calendarId,
-            eventBatch: eventBatch,
-            selectedDay: selectedDay
-        ))
-        self.calendarId = calendarId
-        self.source = source
+    public let calendarID: Int64
+
+    public init(calendarID: Int64) {
+        self.calendarID = calendarID
     }
 
     public var body: some View {
+        let viewModel = AddEditEventBatchViewModel(store: store)
+
         GeometryReader { geometry in
             if geometry.size.width > geometry.size.height {
-                BatchEditorHorizontalLayout(viewModel: viewModel)
+                BatchEditorHorizontalLayout()
             } else {
-                BatchEditorVerticalLayout(viewModel: viewModel)
+                BatchEditorVerticalLayout()
             }
         }
         .toolbar {
+            // An explicit Back, because the system's is a trap here.
+            //
+            // The system back button pops the `NavigationStack` itself. It never reaches the
+            // store, so the staged assembly survives the editor that was editing it: the
+            // day the user tapped keeps its marker, and the calendar then reports an event
+            // that was never written. Reported as "marked in memory, not persisted" — and
+            // invisible in review, because a navigation bar doing its job is not something
+            // that looks like a bug.
+            //
+            // Routing Back through the store is the design the reducer already models:
+            // `backTapped` decides what leaving means (discard the edit, keep the
+            // committed rows), records a `.pop`, and `PCEventSelectionNavigator` carries it
+            // out. The system button skips all three steps.
+            ToolbarItem(placement: .topBarLeading) {
+                Button {
+                    store.send(.backTapped)
+                } label: {
+                    Label("Back", systemImage: "chevron.backward")
+                }
+            }
             ToolbarItem(placement: .principal) {
                 BatchEditorTitleContent(
                     preferredTitle: viewModel.preferredTitle,
@@ -58,40 +63,39 @@ public struct AddEditEventBatchScreen: View {
                 )
             }
         }
+        .navigationBarBackButtonHidden(true)
         .toolbarBackground(vibe.color(for: .backgroundMain), for: .pcNavigationBar)
         .ignoresSafeArea(edges: .bottom)
         .background(vibe.color(for: .backgroundMain))
         .pcDisableInteractivePopGesture()
         .task {
-            viewModel.setup()
-        }
-        .onChange(of: viewModel.daySelectionManager.selectedDays) { _, newValue in
-            if let selectedDay = newValue.first {
-                viewModel.toggleEvent(on: selectedDay)
+            // Entry is dispatched from the visible screen, never from `init`. A
+            // `navigationDestination` builds its views speculatively for screens the user
+            // has not reached, and running entry there would commit a phantom batch and
+            // steal day markers onto a year model that is not on screen.
+            store.send(.ensureAssemblyStarted)
+            store.installDayTapHandler { day in
+                store.send(.toggleDay(day))
             }
         }
-        .onChange(of: viewModel.didSave) { _, didSave in
-            guard didSave else { return }
-            let batchDeleted = viewModel.eventBatch?.events.isEmpty == true
-            if batchDeleted {
-                // Every event was removed, so the batch no longer exists.
-                // Return straight to the single calendar view.
-                navigation.goTo(.calendar(calendarId, toRoot: true))
-            } else {
-                dismiss()
-            }
+        .onDisappear {
+            store.clearDayTapHandler()
+        }
+        .onChange(of: store.state.navigationRequest) { _, request in
+            guard let request else { return }
+            PCEventSelectionNavigator.fulfil(
+                request,
+                calendarID: calendarID,
+                using: navigation,
+                in: store
+            )
         }
     }
 }
 
 #Preview {
     NavigationStack {
-        AddEditEventBatchScreen(
-            eventsSelectionManager: PCEventsSelectionManager(),
-            calendarId: 0,
-            source: .existingBatch(1),
-            eventBatch: nil
-        )
+        AddEditEventBatchScreen(calendarID: 1)
     }
     .environment(RootNavigation())
     .environment(PCKeyboardState())

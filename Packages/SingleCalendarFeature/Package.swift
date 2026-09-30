@@ -33,8 +33,9 @@ let package = Package(
     targets: [
         .target(
             name: "SingleCalendarFeature",
+            // No CorePersistence. Stage 9 removed the last import; the package reaches
+            // storage only through the domain ports.
             dependencies: [
-                "CorePersistence",
                 "DSKit",
                 "CoreDomain",
                 "AppNavigation"

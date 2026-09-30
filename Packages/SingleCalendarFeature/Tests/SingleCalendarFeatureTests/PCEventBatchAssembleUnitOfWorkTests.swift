@@ -1,5 +1,5 @@
 //
-//  BatchAssemblerTests.swift
+//  PCEventBatchAssembleUnitOfWorkTests.swift
 //  SingleCalendarFeatureTests
 //
 //  Stage 5a's gate. The plan's §12.2, plus the two §12.1 invariants that belong to this
@@ -13,8 +13,8 @@ import CoreDomain
 import DSKit
 @testable import SingleCalendarFeature
 
-@Suite("BatchAssembler Tests")
-struct BatchAssemblerTests {
+@Suite("PCEventBatchAssembleUnitOfWork Tests")
+struct PCEventBatchAssembleUnitOfWorkTests {
 
     /// The domain layer's only `Foundation.Calendar` owner, used for every day
     /// comparison here.
@@ -38,45 +38,72 @@ struct BatchAssemblerTests {
         return gregorian.date(from: components)!
     }
 
+    /// A batch with explicit name and colour.
+    ///
+    /// Both are passed to the factory rather than applied afterwards, so an explicit `""`
+    /// really does produce an unnamed batch. It used to be `if !name.isEmpty { renaming }`,
+    /// which silently depended on `new` producing an empty name — and the moment `new`
+    /// started defaulting one, `namedAssembler(name: "")` returned a *named* batch and the
+    /// "no name" case stopped being tested without anything looking broken.
     private func namedAssembler(
         name: String = "morning",
         color: PCColorOption? = .option1,
         on anchor: Date? = nil
-    ) -> BatchAssembler {
-        var assembler = BatchAssembler.new(
+    ) -> PCEventBatchAssembleUnitOfWork {
+        PCEventBatchAssembleUnitOfWork.new(
             anchor: anchor ?? day(6, 1),
+            name: name,
             colorName: color?.colorName ?? "",
             using: provider
         )
-        if !name.isEmpty { assembler = assembler.renaming(name) }
-        return assembler
     }
 
     // MARK: - Identity
 
-    @Test("new(anchor:) seeds exactly one event, unnamed and uncoloured")
+    /// The default a new batch arrives with, pinned because a great deal rides on it: it
+    /// is what makes a merely-tapped day savable, and it is what a user sees before they
+    /// type anything.
+    @Test("new(anchor:) arrives named and coloured, so a tapped day is savable immediately")
     func newSeedsOneEvent() {
-        let assembler = BatchAssembler.new(anchor: day(6, 1), colorName: "", using: provider)
+        let assembler = PCEventBatchAssembleUnitOfWork.new(anchor: day(6, 1), using: provider)
 
         #expect(assembler.origin == .new)
         #expect(assembler.isNew)
         #expect(assembler.batch.events.count == 1)
-        #expect(assembler.batch.name.isEmpty)
-        #expect(assembler.batch.events[0].name.isEmpty, "a fresh day is a placeholder, not an event")
+        #expect(assembler.batch.name == PCEventBatchAssembleUnitOfWork.defaultBatchName)
+        #expect(assembler.batch.colorName == PCColorOption.firstAvailable.colorName)
+        #expect(assembler.batch.events[0].name == PCEventBatchAssembleUnitOfWork.defaultEventName)
+        #expect(
+            assembler.batch.events[0].colorName == assembler.batch.colorName,
+            "the event inherits the batch's colour, so the event editor's own Save is enabled too"
+        )
+        #expect(assembler.canSave, "a merely-tapped day must be committable without any editing")
         #expect(assembler.adoptedPersistedID == nil)
+    }
+
+    /// The undefaulted shapes still have to be constructible — the reducer tests use them to
+    /// reach a state `canSave` refuses, which is a real state and worth being able to build.
+    @Test("new(anchor:) takes an explicit name and colour, including empty ones")
+    func newTakesExplicitNameAndColour() {
+        let assembler = PCEventBatchAssembleUnitOfWork.new(anchor: day(6, 1), name: "", colorName: "", using: provider)
+
+        #expect(assembler.batch.name.isEmpty)
+        #expect(assembler.batch.events[0].name == PCEventBatchAssembleUnitOfWork.defaultEventName)
+        #expect(assembler.batch.colorName.isEmpty)
+        #expect(assembler.canSave == false, "and canSave still reports why")
     }
 
     @Test("new(anchor:) normalises the anchor to the start of its day")
     func newNormalisesAnchor() {
         let anchor = day(6, 1)
-        let assembler = BatchAssembler.new(anchor: anchor, colorName: "", using: provider)
+        let assembler = PCEventBatchAssembleUnitOfWork.new(anchor: anchor, colorName: "", using: provider)
 
         #expect(assembler.batch.events[0].date == provider.startOfDay(for: anchor))
     }
 
     @Test("new(all:color:) holds one placeholder per selected day, sorted")
     func newAllSeedsOnePerDay() {
-        let assembler = BatchAssembler.new(
+        let assembler = PCEventBatchAssembleUnitOfWork.new(
             all: [day(6, 3), day(6, 1), day(6, 2)],
             color: .option2,
             using: provider
@@ -85,20 +112,27 @@ struct BatchAssemblerTests {
         #expect(assembler.batch.events.count == 3)
         #expect(assembler.batch.colorName == PCColorOption.option2.colorName)
         #expect(assembler.batch.events.allSatisfy { $0.colorName == PCColorOption.option2.colorName })
-        #expect(assembler.batch.events.allSatisfy { $0.name.isEmpty })
+        #expect(assembler.batch.events.allSatisfy { $0.name == PCEventBatchAssembleUnitOfWork.defaultEventName })
+        #expect(assembler.batch.name == PCEventBatchAssembleUnitOfWork.defaultBatchName)
+        #expect(assembler.canSave)
         let dates = assembler.batch.events.map(\.date)
         #expect(dates == dates.sorted(), "order must not depend on tap order")
         #expect(provider.isSameDay(dates[0], day(6, 1)))
         #expect(provider.isSameDay(dates[2], day(6, 3)))
     }
 
-    @Test("new(all:color:) with a nil colour leaves the batch unsavable")
+    /// A nil colour is defaulted rather than honoured.
+    ///
+    /// The reducer refuses to confirm a session without a colour, so this is a defensive
+    /// branch — and the two "a new batch" entry points should not disagree about what one
+    /// looks like just because one of them was handed nil.
+    @Test("new(all:color:) with a nil colour falls back to the first available colour")
     func newAllNilColor() {
-        let assembler = BatchAssembler.new(all: [day(6, 1)], color: nil, using: provider)
+        let assembler = PCEventBatchAssembleUnitOfWork.new(all: [day(6, 1)], color: nil, using: provider)
 
-        #expect(assembler.batch.colorName.isEmpty)
-        #expect(assembler.batch.events.allSatisfy { $0.colorName.isEmpty })
-        #expect(assembler.canSave == false)
+        #expect(assembler.batch.colorName == PCColorOption.firstAvailable.colorName)
+        #expect(assembler.batch.events.allSatisfy { $0.colorName == PCColorOption.firstAvailable.colorName })
+        #expect(assembler.canSave)
     }
 
     @Test("existing(_:) records the row it was opened from")
@@ -111,7 +145,7 @@ struct BatchAssemblerTests {
             events: [CalendarEvent(name: "Event", date: day(6, 1), colorName: "eventColorOption1")]
         )
 
-        let assembler = BatchAssembler.existing(batch)
+        let assembler = PCEventBatchAssembleUnitOfWork.existing(batch)
 
         #expect(assembler.isNew == false)
         #expect(assembler.origin == .existing(pendingID: batch.pendingID))
@@ -120,16 +154,32 @@ struct BatchAssemblerTests {
 
     // MARK: - canSave
 
-    @Test("canSave requires a name, a colour and at least one event")
+    @Test("canSave requires a name and a colour")
     func canSaveRequirements() {
         #expect(namedAssembler().canSave)
 
         #expect(namedAssembler(name: "").canSave == false, "no name")
         #expect(namedAssembler(color: nil).canSave == false, "no colour")
+    }
 
+    /// An emptied batch stays savable, because that is how it gets deleted.
+    ///
+    /// The reducer's `saveTapped` treats "saves but resolves to nothing" as *delete the row
+    /// and return to the calendar*. Gating Save on a non-empty batch made that branch
+    /// unreachable: the button was disabled in exactly the state that would have triggered
+    /// it, so a user who removed every event could not commit the removal, and Back — the
+    /// only way out left — discards it.
+    @Test("A batch with no events is still savable, so emptying it deletes it")
+    func emptyBatchIsStillSavable() {
         let assembler = namedAssembler()
         let emptied = assembler.removingEvent(pendingID: assembler.batch.events[0].pendingID)
-        #expect(emptied.canSave == false, "no events")
+
+        #expect(emptied.batch.events.isEmpty)
+        #expect(emptied.canSave, "Save has to stay reachable for the delete to be reachable")
+        #expect(
+            emptied.resolved() == nil,
+            "but there is still nothing to write, which is what keeps `commitTapped` from persisting it"
+        )
     }
 
     // MARK: - toggling
@@ -303,7 +353,7 @@ struct BatchAssemblerTests {
             colorName: "eventColorOption1",
             events: [CalendarEvent(name: "Event", date: day(6, 1), colorName: "eventColorOption1")]
         )
-        let assembler = BatchAssembler.existing(stored).renaming("edited")
+        let assembler = PCEventBatchAssembleUnitOfWork.existing(stored).renaming("edited")
 
         let resolved = assembler.resolved()
 
@@ -327,7 +377,7 @@ struct BatchAssemblerTests {
             colorName: "eventColorOption1",
             events: [CalendarEvent(name: "Event", date: day(6, 1), colorName: "eventColorOption1")]
         )
-        let assembler = BatchAssembler.existing(stored).adopting(persistedID: 99)
+        let assembler = PCEventBatchAssembleUnitOfWork.existing(stored).adopting(persistedID: 99)
 
         #expect(assembler.resolved()?.persistedID == 99)
     }
@@ -340,7 +390,7 @@ struct BatchAssemblerTests {
             colorName: "eventColorOption1",
             events: [CalendarEvent(name: "Event", date: day(6, 1), colorName: "eventColorOption1")]
         )
-        let assembler = BatchAssembler.existing(stored)
+        let assembler = PCEventBatchAssembleUnitOfWork.existing(stored)
             .renaming("edited")
             .toggling(day: day(6, 4), using: provider)
 

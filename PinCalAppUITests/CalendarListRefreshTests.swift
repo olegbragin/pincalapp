@@ -114,14 +114,16 @@ final class CalendarListRefreshTests: XCTestCase {
         trashButton(for: name, in: app).tap()
     }
 
-    /// The sidebar rows surface as `StaticText`/`Image` with the identifier, not as
-    /// buttons, so a plain `app.buttons[...]` query finds nothing.
     private func openArchivedList(_ app: XCUIApplication) {
-        let back = app.buttons["BackButton"]
-        if back.exists {
-            back.tap()
+        let archived = KeyboardAvoidanceTestSupport.revealedSidebarRow("sidebar-archived", in: app)
+        // Navigate only if the sidebar is not already on screen. The test is already on
+        // the calendar list, so there is usually nothing to leave — and on the iPad split
+        // view the sidebar is *permanently* on screen while the one `BackButton` in the
+        // hierarchy is the sidebar's own, so the unconditional back tap this used to do
+        // collapsed the sidebar and then failed to find the row it had just navigated to.
+        if !archived.exists, !archived.isHittable {
+            KeyboardAvoidanceTestSupport.leaveCurrentScreen(in: app)
         }
-        let archived = app.descendants(matching: .any).matching(identifier: "sidebar-archived").firstMatch
         XCTAssertTrue(archived.waitForExistence(timeout: 5), "The sidebar should offer Archived")
         archived.tap()
     }

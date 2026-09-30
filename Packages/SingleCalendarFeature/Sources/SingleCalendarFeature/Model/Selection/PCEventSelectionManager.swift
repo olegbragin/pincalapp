@@ -51,23 +51,36 @@ public final class PCEventSelectionManager {
     /// rather than merely unlikely.
     private var writeChain: Task<Void, Never>?
 
-    /// Presentational day selection for `yearModel`, owned here rather than shared.
+    /// Presentational day selection for `yearModel`. Injected, not created here.
     ///
-    /// `PCCalendarModelBuilder` requires a `PCCalendarDaySelectionManager` to wire the day
+    /// `PCCalendarModelBuilder` needs a `PCCalendarDaySelectionManager` to wire the day
     /// cells, but the authoritative selection is `state.multiSelectDays`; this instance is
-    /// a projection of it, rewritten by `projectCalendar`. Owning it — instead of taking
-    /// the main calendar's instance, as the old `PCEventsSelectionManager` did — is what
-    /// stops the editor's selection mode from leaking onto the screen behind the sheet.
-    private let daySelectionManager = PCCalendarDaySelectionManager()
+    /// a projection of it, rewritten by `projectCalendar`. So the manager is the *only*
+    /// writer, which is why the year model can be wired to an object that arrives from
+    /// outside and still stay in step.
+    ///
+    /// **The caller must pass an instance dedicated to this store.** It used to be created
+    /// here, which made the exclusivity structural. Injected, it is a contract instead —
+    /// and the one that matters is that this is *not* the main calendar's instance, because
+    /// the store writes `selectedDays` on it and installs a tap listener on it. Share it
+    /// and the editor's selection mode leaks onto the screen behind the sheet, and the
+    /// main calendar's own listener fires on taps the editor thought were its own. That
+    /// bug is why the old `PCEventsSelectionManager` took the main calendar's instance, and
+    /// it is invisible in review because nothing about the signature is wrong. Hence the
+    /// name: `daySelectionManager`, not `selectionManager`, and no default value — a
+    /// defaulted dependency here would silently restore the old bug at every test site.
+    private let daySelectionManager: PCCalendarDaySelectionManager
 
     public init(
         initialState: PCEventSelectionState = PCEventSelectionState(),
         persistence: any CalendarPersisting,
+        daySelectionManager: PCCalendarDaySelectionManager,
         columnCountResolver: @escaping (Int) -> Int = { $0 }
     ) {
         self.state = initialState
         self.columnCountResolver = columnCountResolver
         self.persistence = persistence
+        self.daySelectionManager = daySelectionManager
         self.yearModel = PCCalendarModelBuilder.makeYearModel(
             from: initialState.dataProvider,
             year: initialState.editorYear,
@@ -97,6 +110,32 @@ public final class PCEventSelectionManager {
         for effect in pcEventSelectionEffects(action, previous, next) {
             perform(effect)
         }
+    }
+
+    // MARK: - Day taps in the editor's calendar
+
+    /// Installs the single listener for a day tapped in the editor's calendar.
+    ///
+    /// The year model the editor binds to is wired to the store's own
+    /// `PCCalendarDaySelectionManager`, so the store is the only thing that can install a
+    /// listener on it. Exactly one screen listens at a time: the batch editor while it is
+    /// visible, nothing otherwise.
+    ///
+    /// This replaces watching `selectedDays` with `onChange` and inferring intent from
+    /// its contents. A set used as a message bus cannot tell "the user tapped a day" from
+    /// "a day was seeded into the set", which is exactly why the editor had to clear the
+    /// set defensively on every stage, and why the main calendar could flash the
+    /// multi-select picker when staging a batch changed the mode underneath it.
+    public func installDayTapHandler(_ handler: @escaping @MainActor (Date) -> Void) {
+        daySelectionManager.onDayTapped = handler
+    }
+
+    /// Removes the listener.
+    ///
+    /// Not optional housekeeping: the handler captures the store, so leaving it installed
+    /// past the screen's lifetime breaks the one-listener-at-a-time invariant.
+    public func clearDayTapHandler() {
+        daySelectionManager.onDayTapped = nil
     }
 
     // MARK: - Projection

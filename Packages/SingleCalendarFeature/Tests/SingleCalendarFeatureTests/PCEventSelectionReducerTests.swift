@@ -88,10 +88,10 @@ struct PCEventSelectionReducerTests {
         return copy
     }
 
-    private func normalized(_ assembler: BatchAssembler) -> BatchAssembler {
+    private func normalized(_ assembler: PCEventBatchAssembleUnitOfWork) -> PCEventBatchAssembleUnitOfWork {
         // Via the public factory: `init(batch:origin:)` is private by design. The origin
         // is normalised too, since it carries a minted UUID in the `.existing` case.
-        BatchAssembler
+        PCEventBatchAssembleUnitOfWork
             .existing(normalized(assembler.batch))
             .adopting(persistedID: assembler.adoptedPersistedID)
     }
@@ -114,7 +114,12 @@ struct PCEventSelectionReducerTests {
         var state = PCEventSelectionState(dataProvider: provider)
         state.calendarID = calendarID
         state.batches = batches ?? [batch("morning", on: 1, id: 7)]
-        state.dayEventColors = PCCalendarMarkerProjector.colorsByDay(from: state.batches, using: provider)
+        // Derive, never hand-write: `dayEventColors` is a derived field, and a fixture that
+        // fills it in by a different route builds a state the reducer cannot emit. That
+        // shows up as the rejected-action contract breaking — a guard that correctly changes
+        // nothing still "changes" the state, because the payload disagrees with what the
+        // state implies. `derivedDayEventColors` is the same derivation the reducer uses.
+        state.dayEventColors = state.derivedDayEventColors
         return state
     }
 
@@ -122,11 +127,12 @@ struct PCEventSelectionReducerTests {
     private func editing(_ state: PCEventSelectionState, on dayOfMonth: Int) -> PCEventSelectionState {
         var next = state
         next.day = day(dayOfMonth)
-        next.assembly = BatchAssembler
+        next.assembly = PCEventBatchAssembleUnitOfWork
             .new(anchor: day(dayOfMonth), colorName: "", using: provider)
             .renaming("edited")
             .recoloring(.option2)
         next.stage = .batchEditor
+        next.dayEventColors = next.derivedDayEventColors
         return next
     }
 
@@ -134,6 +140,7 @@ struct PCEventSelectionReducerTests {
         var next = state
         next.day = d
         next.stage = .dayList(day: d)
+        next.dayEventColors = next.derivedDayEventColors
         return next
     }
 
@@ -141,6 +148,7 @@ struct PCEventSelectionReducerTests {
         var next = state
         next.multiSelectMode = true
         next.multiSelectDays = days
+        next.dayEventColors = next.derivedDayEventColors
         return next
     }
 
@@ -182,7 +190,10 @@ struct PCEventSelectionReducerTests {
         #expect(next.scrollAnchor == day(4))
         #expect(next.editorYear == nil)
         #expect(next.isDirty)
-        #expect(next.canSave == false, "a merely-tapped day has no name and no colour yet")
+        #expect(
+            next.canSave,
+            "a merely-tapped day arrives named and coloured, so it is savable without any editing"
+        )
         #expect(next.navigationRequest?.target == .pushBatchEditor)
         #expect(effects.isEmpty, "staging is not a write")
     }
@@ -243,10 +254,8 @@ struct PCEventSelectionReducerTests {
 
     @Test("openBatch stages the batch it found and asks for a push")
     func openBatch() {
-        // The session has to hold the very row being opened: `openBatch` looks it up by
-        // `pendingID`, and a second call to `batch(...)` would mint a different UUID.
         let target = batch("morning", on: 1, id: 7)
-        let (next, _) = reduce(session(batches: [target]), .openBatch(pendingID: target.pendingID))
+        let (next, _) = reduce(session(batches: [target]), .openBatch(id: target.mergeKey))
 
         #expect(next.stage == .batchEditor)
         #expect(next.assembly?.batch.pendingID == target.pendingID)
@@ -256,10 +265,44 @@ struct PCEventSelectionReducerTests {
         #expect(next.navigationRequest?.target == .pushBatchEditor)
     }
 
+    /// The regression that made a card tap do nothing.
+    ///
+    /// `pendingID` is session identity and a DTO carries none, so every row is re-minted on
+    /// every load — and the model re-syncs on every calendar write, so a write from
+    /// anywhere re-mints the row a card on screen was drawn from. Opening by `pendingID`
+    /// then missed, the action was rejected, and the tap was dropped with nothing logged.
+    /// `mergeKey` survives, because the persisted id does.
+    @Test("A reload re-mints every pendingID, and a card drawn before it still opens its row")
+    func openBatchSurvivesAReload() throws {
+        let drawn = twoDayBatch()
+        // The same row as a DTO round trip produces it: same persisted id, same events,
+        // brand-new `pendingID` because a DTO has nowhere to carry the old one.
+        let reloaded = CalendarEventBatch(
+            persistedID: drawn.persistedID,
+            name: drawn.name,
+            colorName: drawn.colorName,
+            events: drawn.events
+        )
+        #expect(drawn.pendingID != reloaded.pendingID, "a reload re-mints session identity")
+        #expect(
+            [reloaded].first(where: { $0.pendingID == drawn.pendingID }) == nil,
+            "the lookup the old code performed matched nothing — which is why the tap was dropped"
+        )
+
+        let next = reduce(session(batches: [reloaded]), .openBatch(id: drawn.mergeKey)).next
+
+        #expect(
+            next.assembly?.batch.persistedID == drawn.persistedID,
+            "the card named the row by its durable id, so the reload did not lose it"
+        )
+        #expect(next.navigationRequest?.target == .pushBatchEditor)
+    }
+
     @Test("openBatch with an unknown id is rejected")
     func openBatchUnknown() {
         let state = session()
-        #expect(reduce(state, .openBatch(pendingID: UUID())).next == state)
+        #expect(reduce(state, .openBatch(id: .pending(UUID()))).next == state)
+        #expect(reduce(state, .openBatch(id: .persisted(999))).next == state, "no such row")
     }
 
     @Test("Back from the event editor drops the draft and returns to the batch editor")
@@ -289,7 +332,7 @@ struct PCEventSelectionReducerTests {
     @Test("Back from the batch editor with no day falls back to idle")
     func backFromBatchEditorNoDay() {
         var state = session()
-        state.assembly = BatchAssembler.new(anchor: day(3), colorName: "", using: provider)
+        state.assembly = PCEventBatchAssembleUnitOfWork.new(anchor: day(3), colorName: "", using: provider)
         state.stage = .batchEditor
 
         #expect(reduce(state, .backTapped).next.stage == .idle)
@@ -402,10 +445,51 @@ struct PCEventSelectionReducerTests {
     @Test("toggleDay is refused outside the batch editor")
     func toggleDayWrongStage() {
         var state = session()
-        state.assembly = BatchAssembler.new(anchor: day(1), colorName: "", using: provider)
+        state.assembly = PCEventBatchAssembleUnitOfWork.new(anchor: day(1), colorName: "", using: provider)
         state.stage = .dayList(day: day(1))
+        state.dayEventColors = state.derivedDayEventColors
 
         #expect(reduce(state, .toggleDay(day(5))).next == state)
+    }
+
+    @Test("Tapping an empty day marks it, and backing out takes the marker with it")
+    func emptyDayTapThenBackClearsMarker() {
+        // Reported as: the batch editor opens with the tapped day unmarked, and pressing back
+        // leaves a marker behind for an event that was never written.
+        let empty = session(batches: [])
+
+        let tapped = reduce(empty, .dayTappedInCalendar(day(9))).next
+        #expect(tapped.assembly != nil, "tapping an empty day stages an assembly")
+        #expect(tapped.stage == .batchEditor)
+        #expect(
+            tapped.dayEventColors[provider.startOfDay(for: day(9))] != nil,
+            "the staged event must be marked in the editor's calendar"
+        )
+
+        let back = reduce(tapped, .backTapped).next
+        #expect(back.assembly == nil, "back discards the staged edit")
+        #expect(
+            back.dayEventColors[provider.startOfDay(for: day(9))] == nil,
+            "the marker must not outlive the edit it belonged to"
+        )
+    }
+
+    @Test("Starting a new batch from the add button marks the day, and cancel takes it away")
+    func startNewBatchThenCancelClearsMarker() {
+        let empty = session(batches: [])
+
+        let started = reduce(empty, .startNewBatch(on: day(9))).next
+        #expect(started.stage == .batchEditor)
+        #expect(
+            started.dayEventColors[provider.startOfDay(for: day(9))] != nil,
+            "the staged event must be marked in the editor's calendar"
+        )
+
+        let cancelled = reduce(started, .cancelTapped).next
+        #expect(
+            cancelled.dayEventColors[provider.startOfDay(for: day(9))] == nil,
+            "cancelling must clear the staged marker"
+        )
     }
 
     @Test("removeEvent drops the event and its marker")
@@ -421,6 +505,51 @@ struct PCEventSelectionReducerTests {
         )
         #expect(next.isDirty)
         #expect(effects.isEmpty)
+    }
+
+    /// A committed batch holding an event on the 10th and one on the 12th.
+    ///
+    /// The shape the UI suite's seeded calendar has, and the shape the marker bug needs: a
+    /// row the user can open, and a day that two copies of the same row would both claim.
+    private func twoDayBatch(id: Int64 = 7) -> CalendarEventBatch {
+        CalendarEventBatch(
+            persistedID: id,
+            name: "Women Cycle",
+            colorName: "eventColorOption1",
+            events: [
+                CalendarEvent(name: "Event1", date: day(10), colorName: "eventColorOption1"),
+                CalendarEvent(name: "Event1", date: day(12), colorName: "eventColorOption1")
+            ]
+        )
+    }
+
+    @Test("Opening an existing batch does not double-count the day both copies of it hold")
+    func openBatchDoesNotDoubleCountTheSharedDay() {
+        let committed = twoDayBatch()
+        let next = reduce(session(batches: [committed]), .openBatch(id: committed.mergeKey)).next
+
+        #expect(
+            next.dayEventColors[provider.startOfDay(for: day(12))] == ["eventColorOption1"],
+            "the staged copy IS the committed row, so the shared day holds one event, not two"
+        )
+    }
+
+    @Test("Removing an event from an opened existing batch unmarks the day it emptied")
+    func removeEventFromOpenedBatchUnmarksTheDay() {
+        let committed = twoDayBatch()
+        let opened = reduce(session(batches: [committed]), .openBatch(id: committed.mergeKey)).next
+        let pendingID = try! #require(opened.assembly?.batch.events.first?.pendingID)
+
+        let next = reduce(opened, .removeEvent(pendingID: pendingID)).next
+
+        #expect(
+            next.dayEventColors[provider.startOfDay(for: day(10))] == nil,
+            "the batch holds no event on the 10th any more, so its marker has to go"
+        )
+        #expect(
+            next.dayEventColors[provider.startOfDay(for: day(12))] == ["eventColorOption1"],
+            "the surviving event still marks the 12th, and marks it once"
+        )
     }
 
     // MARK: - Event editor
@@ -464,8 +593,8 @@ struct PCEventSelectionReducerTests {
         let assembly = try! #require(base.assembly)
         let stagedEvent = try! #require(assembly.batch.events.first)
         #expect(
-            stagedEvent.name.isEmpty,
-            "the staged placeholder is untouched until the event is saved"
+            stagedEvent.name == PCEventBatchAssembleUnitOfWork.defaultEventName,
+            "the staged event keeps its default name until the draft is saved"
         )
     }
 
@@ -498,11 +627,14 @@ struct PCEventSelectionReducerTests {
     func saveEventTappedUnnamed() {
         let base = editing(session(), on: 1)
         let event = try! #require(base.assembly?.batch.events.first)
-        // A placeholder event has an empty name, so this is the everyday case of opening
-        // a day and saving without typing anything.
+        // A new event arrives *named* (§5.4), so opening one and saving it immediately is
+        // now the everyday case and it commits. This test is about the other thing the
+        // guard is for: a name the user has *cleared* is not a save.
         let opened = reduce(base, .openEvent(pendingID: event.pendingID)).next
+        let cleared = reduce(opened, .setEventName("")).next
 
-        #expect(reduce(opened, .saveEventTapped).next == opened,
+        #expect(cleared.eventDraft?.name.isEmpty == true, "precondition: the name really is empty")
+        #expect(reduce(cleared, .saveEventTapped).next == cleared,
                 "rejected: the draft survives and the editor stays open")
     }
 
@@ -519,7 +651,10 @@ struct PCEventSelectionReducerTests {
         #expect(next.stage == .batchEditor)
         let assembly = try! #require(base.assembly)
         let kept = try! #require(assembly.batch.events.first)
-        #expect(kept.name.isEmpty, "the edit is gone: the batch still holds the unnamed placeholder")
+        #expect(
+            kept.name == PCEventBatchAssembleUnitOfWork.defaultEventName,
+            "the edit is gone: the batch still holds the default-named event"
+        )
         #expect(next.navigationRequest?.target == .pop)
         #expect(effects.isEmpty)
     }
@@ -541,8 +676,9 @@ struct PCEventSelectionReducerTests {
     @Test("commitTapped with an unsavable assembly is rejected and writes nothing")
     func commitTappedUnsaveable() {
         var state = session()
-        state.assembly = BatchAssembler.new(anchor: day(1), colorName: "", using: provider)
+        state.assembly = PCEventBatchAssembleUnitOfWork.new(anchor: day(1), colorName: "", using: provider)
         state.stage = .batchEditor
+        state.dayEventColors = state.derivedDayEventColors
 
         let (next, effects) = reduce(state, .commitTapped)
 
@@ -569,12 +705,66 @@ struct PCEventSelectionReducerTests {
         let (next, effects) = reduce(editing(session(), on: 1), .saveTapped)
 
         #expect(next.assembly == nil)
-        #expect(next.stage == .dayList(day: day(1)))
+        // Compared as a *day*, not as an instant. The save re-anchors the session on the
+        // saved row's date, which is the start of that day in the current zone, where
+        // `day(1)` is noon UTC. Both denote the first, and `dayBatches` matches with
+        // `isSameDay` — but only the day is the contract, and an `==` here would be pinning
+        // a time of day that nothing depends on.
+        let dayList = try! #require(next.stage.asDayList)
+        #expect(
+            provider.isSameDay(dayList, day(1)),
+            "the save returns to the day list for the day the batch is on, got \(dayList)"
+        )
         #expect(next.didSave)
         #expect(next.isDirty == false)
         #expect(next.batches.contains { $0.name == "edited" })
         #expect(next.navigationRequest?.target == .pop)
         #expect(effects == [.writeCalendar(calendarID: 42, numberOfColumns: 3, batches: next.batches)])
+    }
+
+    /// §16, the reported bug, at its actual cause.
+    ///
+    /// Opening a batch sets `day` from the row's *first* event. An edit that removes that
+    /// event leaves the session pointing at a day the saved batch is no longer listed on,
+    /// so the pop after Save returns to an empty day list. Nothing is lost and nothing
+    /// errors — which is exactly why it was reported as "the batch list is empty" and went
+    /// looking for a deletion that never happened.
+    @Test("Saving re-anchors the session on the day the saved batch is on, not the one it was opened on")
+    func saveReanchorsOnTheSavedRowDay() {
+        // A committed batch on the 10th, 11th, 12th and 13th.
+        let committed = CalendarEventBatch(
+            persistedID: 7,
+            name: "Window",
+            colorName: "eventColorOption1",
+            events: (10...13).map { CalendarEvent(name: "Event", date: day($0), colorName: "eventColorOption1") }
+        )
+        let opened = reduce(session(batches: [committed]), .openBatch(id: committed.mergeKey)).next
+        #expect(
+            provider.isSameDay(try! #require(opened.day), day(10)),
+            "setup: the session opens on the row's first day"
+        )
+
+        // Remove the 10th, 11th and 12th, leaving the 13th — §16's step 6.
+        var staged = opened
+        for d in [10, 11, 12] {
+            staged = reduce(staged, .toggleDay(day(d))).next
+        }
+        #expect(try! #require(staged.assembly?.batch).events.count == 1, "setup: one event left")
+
+        let (next, _) = reduce(staged, .saveTapped)
+
+        #expect(
+            provider.isSameDay(try! #require(next.day), day(13)),
+            "the session must follow the batch to the 13th, not stay on the 10th it was opened on"
+        )
+        #expect(
+            next.stage.asDayList.map { provider.isSameDay($0, day(13)) } == true,
+            "and the pop must return to the 13th's list, which is where the batch now is"
+        )
+        #expect(
+            next.dayBatches.count == 1,
+            "so that list is not empty: \(next.dayBatches.count) batches"
+        )
     }
 
     @Test("saveTapped on an emptied assembly removes the row and unwinds to the root")
@@ -589,15 +779,37 @@ struct PCEventSelectionReducerTests {
         #expect(next.stage == .idle)
         #expect(next.didSave)
         #expect(next.batches.count == 1, "the emptied row left the registry")
+        #expect(
+            next.dayEventColors == PCCalendarMarkerProjector.colorsByDay(from: next.batches, using: provider),
+            "the row left the registry, so the markers are restated without it — the batch's days stop being marked"
+        )
         #expect(effects == [.writeCalendar(calendarID: 42, numberOfColumns: 3, batches: next.batches)])
+    }
+
+    /// The bug this pins: the editor's Save is `.disabled(!canSave)`, so an emptied batch
+    /// being unsavable made the delete unreachable rather than safe. Removing every event
+    /// is how a user deletes a batch, and it has to be able to finish.
+    @Test("An emptied batch is still savable, which is what makes deleting it by emptying possible")
+    func emptiedBatchStaysSavable() {
+        let state = editing(session(), on: 1)
+        let pendingID = try! #require(state.assembly?.batch.events.first?.pendingID)
+        let emptied = reduce(state, .removeEvent(pendingID: pendingID)).next
+
+        #expect(emptied.assembly?.batch.events.isEmpty == true)
+        #expect(
+            emptied.canSave,
+            "otherwise the editor's Save is disabled and the user cannot commit the removal"
+        )
+        #expect(emptied.assembly?.resolved() == nil, "and there is nothing to write instead")
     }
 
     @Test("saveTapped on an unsavable but non-empty assembly is rejected")
     func saveTappedUnsaveable() {
         var state = session()
-        state.assembly = BatchAssembler.new(anchor: day(3), colorName: "", using: provider)
+        state.assembly = PCEventBatchAssembleUnitOfWork.new(anchor: day(3), colorName: "", using: provider)
         state.stage = .batchEditor
         state.day = day(3)
+        state.dayEventColors = state.derivedDayEventColors
 
         let (next, effects) = reduce(state, .saveTapped)
 
@@ -688,9 +900,9 @@ struct PCEventSelectionReducerTests {
         state.stage = .batchEditor
 
         // What comes back from the store after our own write: same name, colour, day and
-        // event — including the event's *empty* name, because that is what was persisted —
-        // but now with a real id and a fresh pendingID, since a DTO carries none.
-        let incoming = [batch("morning", on: 2, id: 77, eventName: "")]
+        // event — including the event's *default* name, because that is what was persisted
+        // — but now with a real id and a fresh pendingID, since a DTO carries none.
+        let incoming = [batch("morning", on: 2, id: 77, eventName: PCEventBatchAssembleUnitOfWork.defaultEventName)]
 
         let (next, effects) = reduce(state, .syncCalendar(calendarID: 42, batches: incoming))
 
@@ -702,6 +914,22 @@ struct PCEventSelectionReducerTests {
         )
     }
 
+    @Test("A reload that adopts the staged row does not double-count the day both copies hold")
+    func syncCalendarAdoptionDoesNotDoubleCount() {
+        var state = session(batches: [])
+        state.assembly = stagedBatch()
+        state.stage = .batchEditor
+
+        let incoming = [batch("morning", on: 2, id: 77, eventName: PCEventBatchAssembleUnitOfWork.defaultEventName)]
+
+        let next = reduce(state, .syncCalendar(calendarID: 42, batches: incoming)).next
+
+        #expect(
+            next.dayEventColors[provider.startOfDay(for: day(2))] == ["eventColorOption1"],
+            "the adopted staged row and the row it came back as are one batch, not two"
+        )
+    }
+
     @Test("syncCalendar does not re-adopt an assembly that already has an id")
     func syncCalendarAdoptsOnce() {
         var state = session(batches: [])
@@ -710,7 +938,7 @@ struct PCEventSelectionReducerTests {
 
         let (next, effects) = reduce(
             state,
-            .syncCalendar(calendarID: 42, batches: [batch("morning", on: 2, id: 77, eventName: "")])
+            .syncCalendar(calendarID: 42, batches: [batch("morning", on: 2, id: 77, eventName: PCEventBatchAssembleUnitOfWork.defaultEventName)])
         )
 
         #expect(next.assembly?.adoptedPersistedID == 5)
@@ -720,7 +948,7 @@ struct PCEventSelectionReducerTests {
     @Test("syncCalendar leaves an existing-batch assembly alone")
     func syncCalendarDoesNotAdoptExisting() {
         var state = session()
-        state.assembly = BatchAssembler.existing(batch("morning", on: 1, id: 7))
+        state.assembly = PCEventBatchAssembleUnitOfWork.existing(batch("morning", on: 1, id: 7))
         state.stage = .batchEditor
 
         let (next, _) = reduce(state, .syncCalendar(calendarID: 42, batches: [batch("morning", on: 1, id: 77)]))
@@ -886,10 +1114,10 @@ struct PCEventSelectionReducerTests {
     /// unhandled.
     ///
     /// Listed as state/action *pairs* rather than one action list over a shared set of
-    /// states, because three of them carry a `UUID` payload that only matches a
-    /// particular state: `openBatch` and `openEvent` are looked up by `pendingID`, so a
-    /// fixed random id would simply miss and the action would look unhandled when it is
-    /// in fact merely pointed at nothing.
+    /// states, because three of them carry an identity payload that only matches a
+    /// particular state: `openBatch` is looked up by `mergeKey` and `openEvent` by
+    /// `pendingID`, so a fixed random id would simply miss and the action would look
+    /// unhandled when it is in fact merely pointed at nothing.
     @Test("Every action is covered: it either changes state or emits an effect")
     func everyActionIsCovered() {
         let idle = session()
@@ -903,14 +1131,14 @@ struct PCEventSelectionReducerTests {
         multiColoured.multiSelectColor = .option3
 
         let openable = idle
-        let openablePendingID = try! #require(openable.batches.first?.pendingID)
+        let openableKey = try! #require(openable.batches.first?.mergeKey)
         let openableEvent = editing.assembly.map { try! #require($0.batch.events.first?.pendingID) } ?? UUID()
 
         let cases: [(name: String, state: PCEventSelectionState, action: PCEventSelectionAction)] = [
             ("ensureAssemblyStarted", editing, .ensureAssemblyStarted),
             ("dayTappedInCalendar", idle, .dayTappedInCalendar(day(4))),
             ("startNewBatch", idle, .startNewBatch(on: day(4))),
-            ("openBatch", openable, .openBatch(pendingID: openablePendingID)),
+            ("openBatch", openable, .openBatch(id: openableKey)),
             ("backTapped", staged, .backTapped),
             ("closeTapped", editing, .closeTapped),
             ("cancelTapped", editing, .cancelTapped),
@@ -981,7 +1209,7 @@ struct PCEventSelectionReducerTests {
         #expect(reduce(state, .commitTapped).next == state)
         #expect(reduce(state, .saveTapped).next == state)
         #expect(reduce(state, .backTapped).next == state)
-        #expect(reduce(state, .openBatch(pendingID: UUID())).next == state)
+        #expect(reduce(state, .openBatch(id: .pending(UUID()))).next == state)
     }
 
     @Test("A rejected action emits no navigation and no effect")
@@ -1036,7 +1264,7 @@ struct PCEventSelectionReducerTests {
             ("ensureAssemblyStarted", .ensureAssemblyStarted),
             ("dayTappedInCalendar", .dayTappedInCalendar(day(4))),
             ("startNewBatch", .startNewBatch(on: day(4))),
-            ("openBatch", .openBatch(pendingID: UUID())),
+            ("openBatch", .openBatch(id: .pending(UUID()))),
             ("backTapped", .backTapped),
             ("closeTapped", .closeTapped),
             ("cancelTapped", .cancelTapped),
@@ -1067,8 +1295,8 @@ struct PCEventSelectionReducerTests {
     }
 
     /// A staged, unsaved assembly whose content a write would reproduce exactly.
-    private func stagedBatch() -> BatchAssembler {
-        BatchAssembler
+    private func stagedBatch() -> PCEventBatchAssembleUnitOfWork {
+        PCEventBatchAssembleUnitOfWork
             .new(anchor: day(2), colorName: "", using: provider)
             .renaming("morning")
             .recoloring(.option1)

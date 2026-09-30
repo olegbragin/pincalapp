@@ -19,6 +19,18 @@ public class RootNavigation {
 
     public var isAtRoot: Bool { path.isEmpty }
 
+    /// Pops the top of the navigation stack, if there is one.
+    ///
+    /// The reducer emits `.pop` as a `NavigationRequest` when a stage is left, and the
+    /// view layer carries it out. There was no way to express that before: `goTo` only
+    /// appends, and `popToRoot` is private and all-or-nothing. Without this, a back
+    /// transition driven by state would have to clear the whole stack, which would drop
+    /// the calendar detail too.
+    public func pop() {
+        guard !path.isEmpty else { return }
+        path.removeLast()
+    }
+
     /// Current detail column selection (for split-view "open" navigation)
     public private(set) var detailCalendarID: Int64?
     

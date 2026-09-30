@@ -1,142 +1,165 @@
+//
+//  AddEditEventBatchListViewModelTests.swift
+//  SingleCalendarFeatureTests
+//
+//  Created by Oleg Bragin on 08.07.2026.
+//
+
 import Foundation
 import Testing
-import CorePersistence
+import CoreDomain
+import DSKit
 @testable import SingleCalendarFeature
 
 @MainActor
-@Suite("AddEditEventBatchListViewModel Tests")
+@Suite("AddEditEventBatchListViewModel")
 struct AddEditEventBatchListViewModelTests {
 
-    private func day(_ year: Int, _ month: Int, _ dayOfMonth: Int) -> Date {
-        Calendar.autoupdatingCurrent.date(from: DateComponents(year: year, month: month, day: dayOfMonth))!
-    }
-
-    private func batch(_ id: Int64, _ name: String, on date: Date) -> EventBatchDataSource {
-        EventBatchDataSource(
-            id: id,
-            name: name,
-            events: [EventDataSource(name: "E", date: date, color: "eventColorOption1")]
+    /// Two batches on the *same* day.
+    ///
+    /// It has to be the same day: a batch's day comes from its first event, so batches
+    /// anchored on different days belong to different days and the list for any one day
+    /// would only ever hold one of them.
+    private var dayOne: Date { Fixture.day(1) }
+    private var rows: [CalendarEventBatch] { [
+        CalendarEventBatch(
+            persistedID: 1,
+            name: "Evening",
+            colorName: "eventColorOption2",
+            events: [Fixture.event("Dinner", on: 1, color: "eventColorOption2")]
+        ),
+        CalendarEventBatch(
+            persistedID: 2,
+            name: "Morning",
+            colorName: "eventColorOption1",
+            events: [Fixture.event("Swim", on: 1, color: "eventColorOption1")]
         )
+    ] }
+
+    /// A store opened on `rows`, scrolled to the day that holds them.
+    private func makeContext(day: Date? = nil) -> (
+        viewModel: AddEditEventBatchListViewModel,
+        store: PCEventSelectionManager
+    ) {
+        let store = Fixture.makeStore(batches: rows, persistence: InMemoryCalendarPersisting())
+        // Tapping a day that already has batches opens the day list, which is what sets
+        // `state.day` — the list scopes itself to it.
+        store.send(.dayTappedInCalendar(day ?? dayOne))
+        return (AddEditEventBatchListViewModel(store: store), store)
     }
 
-    @Test("prepare sorts batches by earliest event date")
-    func prepareSortsByEarliestEvent() {
-        let later = batch(2, "Later", on: day(2026, 6, 2))
-        let earlier = batch(1, "Earlier", on: day(2026, 6, 1))
-        let vm = AddEditEventBatchListViewModel()
+    @Test("eventBatches is the store's batches for the day, in date order")
+    func projectsTheDaysBatches() {
+        let (vm, _) = makeContext()
 
-        vm.prepare(with: [later, earlier], and: day(2026, 6, 1))
-
-        #expect(vm.eventBatches.map(\.id) == [1, 2])
-        #expect(vm.selectedDay == day(2026, 6, 1))
-        #expect(vm.isEditing)
+        #expect(vm.selectedDay == dayOne)
+        #expect(vm.eventBatches.count == 2)
+        // Both are on one day, so the order is the store's own — stable, not arbitrary.
+        #expect(Set(vm.eventBatches.map(\.name)) == ["Evening", "Morning"])
     }
 
-    @Test("removeBatches stores removed batches for deletion")
-    func removeBatches() {
-        let vm = AddEditEventBatchListViewModel()
-        vm.prepare(
-            with: [batch(1, "A", on: day(2026, 6, 1)), batch(2, "B", on: day(2026, 6, 2))],
-            and: day(2026, 6, 1)
-        )
-        vm.eventBatchesToDelete = []
-
-        vm.removeBatches(at: IndexSet(integer: 0))
-
-        #expect(vm.eventBatches.count == 1)
-        #expect(vm.eventBatchesToDelete.map(\.id) == [1])
-    }
-
-    @Test("remove removes a single batch and stages it for deletion")
-    func removeSingleBatch() {
-        let vm = AddEditEventBatchListViewModel()
-        vm.prepare(
-            with: [batch(1, "A", on: day(2026, 6, 1)), batch(2, "B", on: day(2026, 6, 2))],
-            and: day(2026, 6, 1)
-        )
-        vm.eventBatchesToDelete = []
-
-        vm.remove(batch(2, "B", on: day(2026, 6, 2)))
-
-        #expect(vm.eventBatches.map(\.id) == [1])
-        #expect(vm.eventBatchesToDelete.map(\.id) == [2])
-    }
-
-    @Test("commitDelete promotes selected batches to pending deletion")
-    func commitDelete() {
-        let vm = AddEditEventBatchListViewModel()
-        vm.eventBatchesSelectedToDelete = [batch(5, "Five", on: day(2026, 6, 1))]
-
-        vm.commitDelete()
-
-        #expect(vm.eventBatchesToDelete.map(\.id) == [5])
-        #expect(vm.eventBatchesSelectedToDelete.isEmpty)
-        #expect(!vm.isEditing)
-    }
-
-    @Test("cancel resets editing state")
-    func cancelResetsEditing() {
-        let vm = AddEditEventBatchListViewModel()
-        vm.prepare(with: [batch(1, "A", on: day(2026, 6, 1))], and: day(2026, 6, 1))
-
-        vm.cancel()
-
-        #expect(vm.eventBatches.count == 1)
-        #expect(vm.eventBatchesSelectedToDelete.isEmpty)
-        #expect(!vm.isEditing)
-    }
-
-    @Test("batch list and editor stay connected through the shared managers")
-    func connectsToEditorViaSharedManagers() {
-        let someDay = day(2026, 6, 1)
-        let vm = AddEditEventBatchListViewModel()
-
-        // The editor is created with the same manager instances the list owns.
-        let editor = AddEditEventBatchViewModel(eventsSelectionManager: vm.eventsSelectionManager)
-        editor.load(batch(9, "Existing", on: someDay))
-
-        #expect(editor.eventBatchId == 9)
-        #expect(editor.eventBatchName == "Existing")
-        #expect(editor.selectedColor != nil)
-        #expect(editor.date == nil)
-        #expect(editor.eventsSelectionManager.events.count == 1)
-
-        // Mutating the editor's event store is visible through the list's own
-        // manager instance — they are the same object, so the two stay in sync.
-        editor.eventsSelectionManager.addEvent(
-            EventDataSource(name: "Added", date: someDay, color: "eventColorOption1")
-        )
-        #expect(vm.eventsSelectionManager.events.count == 2)
-    }
-
-    @Test("reset clears batches and editor state")
-    func resetClears() {
-        let someDay = day(2026, 6, 1)
-        let vm = AddEditEventBatchListViewModel()
-        vm.prepare(with: [batch(1, "A", on: someDay)], and: someDay)
-        vm.eventBatchesToDelete = [batch(2, "B", on: someDay)]
-
-        vm.reset()
+    @Test("A day with no batches projects an empty list")
+    func emptyForAFreshDay() {
+        let (vm, _) = makeContext(day: Fixture.day(20))
 
         #expect(vm.eventBatches.isEmpty)
-        #expect(vm.eventBatchesSelectedToDelete.isEmpty)
-        #expect(vm.selectedDay == someDay)
-        #expect(!vm.isEditing)
     }
 
-    @Test("eventsForDay filters and sorts events on the given day")
-    func eventsForDay() {
-        let base = day(2026, 6, 1)
-        let calendar = Calendar.autoupdatingCurrent
-        let earlyDate = calendar.date(bySettingHour: 9, minute: 0, second: 0, of: base)!
-        let lateDate = calendar.date(bySettingHour: 18, minute: 0, second: 0, of: base)!
-        let otherDay = day(2026, 6, 3)
-        let earlyEvent = EventDataSource(id: 1, name: "Early", date: earlyDate, color: "eventColorOption1")
-        let lateEvent = EventDataSource(id: 2, name: "Late", date: lateDate, color: "eventColorOption1")
-        let batch = EventBatchDataSource(id: 1, name: "Mixed", events: [lateEvent, earlyEvent])
+    /// The regression §12.5 asks for. The old implementation stored a copy of the list and
+    /// had to re-prime it by hand after a delete, because a computed version was found not
+    /// to re-render. Deleting *through the store*, with no re-priming and no local
+    /// mutation, has to drop the row — which is only true because nothing is stored.
+    @Test("Deleting through the store drops the batch, with no re-priming")
+    func computedListReflectsADeletion() {
+        let (vm, _) = makeContext()
+        #expect(vm.eventBatches.count == 2)
+        let target = vm.eventBatches[0]
 
-        #expect(batch.eventsForDay(base).map(\.id) == [1, 2])
-        #expect(batch.eventsForDay(otherDay).isEmpty)
-        #expect(batch.eventsForDay(nil).map(\.id) == [1, 2])
+        vm.remove(target)
+        #expect(vm.eventBatches.count == 2, "staged, not deleted: the user can still change their mind")
+        #expect(vm.pendingDeletion == [target])
+
+        vm.confirmDelete()
+
+        #expect(vm.eventBatches.count == 1, "the projection followed the store")
+        #expect(!vm.eventBatches.contains(target))
+        #expect(vm.pendingDeletion.isEmpty)
+    }
+
+    @Test("Cancelling a staged deletion keeps the batch")
+    func cancelKeepsTheBatch() {
+        let (vm, _) = makeContext()
+        let target = vm.eventBatches[0]
+
+        vm.remove(target)
+        vm.cancel()
+
+        #expect(vm.eventBatches.count == 2)
+        #expect(vm.eventBatches.contains(target), "there was never a local copy to restore")
+        #expect(vm.pendingDeletion.isEmpty)
+    }
+
+    @Test("Confirming with nothing staged does nothing")
+    func confirmWithNothingStaged() {
+        let (vm, _) = makeContext()
+        let before = vm.eventBatches
+
+        vm.confirmDelete()
+
+        #expect(vm.eventBatches == before)
+    }
+
+    @Test("Opening a batch dispatches openBatch with its durable key")
+    func openDispatches() throws {
+        let (vm, store) = makeContext()
+        let target = try #require(vm.eventBatches.first)
+
+        vm.open(target)
+
+        #expect(store.state.stage == .batchEditor)
+        #expect(store.state.assembly?.origin == .existing(pendingID: target.pendingID))
+    }
+
+    /// The view model has to send the *durable* key, not `pendingID`.
+    ///
+    /// The card's closure captures the row as it was when the list last drew. Any write in
+    /// between re-syncs the registry and re-mints every `pendingID`, so sending the
+    /// captured `pendingID` named a row that no longer existed and the tap was dropped.
+    @Test("Opening a batch that a reload has re-minted still opens the same row")
+    func openSurvivesRelaoad() throws {
+        let (vm, store) = makeContext()
+        let target = try #require(vm.eventBatches.first)
+
+        // A reload: same persisted id, nothing else the card relied on.
+        let reloaded = CalendarEventBatch(
+            persistedID: target.persistedID,
+            name: target.name,
+            colorName: target.colorName,
+            events: target.events
+        )
+        store.send(.syncCalendar(calendarID: store.state.calendarID, batches: [reloaded]))
+        #expect(store.state.batches.first?.pendingID != target.pendingID, "identity re-minted")
+
+        // The user taps the card it was drawn from, still holding the old value.
+        vm.open(target)
+
+        #expect(store.state.stage == .batchEditor)
+        #expect(
+            store.state.assembly?.batch.persistedID == target.persistedID,
+            "the persisted id is what the card named, and it survived the reload"
+        )
+    }
+
+    @Test("Starting a batch dispatches startNewBatch on the given day")
+    func startNewBatchDispatches() {
+        let (vm, store) = makeContext()
+
+        vm.startNewBatch(on: Fixture.day(9))
+
+        #expect(store.state.stage == .batchEditor)
+        #expect(
+            store.state.assembly?.batch.events.first?.date
+                == store.state.dataProvider.startOfDay(for: Fixture.day(9))
+        )
     }
 }

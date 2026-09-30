@@ -72,29 +72,27 @@ struct RootNavigationTests {
     @Test("goTo dayBatches appends to path")
     func goToDayBatches() {
         let nav = RootNavigation()
-        _ = Date()
-        
-        nav.goTo(.dayBatches(Date()))
-        
-        #expect(nav.path.count == 1)
-    }
-    
-    @Test("goTo batchEditor newDay appends to path")
-    func goToBatchEditorNewDay() {
-        let nav = RootNavigation()
-        _ = Date()
-        
-        nav.goTo(.batchEditor(.newDay(Date())))
+
+        nav.goTo(.dayBatches)
         
         #expect(nav.path.count == 1)
     }
     
-    @Test("goTo batchEditor existingBatch appends to path")
-    func goToBatchEditorExistingBatch() {
+    @Test("goTo batchEditor appends to path")
+    func goToBatchEditor() {
         let nav = RootNavigation()
-        
-        nav.goTo(.batchEditor(.existingBatch(789)))
-        
+
+        nav.goTo(.batchEditor)
+
+        #expect(nav.path.count == 1)
+    }
+
+    @Test("goTo eventEditor appends to path")
+    func goToEventEditor() {
+        let nav = RootNavigation()
+
+        nav.goTo(.eventEditor)
+
         #expect(nav.path.count == 1)
     }
     
@@ -102,8 +100,8 @@ struct RootNavigationTests {
     func multiplePushRoutes() {
         let nav = RootNavigation()
         
-        nav.goTo(.dayBatches(Date()))
-        nav.goTo(.batchEditor(.newDay(Date())))
+        nav.goTo(.dayBatches)
+        nav.goTo(.batchEditor)
         
         #expect(nav.path.count == 2)
     }
@@ -135,8 +133,8 @@ struct RootNavigationTests {
     func calendarToRootClearsPath() {
         let nav = RootNavigation()
         
-        nav.goTo(.dayBatches(Date()))
-        nav.goTo(.batchEditor(.newDay(Date())))
+        nav.goTo(.dayBatches)
+        nav.goTo(.batchEditor)
         #expect(nav.path.count == 2)
         
         nav.goTo(.calendar(999, toRoot: true))
@@ -156,16 +154,55 @@ struct RootNavigationTests {
     @Test("isAtRoot is false after push")
     func isAtRootAfterPush() {
         let nav = RootNavigation()
-        nav.goTo(.dayBatches(Date()))
+        nav.goTo(.dayBatches)
         #expect(nav.isAtRoot == false)
     }
     
     @Test("isAtRoot is true after going to root via calendar(toRoot: true)")
     func isAtRootAfterCalendarToRoot() {
         let nav = RootNavigation()
-        nav.goTo(.dayBatches(Date()))
+        nav.goTo(.dayBatches)
         nav.goTo(.calendar(999, toRoot: true))
         #expect(nav.isAtRoot == true)
+    }
+
+    // MARK: - pop()
+
+    @Test("pop removes only the top of the stack")
+    func popRemovesOneLevel() {
+        let nav = RootNavigation()
+        nav.goTo(.dayBatches)
+        nav.goTo(.batchEditor)
+
+        nav.pop()
+
+        #expect(nav.isAtRoot == false, "the day list is still on the stack")
+        nav.pop()
+        #expect(nav.isAtRoot == true)
+    }
+
+    @Test("pop on an empty stack does nothing rather than trapping")
+    func popOnEmptyStackIsSafe() {
+        let nav = RootNavigation()
+        #expect(nav.isAtRoot == true)
+        nav.pop()
+        nav.pop()
+        #expect(nav.isAtRoot == true)
+    }
+
+    @Test("pop leaves the detail column alone")
+    func popDoesNotTouchTheDetailColumn() {
+        let nav = RootNavigation()
+        nav.goTo(.calendar(42, toRoot: true))
+        nav.goTo(.dayBatches)
+
+        nav.pop()
+
+        #expect(nav.isAtRoot == true)
+        #expect(
+            nav.detailCalendarID == 42,
+            "popping the pushed screen must not close the calendar we are inside"
+        )
     }
     
     // MARK: - AppRoute NavigationStyle Tests
@@ -183,13 +220,17 @@ struct RootNavigationTests {
     
     @Test("AppRoute dayBatches has push style")
     func dayBatchesStyle() {
-        #expect(AppRoute.dayBatches(Date()).navigationStyle == .push)
+        #expect(AppRoute.dayBatches.navigationStyle == .push)
     }
     
     @Test("AppRoute batchEditor has push style")
     func batchEditorStyle() {
-        #expect(AppRoute.batchEditor(.newDay(Date())).navigationStyle == .push)
-        #expect(AppRoute.batchEditor(.existingBatch(1)).navigationStyle == .push)
+        #expect(AppRoute.batchEditor.navigationStyle == .push)
+    }
+
+    @Test("AppRoute eventEditor has push style")
+    func eventEditorStyle() {
+        #expect(AppRoute.eventEditor.navigationStyle == .push)
     }
     
     @Test("AppRoute addCalendar has present style")

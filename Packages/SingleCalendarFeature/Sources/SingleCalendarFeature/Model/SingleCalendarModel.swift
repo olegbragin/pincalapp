@@ -1,6 +1,6 @@
 //
-//  Untitled.swift
-//  USkateAppV2
+//  SingleCalendarModel.swift
+//  SingleCalendarFeature
 //
 //  Created by Oleg Bragin on 04.02.2026.
 //
@@ -8,11 +8,30 @@
 import Foundation
 import Observation
 import SwiftUI
-import CorePersistence
+// No `CorePersistence`. This model used to hold a `CalendarCache` for one thing only —
+// the calendar's own metadata change feed, i.e. its name, year, archived flag and column
+// count. That is not batch state, so it never belonged to the batch port, and it is not
+// storage either, so it does not belong to the feature importing the storage vocabulary.
+// It is calendar *management*, which is what `CalendarManaging` is for: the reads go
+// through `CalendarPersisting.calendar(id:)`, the feed through
+// `CalendarManaging.changes()`. Both are domain ports, and the package is off
+// `CorePersistence` for good.
+import CoreDomain
 import AppNavigation
 import DSKit
-import CoreDomain
 
+/// The main calendar panel.
+///
+/// This keeps two things the store deliberately does not: the *main* year matrix, and the
+/// main calendar's day-selection manager. The store owns the batch-assembly line and the
+/// editor's calendar; this owns the panel the user is looking at when they are choosing
+/// days, and reads everything else from the store.
+///
+/// What it lost is the batch half. It used to hold `addedEvents`, `selectedColor`,
+/// `originalBatches`, stage a placeholder event, build an `EventBatchDataSource` and
+/// return an `AppRoute` — a second implementation of the assembly line, with its own
+/// notion of what a day tap means and its own idea of what to persist. All of that is
+/// `PCEventSelectionState` now, and this model dispatches instead of deciding.
 @MainActor
 @Observable
 public final class SingleCalendarModel {
@@ -21,142 +40,62 @@ public final class SingleCalendarModel {
         case content
         case loading
     }
-    
-    private let cache: CalendarCache
+
+    /// The calendar's metadata change feed, as a port.
+    ///
+    /// The model follows the calendar's own name, year, archived flag and column count, and
+    /// none of those are batch state. They arrive through `CalendarManaging` rather than
+    /// the cache so this file can stop naming the storage vocabulary; the feed is a *new*
+    /// stream per call, which is why the loop below is the only thing that may hold one.
+    private let managing: any CalendarManaging
+
+    /// The port the batch graph is read through. `cache.getCalendar` hands back
+    /// `[EventBatchDataSource]` — a persistence DTO — and mapping it is the composition
+    /// root's job, not this model's. Asking the port for the batches is what keeps the
+    /// DTO inside `CorePersistence`.
+    private let persistence: any CalendarPersisting
     private let dataProvider: PCCalendarDataProvider
-    
-    private(set) var originalBatches: [EventBatchDataSource] {
-        get { eventsSelectionManager.batches }
-        set { eventsSelectionManager.batches = newValue }
-    }
-    private var addedEvents: Set<EventDataSource> = []
-    
+    private let store: PCEventSelectionManager
+
     public private(set) var calendarid: Int64
     public private(set) var label: String = ""
     public private(set) var isArchived: Bool = false
-    
-    // Batch-editing session managers. Injected from outside (app root) and
-    // shared across the main calendar and the batch views; all communication
-    // about the batch session flows through them.
-    public let eventsSelectionManager: PCEventsSelectionManager
+
+    /// The main panel's year matrix. Distinct from `store.yearModel`, which is the
+    /// *editor's* calendar — two panels, two matrices, one projection function.
+    public private(set) var yearModel: PCCalendarYearModel
+
+    /// The main calendar's own selection manager. Separate from the store's because it
+    /// belongs to this panel; the store's belongs to the batch editor.
     public let daySelectionManager: PCCalendarDaySelectionManager
 
-    public var selectedColor: PCColorOption?
-    
-    public private(set) var yearModel: PCCalendarYearModel
-    /// The year the matrix was last built for from the persisted calendar. The
-    /// view may switch the displayed year (`switchYear`) without touching this,
-    /// so a later fetch doesn't undo the user's year selection.
+    /// The year the matrix was last built for from the persisted calendar. The view may
+    /// switch the displayed year without touching this, so a later fetch doesn't undo the
+    /// user's choice.
     private var builtCalendarYear: Int?
 
     public var state: State = .empty
-    
+
     /// The calendar's own change feed. Ends when the model deallocates: the loop's
     /// `guard let self` breaks, which terminates the task and releases the stream.
     @ObservationIgnored private var changesTask: Task<Void, Never>?
-    
-    private var originalEvents: Set<EventDataSource> {
-        Set(originalBatches.flatMap(\.events))
-    }
-    
-    var selectedEvents: [EventDataSource] {
-        guard !daySelectionManager.selectedDays.isEmpty else { return [] }
-        return originalEvents.filter { event in
-            daySelectionManager.selectedDays.contains { date in
-                dataProvider.isSameDay(event.date, date)
-            }
-        }
-    }
-    
-    public func hasEvents(on date: Date) -> Bool {
-        let result = originalBatches.contains { batch in
-            batch.events.contains { event in
-                dataProvider.isSameDay(event.date, date)
-            } || (batch.date.map { dataProvider.isSameDay($0, date) } ?? false)
-        }
-        return result
-    }
 
-    /// Decides where navigation should go for a day-selection change. The batch
-    /// list/editor views prepare their own view models; here we only stage the
-    /// events for a new batch into the shared manager when needed. Returns `nil`
-    /// when no navigation is needed.
-    public func route(for selectedDays: Set<Date>) -> AppRoute? {
-        guard !isArchived, let day = selectedDays.first else { return nil }
-
-        if daySelectionManager.selectionMode == .multiple {
-            if let selectedColor {
-                changeEvent(EventDataSource(name: "", date: day, color: selectedColor.colorName))
-            }
-            return nil
-        }
-
-        if hasEvents(on: day) {
-            return .dayBatches(day)
-        } else {
-            prepareNewBatchEvents(on: day)
-            return .batchEditor(.newDay(day))
-        }
-    }
-
-    public func batches(for day: Date) -> [EventBatchDataSource] {
-        eventsSelectionManager.batches(for: day)
-    }
-
-    public func batch(withId id: Int64) -> EventBatchDataSource? {
-        eventsSelectionManager.batch(withId: id)
-    }
-
-    /// Resolves the batch to hand to the batch editor for a navigation source.
-    /// Returns `nil` for a brand-new day (the editor seeds from the session).
-    public func batch(for source: BatchEditorSource) -> EventBatchDataSource? {
-        if case .existingBatch(let id) = source {
-            return batch(withId: id)
-        }
-        return nil
-    }
-
-    /// Stages the single placeholder event for a new batch anchored on `date`
-    /// into the shared manager.
-    func prepareNewBatchEvents(on date: Date) {
-        eventsSelectionManager.prepare(with: [
-            EventDataSource(name: "", date: date, color: PCColorOption.option1.colorName)
-        ])
-    }
-
-    /// Stages the events chosen via multi-select into the shared manager.
-    func prepareAddEditEventBatchViewModel() {
-        guard !addedEvents.isEmpty else { return }
-        eventsSelectionManager.prepare(with: addedEvents.sorted { $0.date < $1.date })
-    }
-
-    /// Stages the single placeholder event for a new batch on `date`.
-    func prepareAddEditEventBatchViewModel(for date: Date) {
-        prepareNewBatchEvents(on: date)
-    }
-
-    /// Creates a batch editor view model bound to the shared session manager.
-    public func makeBatchEditor() -> AddEditEventBatchViewModel {
-        AddEditEventBatchViewModel(eventsSelectionManager: eventsSelectionManager, calendarId: calendarid)
-    }
-
-    /// Resolves the effective column count for a year model. Injected so callers
-    /// (e.g. UI-test launch arguments) can override the calendar's natural count
-    /// without the data provider knowing about test infrastructure.
     private let columnCountResolver: (Int) -> Int
 
     public init(
         calendarid: Int64,
-        cache: CalendarCache,
+        managing: any CalendarManaging,
+        persistence: any CalendarPersisting,
+        store: PCEventSelectionManager,
         dataProvider: PCCalendarDataProvider = PCCalendarDataProvider(),
-        eventsSelectionManager: PCEventsSelectionManager = PCEventsSelectionManager(),
         daySelectionManager: PCCalendarDaySelectionManager = PCCalendarDaySelectionManager(),
         columnCountResolver: @escaping (Int) -> Int = { $0 }
     ) {
         self.calendarid = calendarid
-        self.cache = cache
+        self.managing = managing
+        self.persistence = persistence
+        self.store = store
         self.dataProvider = dataProvider
-        self.eventsSelectionManager = eventsSelectionManager
         self.daySelectionManager = daySelectionManager
         self.columnCountResolver = columnCountResolver
         self.yearModel = PCCalendarModelBuilder.makeYearModel(
@@ -169,43 +108,127 @@ public final class SingleCalendarModel {
         )
         self.builtCalendarYear = yearModel.year
         changesTask = Task { [weak self] in
-            for await operation in await cache.changes() {
+            for await change in await managing.changes() {
                 guard let self else { return }
-                if case .change(let item) = operation, item.id == calendarid {
+                if Self.touchedIDs(in: change).contains(calendarid) {
                     await self.fetch(force: true)
                 }
             }
         }
     }
-    
-    public var isColorPickerDisabled: Bool {
-        daySelectionManager.selectionMode == .multiple && selectedColor != nil && !addedEvents.isEmpty
-    }
-    
-    public func changeEvent(_ event: EventDataSource) {
-        if addedEvents.contains(event) {
-            addedEvents.remove(at: addedEvents.firstIndex(of: event)!)
-        } else {
-            addedEvents.insert(event)
+
+    /// Which calendar a change is about.
+    ///
+    /// `refreshed` carries the whole list, so it can name several, and it is the one case
+    /// that cannot be reduced to a single id. `removed` is included deliberately: a
+    /// calendar that has been deleted should send `fetch` to find nothing and go `.empty`,
+    /// rather than leave a stale calendar on screen.
+    private static func touchedIDs(in change: PinCalendarChange) -> Set<Int64> {
+        switch change {
+        case .added(let calendar), .changed(let calendar), .removed(let calendar):
+            return [calendar.id]
+        case .refreshed(let calendars):
+            return Set(calendars.map(\.id))
         }
-        updateDayModel(at: event.date, with: originalEvents.union(addedEvents))
-        daySelectionManager.selectedDays = []
     }
-    
+
+    // MARK: - Projections read by the view
+
+    /// The colour the main calendar's picker shows during a multi-select session. Lives
+    /// in the store, because confirming the session needs the same value.
+    public var selectedColor: PCColorOption? { store.state.multiSelectColor }
+
+    public var isMultiSelectMode: Bool { store.state.multiSelectMode }
+
+    public var isColorPickerDisabled: Bool {
+        store.state.multiSelectMode
+            && store.state.multiSelectColor != nil
+            && !store.state.multiSelectDays.isEmpty
+    }
+
+    public func hasEvents(on date: Date) -> Bool {
+        store.state.batches.contains { batch in
+            batch.occurs(on: date, using: dataProvider)
+        }
+    }
+
+    // MARK: - Commands
+
+    /// Two-way control for the main calendar's multi-select colour.
+    public var multiSelectColorBinding: Binding<PCColorOption?> {
+        Binding(
+            get: { self.store.state.multiSelectColor },
+            set: { self.store.send(.setMultiSelectColor($0)) }
+        )
+    }
+
+    /// Reports a tap on this panel's calendar to the reducer.
+    ///
+    /// The callback replaces watching `selectedDays` and inferring intent from its
+    /// contents. `selectedDays` is now purely presentational: the store decides whether a
+    /// tap selects a day, opens a batch, or opens the editor, and this panel just says
+    /// "this day was tapped".
+    public func installDayTapHandler() {
+        daySelectionManager.onDayTapped = { [weak self] day in
+            self?.send(.dayTappedInCalendar(day))
+        }
+    }
+
+    public func clearDayTapHandler() {
+        daySelectionManager.onDayTapped = nil
+    }
+
+    /// The main panel's column count changed (pinch to zoom). Persisted by the store's
+    /// write chain, which coalesces trailing writes — so the 350 ms debounce and its
+    /// `onDisappear` flush that used to live in `SingleCalendarView` are no longer needed.
+    public func setNumberOfColumns(_ columns: Int) {
+        send(.setNumberOfColumns(columns))
+    }
+
+    public func send(_ action: PCEventSelectionAction) {
+        store.send(action)
+        projectMarkers()
+    }
+
+    public func setMultiSelectMode(_ on: Bool) {
+        send(.setMultiSelectMode(on))
+    }
+
+    public func setMultiSelectColor(_ color: PCColorOption?) {
+        send(.setMultiSelectColor(color))
+    }
+
+    /// Confirms the session. The reducer declines it without days or a colour, so the
+    /// toolbar's button can be tapped freely.
+    public func confirmMultiSelect() {
+        send(.confirmMultiSelectTapped)
+    }
+
+    public func cancelMultiSelect() {
+        send(.cancelMultiSelectTapped)
+    }
+
+    public func close() {
+        send(.closeTapped)
+    }
+
+    // MARK: - Loading
+
     public func fetch(force: Bool = false) async {
         guard force || state != .content, !Task.isCancelled else { return }
-        
-        guard let calendar = try? await self.cache.getCalendar(id: calendarid) else {
+
+        // Metadata through the domain port, so what is rendered is a `PinCalendar` and not
+        // a persistence DTO this file would have to know the shape of.
+        guard let calendar = try? await persistence.calendar(id: calendarid) else {
             state = .empty
             return
         }
-        
+
         label = calendar.name
         isArchived = calendar.isArchived
-        // Build the year model once per calendar. Rebuilding it on every fetch
-        // would swap out the PCCalendarDayModel instances the views are bound to,
-        // so event updates would not be observed and committed days would
-        // silently stop rendering. Event changes are applied in-place below.
+        // Build the matrix once per calendar. Rebuilding it on every fetch would swap out
+        // the PCCalendarDayModel instances the views are bound to, so event updates would
+        // not be observed and marked days would silently stop rendering.
         let resolvedColumns = columnCountResolver(calendar.numberOfColumns)
         if builtCalendarYear != calendar.year || yearModel.numberOfColumns != resolvedColumns {
             yearModel = PCCalendarModelBuilder.makeYearModel(
@@ -218,31 +241,15 @@ public final class SingleCalendarModel {
             )
             builtCalendarYear = calendar.year
         }
-        // Mirror the resolved column count onto the shared batch-editing session
-        // manager so the batch editor's calendar uses the same layout (and honors
-        // `-UITestColumns`), keeping its day cells reliably tappable.
-        eventsSelectionManager.numberOfColumns = yearModel.numberOfColumns
-        
-        eventsSelectionManager.setCalendar(id: calendarid, batches: calendar.eventBatches)
-        updateYearModel(with: originalEvents)
+
+        // The registry is the store's; this only tells it what was on disk.
+        let batches = (try? await persistence.eventBatches(calendarID: calendarid)) ?? []
+        store.send(.syncCalendar(calendarID: calendarid, batches: batches))
+        projectMarkers()
         state = .content
     }
-    
-    public func save(for calendarId: Int64) {
-        let batches = originalBatches
-        let columns = yearModel.numberOfColumns
-        Task { [cache] in
-            guard var persistedCalendar = try? await cache.getCalendar(id: calendarId) else { return }
-            persistedCalendar.numberOfColumns = columns
-            persistedCalendar.eventBatches = batches
-            try? await cache.updateCalendar(persistedCalendar)
-        }
-    }
-    
-    /// Switches the displayed calendar to a different year, rebuilding the month
-    /// matrix and re-applying the current events. The feature layer owns the
-    /// builder, so the year model stays a pure state holder.
-    func switchYear(to year: Int) {
+
+    public func switchYear(to year: Int) {
         guard year != yearModel.year else { return }
         let columns = yearModel.numberOfColumns
         yearModel = PCCalendarModelBuilder.makeYearModel(
@@ -253,115 +260,26 @@ public final class SingleCalendarModel {
             numberOfColumns: columns,
             columnCountResolver: columnCountResolver
         )
-        updateYearModel(with: originalEvents)
-    }
-    
-    public func handleSelectionConfirmation() -> AppRoute? {
-        guard !addedEvents.isEmpty else {
-            cancelMultipleChanges()
-            return nil
-        }
-        prepareAddEditEventBatchViewModel()
-        guard let day = addedEvents.sorted(by: { $0.date < $1.date }).first?.date else { return nil }
-        return .batchEditor(.newDay(day))
+        projectMarkers()
     }
 
-    /// Commits a batch that was edited/saved in the batch editor. The manager
-    /// owns the calendar's batch list and the persistence; this model only
-    /// updates its own calendar state (year model + multi-select session).
-    public func commitPendingBatch(_ eventBatch: EventBatchDataSource?) {
-        eventsSelectionManager.commit(eventBatch)
-        updateYearModel(with: originalEvents)
-        save(for: calendarid)
-        if daySelectionManager.selectionMode == .multiple {
-            daySelectionManager.toggleSelectionMode()
-            addedEvents = []
-            selectedColor = nil
-        }
-    }
-    
-    public func cancelMultipleChanges() {
-        updateYearModel(with: originalEvents)
-        daySelectionManager.toggleSelectionMode()
-        addedEvents = []
-        selectedColor = nil
-    }
-    
-    public func onBatchListDismissed() {
-        daySelectionManager.selectedDays = []
-        eventsSelectionManager.reset()
-    }
-    
-    public func deleteBatches(_ batches: [EventBatchDataSource], for calendarId: Int64) {
-        eventsSelectionManager.deleteBatches(batches)
-        updateYearModel(with: originalEvents)
-        save(for: calendarId)
-    }
-    
     public func reset() {
         label = ""
         state = .empty
-        eventsSelectionManager.reset()
     }
-    
-    public func resetSelectedDays() {
-        daySelectionManager.selectedDays = []
-        eventsSelectionManager.reset()
-        if daySelectionManager.selectionMode == .multiple {
-            daySelectionManager.toggleSelectionMode()
-            addedEvents = []
-            selectedColor = nil
-            updateYearModel(with: originalEvents)
-        }
+
+    // MARK: - Projection
+
+    /// Writes the store's marker payload into the main matrix, in place.
+    ///
+    /// Reads the same `dayEventColors` the store projects into the editor's calendar, so
+    /// both panels agree on what a marked day is — including while a batch is staged,
+    /// which is why the staged assembly is included.
+    func projectMarkers() {
+        PCCalendarMarkerProjector.apply(
+            store.state.dayEventColors,
+            to: yearModel,
+            using: dataProvider
+        )
     }
-    
-    private func updateYearModel(with events: Set<EventDataSource>) {
-        let eventColorsByDay = colorsByStartOfDay(from: events)
-        yearModel.months.forEach { month in
-            month.weeks.forEach { week in
-                week.days
-                    .filter { day in
-                        day.isInCurrentMonth
-                    }
-                    .forEach { day in
-                        guard let dayDate = day.date else { return }
-                        let key = dataProvider.startOfDay(for: dayDate)
-                        let newEvents = eventColorsByDay[key] ?? []
-                        guard day.events != newEvents else { return }
-                        day.events = newEvents
-                    }
-            }
-        }
-    }
-    
-    private func updateDayModel(at date: Date, with events: Set<EventDataSource>) {
-        guard let day = dayModel(for: date) else { return }
-        let key = dataProvider.startOfDay(for: date)
-        let newEvents = colorsByStartOfDay(from: events)[key] ?? []
-        guard day.events != newEvents else { return }
-        day.events = newEvents
-    }
-    
-    private func dayModel(for date: Date) -> PCCalendarDayModel? {
-        var fallback: PCCalendarDayModel?
-        for month in yearModel.months {
-            for week in month.weeks {
-                for day in week.days {
-                    guard let dayDate = day.date, dataProvider.isSameDay(dayDate, date) else { continue }
-                    if day.isInCurrentMonth { return day }
-                    fallback = day
-                }
-            }
-        }
-        return fallback
-    }
-    
-    private func colorsByStartOfDay(from events: Set<EventDataSource>) -> [Date: [String]] {
-        var result: [Date: [String]] = [:]
-        for event in events {
-            result[dataProvider.startOfDay(for: event.date), default: []].append(event.color)
-        }
-        return result
-    }
-    
 }

@@ -1,212 +1,89 @@
 //
 //  AddEditEventBatchViewModel.swift
-//  PinCalApp
+//  SingleCalendarFeature
 //
 //  Created by Oleg Bragin on 02.07.2026.
 //
 
 import Foundation
-import CorePersistence
-import DSKit
 import CoreDomain
-import Observation
+import DSKit
+import SwiftUI
 
+/// A projection facade over the store for the batch editor.
+///
+/// This used to hold `eventBatchId`, `eventBatchName`, `date`, `timestamp` and a whole
+/// `eventBatch` alongside the shared manager, then assembled an `EventBatchDataSource` by
+/// hand to commit — four copies of one pending batch, one of them a DTO the feature layer
+/// is not supposed to name. All of it is `state.assembly` now, so there is nowhere for a
+/// second copy to live.
+///
+/// A plain `struct`, not `@Observable`: the store is the only observable object in the
+/// flow. Reading `canSave` during `body` evaluation records the read on `store.state`, so
+/// any `send` re-renders the view. A stored copy would be a second thing that can be
+/// stale, which is the class of bug this stage exists to remove.
 @MainActor
-@Observable
-public final class AddEditEventBatchViewModel {
-    // Shared session manager — injected, not owned. It owns the events, the
-    // batch color, the calendar (year model) and the calendar's batches; this
-    // view model only carries the batch metadata and reads/writes the session
-    // through the manager.
-    let eventsSelectionManager: PCEventsSelectionManager
-    let calendarId: Int64
+public struct AddEditEventBatchViewModel {
+    private let store: PCEventSelectionManager
 
-    private let initialEventBatch: EventBatchDataSource?
-    private let initialSelectedDay: Date?
-    private var didSetup = false
-
-    /// Set when the user explicitly saves via the save button. The owning screen
-    /// observes this to run its post-save navigation (dismiss / go-to-root);
-    /// auto-persists from the event editor (`onEventApplied`) do not set it.
-    private(set) var didSave = false
-
-    var eventBatchId: Int64 = 0
-    var eventBatchName: String = ""
-    var date: Date?
-    var timestamp: UUID?
-
-    var eventBatch: EventBatchDataSource?
-
-    var daySelectionManager: PCCalendarDaySelectionManager {
-        eventsSelectionManager.daySelectionManager
+    init(store: PCEventSelectionManager) {
+        self.store = store
     }
 
-    var yearModel: PCCalendarYearModel {
-        eventsSelectionManager.yearModel
-    }
+    // MARK: - Projections
 
-    /// The batch's selected color. It lives in the shared `eventsSelectionManager`
-    /// so the events list, batch editor and event editor all agree on it; setting
-    /// it rewrites every event's color in the batch.
-    var selectedColor: PCColorOption? {
-        get { eventsSelectionManager.selectedColor }
-        set { eventsSelectionManager.setBatchColor(newValue) }
-    }
+    private var batch: CalendarEventBatch? { store.state.assembly?.batch }
 
+    var name: String { batch?.name ?? "" }
+    var canSave: Bool { store.state.canSave }
+    var events: [CalendarEvent] { batch?.events ?? [] }
+    var isEmpty: Bool { events.isEmpty }
+
+    /// The colour the picker opens on: the batch's own, or failing that its first event's,
+    /// so a batch built from multi-selected days does not open on a colour that
+    /// contradicts what is already on screen.
     var defaultColor: PCColorOption? {
-        selectedColor ?? PCColorOption(eventsSelectionManager.events.first?.color ?? "")
-    }
-
-    var canSave: Bool {
-        !eventBatchName.isEmpty && selectedColor != nil
-    }
-
-    var preferredTitle: String? {
-        title(compact: false)
-    }
-
-    var compactTitle: String? {
-        title(compact: true)
-    }
-
-    init(
-        eventsSelectionManager: PCEventsSelectionManager = PCEventsSelectionManager(),
-        calendarId: Int64 = 0,
-        eventBatch: EventBatchDataSource? = nil,
-        selectedDay: Date? = nil
-    ) {
-        self.eventsSelectionManager = eventsSelectionManager
-        self.calendarId = calendarId
-        self.initialEventBatch = eventBatch
-        self.initialSelectedDay = selectedDay
-        eventsSelectionManager.setupCalendar()
-        // Anchor the calendar's scroll target to the day the batch editor was
-        // opened from (a newly-selected day) or the existing batch's assigned
-        // date. Doing this in `init` (before the view first appears) ensures the
-        // calendar scrolls there on first layout rather than to today's month.
-        if let anchor = eventBatch?.date ?? selectedDay {
-            eventsSelectionManager.setScrollTargetMonth(to: anchor)
+        if let colorName = batch?.colorName, !colorName.isEmpty {
+            return PCColorOption(colorName)
         }
+        return batch?.events.first.flatMap { PCColorOption($0.colorName) }
     }
 
-    convenience init(events: [EventDataSource] = []) {
-        self.init(eventsSelectionManager: PCEventsSelectionManager(events: events))
+    /// The editor's calendar. A render target projected from the state by the store, not a
+    /// copy of it — the day-model instances here are the ones the views bind to.
+    var yearModel: PCCalendarYearModel { store.yearModel }
+
+    var preferredTitle: String? { title(compact: false) }
+    var compactTitle: String? { title(compact: true) }
+
+    // MARK: - Two-way controls
+
+    var nameBinding: Binding<String> {
+        Binding(get: { name }, set: { store.send(.setBatchName($0)) })
     }
 
-    /// Loads the batch and wires up the persist-on-apply hook. Called once from
-    /// the owning view (via `.task`) rather than in `init`, so the observed
-    /// mutations in `load` don't run during a SwiftUI view update (which caused
-    /// an infinite re-render loop when a batch editor was created).
-    func setup() {
-        guard !didSetup else { return }
-        didSetup = true
-        load(initialEventBatch, selectedDay: initialSelectedDay)
-        // Persist the batch whenever an event is applied (saved from the child
-        // event editor), so an edited event isn't lost if the user doesn't press
-        // the batch Save button again.
-        eventsSelectionManager.onEventApplied = { [weak self] in
-            self?.persistBatch()
-        }
+    var colorBinding: Binding<PCColorOption?> {
+        Binding(get: { defaultColor }, set: { store.send(.setBatchColor($0)) })
     }
 
-    func save() -> Bool {
-        // Ensure any pending event edit (saved in child editor but not yet
-        // applied via navigationDestination onChange) is flushed.
-        guard canSave else { return false }
-        persistBatch()
-        didSave = true
-        return true
-    }
+    // MARK: - Commands
 
-    /// Builds the batch from the current session and commits it (persisting via
-    /// the manager). Idempotent — safe to call repeatedly.
-    private func persistBatch() {
-        guard canSave, let selectedColor else { return }
-        let eventBatch = EventBatchDataSource(
-            id: eventBatchId,
-            name: eventBatchName,
-            colorName: selectedColor.colorName,
-            events: eventsSelectionManager.events,
-            date: date,
-            timestamp: timestamp
-        )
-        self.eventBatch = eventBatch
-        eventsSelectionManager.commit(eventBatch)
-    }
-
-    func prepare(with events: [EventDataSource]) {
-        eventsSelectionManager.prepare(with: events)
-    }
-
-    /// Loads the batch-editing session from an existing batch (or a fresh,
-    /// empty one for a new day) into this session. The caller (the coordinator
-    /// or the batch list) drives preparation; this view model is decoupled from
-    /// the batch list and is connected to it only via the shared manager.
-    func load(_ eventBatch: EventBatchDataSource?, selectedDay: Date? = nil) {
-        if let eventBatch {
-            eventBatchId = eventBatch.id
-            eventBatchName = eventBatch.name
-            date = eventBatch.date
-            timestamp = eventBatch.timestamp
-            prepare(with: eventBatch.events)
-            eventsSelectionManager.setBatchColor(PCColorOption(eventBatch.colorName) ?? .option1)
-        } else {
-            // New batch: the caller already staged the starting events (added
-            // events or a placeholder) in the shared manager, so don't clear them
-            // here — just seed the metadata from the first event.
-            eventBatchId = 0
-            let firstEvent = eventsSelectionManager.events.first
-            eventBatchName = firstEvent?.name ?? ""
-            date = selectedDay
-            timestamp = UUID()
-            eventsSelectionManager.setupCalendar()
-            eventsSelectionManager.setBatchColor(PCColorOption(firstEvent?.color ?? "") ?? .option1)
-        }
-    }
-
-    func toggleEvent(on date: Date) {
-        if eventsSelectionManager.hasEvent(on: date) {
-            eventsSelectionManager.removeEvent(on: date)
-        } else {
-            let colorName = selectedColor?.colorName ?? defaultColor?.colorName ?? PCColorOption.option1.colorName
-            eventsSelectionManager.addEvent(
-                .init(name: eventBatchName, date: date, color: colorName)
-            )
-        }
-        daySelectionManager.selectedDays = []
-    }
-
-    func setupCalendar() {
-        eventsSelectionManager.setupCalendar()
-        // Always re-apply the anchor date (selected day / batch date) so the
-        // calendar's scroll target reflects the batch it's editing.
-        if let date {
-            eventsSelectionManager.setScrollTargetMonth(to: date)
-        }
+    /// Saves the batch and asks for the pop. The reducer declines an unsavable batch, so
+    /// `canSave` in the view is a convenience rather than the guard.
+    func save() {
+        store.send(.saveTapped)
     }
 
     func switchYear(to year: Int) {
-        eventsSelectionManager.switchYear(to: year)
+        store.send(.setEditorYear(year))
     }
 
-    func recolorAllEvents() {
-        guard let selectedColor else { return }
-        eventsSelectionManager.setBatchColor(selectedColor)
-    }
-
-    func reset() {
-        eventBatchId = 0
-        eventBatchName = ""
-        date = nil
-        timestamp = nil
-        eventBatch = nil
-        eventsSelectionManager.reset()
-    }
+    // MARK: - Titles
 
     private func title(compact: Bool) -> String? {
-        let dates = eventsSelectionManager.events.map(\.date).sorted()
+        let dates = events.map(\.date).sorted()
         guard let start = dates.first else {
-            return date.map { singleDate($0, compact: compact) }
+            return store.state.day.map { singleDate($0, compact: compact) }
         }
         guard let end = dates.last, end > start else {
             return singleDate(start, compact: compact)

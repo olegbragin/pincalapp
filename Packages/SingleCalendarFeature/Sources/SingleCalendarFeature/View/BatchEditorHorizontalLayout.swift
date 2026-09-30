@@ -1,6 +1,6 @@
 //
 //  BatchEditorHorizontalLayout.swift
-//  PinCalApp
+//  SingleCalendarFeature
 //
 //  Created by Oleg Bragin on 19.08.2026.
 //
@@ -9,9 +9,13 @@ import SwiftUI
 import DSKit
 
 public struct BatchEditorHorizontalLayout: View {
-    var viewModel: AddEditEventBatchViewModel
+    @Environment(PCEventSelectionManager.self) private var store
+
+    public init() {}
 
     public var body: some View {
+        let viewModel = AddEditEventBatchViewModel(store: store)
+
         HStack(spacing: 0) {
             PCCalendarYearView(
                 viewModel: viewModel.yearModel,
@@ -19,15 +23,13 @@ public struct BatchEditorHorizontalLayout: View {
             )
                 .accessibilityIdentifier("batch-editor-calendar")
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
-            AddEditEventBatchView(viewModel: viewModel)
+            AddEditEventBatchView()
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
     }
 }
 
 #Preview {
-    BatchEditorHorizontalLayout(
-        viewModel: .init(events: [.init(name: "1", date: Date(), color: "eventColorOption1")])
-    )
-    .environment(PCKeyboardState())
+    BatchEditorHorizontalLayout()
+        .environment(PCKeyboardState())
 }

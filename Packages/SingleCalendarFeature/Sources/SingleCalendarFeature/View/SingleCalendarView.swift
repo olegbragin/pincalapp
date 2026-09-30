@@ -6,7 +6,6 @@
 //
 
 import SwiftUI
-import CorePersistence
 import AppNavigation
 import DSKit
 
@@ -17,41 +16,33 @@ public struct SingleCalendarView: View {
         self.viewModel = viewModel
     }
     @Environment(RootNavigation.self) var navigation
+    @Environment(PCEventSelectionManager.self) private var store
     @Environment(\.pcVibe) private var vibe
     
-    @State private var columnCountSaveTask: Task<Void, Never>?
-        
     public var body: some View {
         ZStack {
             SingleCalendarStateView(state: viewModel.state) {
                 AnyView(
                     VStack(spacing: 0) {
-                        // `isAtRoot` mirrors the toolbar's own guard below. The batch
-                        // editor shares this `daySelectionManager` and flips the mode to
-                        // `.multiple` when it stages a batch, so without it a tap on an
-                        // empty day (which stages one, then pushes the editor) flashed the
-                        // picker on the calendar behind the sheet.
-                        if navigation.isAtRoot, viewModel.daySelectionManager.selectionMode == .multiple {
-                            PCExpandedColorPicker(selectedColor: $viewModel.selectedColor)
+                        // `isAtRoot` mirrors the toolbar's own guard below. The picker is
+                        // the main calendar's own multi-select session now, and the batch
+                        // editor no longer shares this panel's selection state, so nothing
+                        // behind a pushed screen can flip it.
+                        if navigation.isAtRoot, viewModel.isMultiSelectMode {
+                            PCExpandedColorPicker(selectedColor: viewModel.multiSelectColorBinding)
                                 .disabled(viewModel.isColorPickerDisabled)
                         }
                         PCCalendarYearView(
                             viewModel: viewModel.yearModel,
-                            onLongPress: {
-                                viewModel.daySelectionManager.selectionMode = .multiple
-                            },
+                            onLongPress: { viewModel.setMultiSelectMode(true) },
                             onYearSelect: { viewModel.switchYear(to: $0) }
                         )
                     }
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .onChange(of: viewModel.yearModel.numberOfColumns) {
-                        if $0 != $1 {
-                            scheduleColumnCountSave()
+                    .onChange(of: viewModel.yearModel.numberOfColumns) { old, new in
+                        if old != new {
+                            viewModel.setNumberOfColumns(new)
                         }
-                    }
-                    .onChange(of: viewModel.daySelectionManager.selectedDays) { _, newValue in
-                        guard let route = viewModel.route(for: newValue) else { return }
-                        navigation.goTo(route)
                     }
                 )
             }
@@ -63,26 +54,16 @@ public struct SingleCalendarView: View {
             .toolbar { toolbarContent }
             .id(viewModel.calendarid)
             .navigationDestination(for: AppRoute.self) { route in
+                // No payload: each screen reads what it needs from the store, so there is
+                // no per-destination `case .batchEditor(let source)` preamble here to keep
+                // in step with the reducer.
                 switch route {
-                case .dayBatches(let day):
-                    AddEditEventBatchListView(
-                        eventsSelectionManager: viewModel.eventsSelectionManager,
-                        daySelectionManager: viewModel.daySelectionManager,
-                        calendarId: viewModel.calendarid,
-                        selectedDay: day
-                    )
-                case .batchEditor(let source):
-                    AddEditEventBatchScreen(
-                        eventsSelectionManager: viewModel.eventsSelectionManager,
-                        calendarId: viewModel.calendarid,
-                        source: source,
-                        eventBatch: viewModel.batch(for: source)
-                    )
-                case .eventEditor(let source):
-                    AddEditEventView(
-                        eventsSelectionManager: viewModel.eventsSelectionManager,
-                        source: source
-                    )
+                case .dayBatches:
+                    AddEditEventBatchListView(calendarID: viewModel.calendarid)
+                case .batchEditor:
+                    AddEditEventBatchScreen(calendarID: viewModel.calendarid)
+                case .eventEditor:
+                    AddEditEventView()
                 case .calendar:
                     EmptyView()
                 case .addCalendar:
@@ -93,47 +74,47 @@ public struct SingleCalendarView: View {
             }
         }
         .ignoresSafeArea(edges: .bottom)
-        .sensoryFeedback(.success, trigger: viewModel.daySelectionManager.selectionMode) { oldValue, newValue in
-            oldValue != newValue && newValue == .multiple
-        }
+        .sensoryFeedback(.success, trigger: viewModel.isMultiSelectMode)
         .task(id: viewModel.calendarid) {
+            viewModel.installDayTapHandler()
             await viewModel.fetch()
         }
         .onDisappear {
-            flushColumnCountSave()
-            // Leaving the calendar detail (back to the list, or switching
-            // calendars) must exit any active multiselect session so a later
-            // reopen starts fresh. `onChange(of: isAtRoot)` never fires here
-            // because the calendar is opened via `detailCalendarID` (not pushed
-            // onto the navigation path), so `isAtRoot` stays `true`.
-            // Guard on `isAtRoot`: `onDisappear` also fires when a destination
-            // (e.g. the batch editor) is pushed on top of the root, and we must
-            // not reset the shared session while a batch edit is in progress.
+            viewModel.clearDayTapHandler()
+            // Leaving the calendar detail (back to the list, or switching calendars) must
+            // exit any active multi-select session so a later reopen starts fresh. Guarded
+            // on `isAtRoot` because `onDisappear` also fires when a destination is pushed
+            // on top, and a batch edit in progress must not be reset.
             if navigation.isAtRoot {
-                viewModel.resetSelectedDays()
+                viewModel.cancelMultiSelect()
             }
         }
         .onChange(of: navigation.isAtRoot) { _, isAtRoot in
             if isAtRoot {
-                viewModel.resetSelectedDays()
+                viewModel.cancelMultiSelect()
             }
         }
-    }
-    
-    private func scheduleColumnCountSave() {
-        columnCountSaveTask?.cancel()
-        columnCountSaveTask = Task { @MainActor in
-            try? await Task.sleep(for: .milliseconds(350))
-            guard !Task.isCancelled else { return }
-            viewModel.save(for: viewModel.calendarid)
+        .onChange(of: store.state.dayEventColors) { _, _ in
+            // The editor screens dispatch to the store directly, so the main panel's
+            // markers have to follow the store rather than wait to be told. Projecting
+            // only on `fetch` was not enough: a staged edit writes nothing, so no cache
+            // change fires, and removing the last event of a day left its marker behind.
+            viewModel.projectMarkers()
         }
-    }
-    
-    private func flushColumnCountSave() {
-        guard columnCountSaveTask != nil else { return }
-        columnCountSaveTask?.cancel()
-        columnCountSaveTask = nil
-        viewModel.save(for: viewModel.calendarid)
+        .onChange(of: store.state.navigationRequest) { _, request in
+            // This is where the main calendar leaves the line. The reducer decides that a
+            // day tap means "open the batch editor" and says so in `navigationRequest`;
+            // carrying that out is the view layer's job, and this is the only place on
+            // this screen that can. Without it a day tap staged a batch and nothing
+            // happened — which is exactly what the UI suite caught.
+            guard let request else { return }
+            PCEventSelectionNavigator.fulfil(
+                request,
+                calendarID: viewModel.calendarid,
+                using: navigation,
+                in: store
+            )
+        }
     }
     
     @ToolbarContentBuilder
@@ -141,15 +122,13 @@ public struct SingleCalendarView: View {
         if navigation.isAtRoot, !viewModel.isArchived {
             ToolbarItem {
                 Button(
-                    viewModel.daySelectionManager.selectionMode == .multiple ? "Save" : "Multiselect",
-                    systemImage: viewModel.daySelectionManager.selectionMode == .multiple ? "checkmark" : "plus.rectangle.on.rectangle"
+                    viewModel.isMultiSelectMode ? "Save" : "Multiselect",
+                    systemImage: viewModel.isMultiSelectMode ? "checkmark" : "plus.rectangle.on.rectangle"
                 ) {
-                    if viewModel.daySelectionManager.selectionMode == .multiple {
-                        if let route = viewModel.handleSelectionConfirmation() {
-                            navigation.goTo(route)
-                        }
+                    if viewModel.isMultiSelectMode {
+                        viewModel.confirmMultiSelect()
                     } else {
-                        viewModel.daySelectionManager.toggleSelectionMode()
+                        viewModel.setMultiSelectMode(true)
                     }
                 }
             }

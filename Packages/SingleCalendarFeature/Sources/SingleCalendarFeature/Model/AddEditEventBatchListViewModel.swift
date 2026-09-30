@@ -1,89 +1,71 @@
 //
 //  AddEditEventBatchListViewModel.swift
-//  PinCalApp
+//  SingleCalendarFeature
 //
 //  Created by Oleg Bragin on 08.07.2026.
 //
 
 import Foundation
 import Observation
-import SwiftUI
-import CorePersistence
-import DSKit
 import CoreDomain
+import DSKit
 
+/// The list of batches on one day.
+///
+/// The only view model that still stores anything, and what it stores is view-scoped:
+/// which batch is staged for deletion. That is not part of the batch domain and the
+/// reducer has no opinion about it.
+///
+/// `eventBatches` is **computed**. It used to be a stored copy re-primed by hand in
+/// `onAppear` and again in `onChange(of: eventBatchesToDelete)`, precisely because a
+/// computed version had been found not to re-render after a deletion. That work-around
+/// existed only to compensate for holding a duplicate of state the reducer owns. With one
+/// copy there is nothing to re-prime, and a deletion is already reflected in the next
+/// render. §12.5 pins this so it cannot regress.
 @MainActor
 @Observable
 public final class AddEditEventBatchListViewModel {
-    private(set) var eventBatches = [EventBatchDataSource]()
-    private(set) var selectedDay: Date?
+    private let store: PCEventSelectionManager
 
-    // Shared connection to the batch editor. Both the batch list and the batch
-    // editor view models observe/mutate these managers, so they stay in sync
-    // without either owning the other.
-    let eventsSelectionManager: PCEventsSelectionManager
-    let daySelectionManager: PCCalendarDaySelectionManager
-    var eventBatchesToDelete = [EventBatchDataSource]()
-    var eventBatchesSelectedToDelete = [EventBatchDataSource]()
-    var isEditing = false
+    // View-scoped only — permitted by the "no domain state in a view model" rule.
+    var pendingDeletion: [CalendarEventBatch] = []
 
-    init(
-        eventsSelectionManager: PCEventsSelectionManager = PCEventsSelectionManager(),
-        daySelectionManager: PCCalendarDaySelectionManager = PCCalendarDaySelectionManager()
-    ) {
-        self.eventsSelectionManager = eventsSelectionManager
-        self.daySelectionManager = daySelectionManager
+    init(store: PCEventSelectionManager) {
+        self.store = store
     }
 
-    func removeBatches(at indexPaths: IndexSet) {
-        let removedBatches = indexPaths.map { eventBatches[$0] }
-        indexPaths.sorted(by: >).forEach { eventBatches.remove(at: $0) }
-        eventBatchesToDelete = removedBatches
+    // MARK: - Projections
+
+    var eventBatches: [CalendarEventBatch] { store.state.dayBatches }
+    var selectedDay: Date? { store.state.day }
+
+    // MARK: - Commands
+
+    /// Stages a batch for deletion. It stays in the list until `confirmDelete`, which is
+    /// what lets `cancel` change its mind — and with a computed projection there is
+    /// nothing to put back, because it was never removed locally.
+    func remove(_ batch: CalendarEventBatch) {
+        pendingDeletion = [batch]
     }
 
-    /// Removes a single batch from the list and stages it for deletion.
-    func remove(_ eventBatch: EventBatchDataSource) {
-        guard let index = eventBatches.firstIndex(of: eventBatch) else { return }
-        removeBatches(at: IndexSet(integer: index))
+    func confirmDelete() {
+        guard !pendingDeletion.isEmpty else { return }
+        store.send(.deleteBatches(pendingDeletion))
+        pendingDeletion = []
     }
 
-    /// Deletes the given batches through the shared manager (which persists).
-    func deleteBatches(_ batches: [EventBatchDataSource]) {
-        eventsSelectionManager.deleteBatches(batches)
-    }
-    
-    func prepare(with eventBatches: [EventBatchDataSource], and selectedDay: Date?) {
-        self.selectedDay = selectedDay
-        self.eventBatches = eventBatches.sorted {
-            ($0.events.map(\.date).min() ?? .distantPast) < ($1.events.map(\.date).min() ?? .distantPast)
-        }
-        isEditing = true
-    }
-    
-    func commitDelete() {
-        eventBatchesToDelete = eventBatchesSelectedToDelete
-        eventBatchesSelectedToDelete = []
-        isEditing = false
-    }
-    
     func cancel() {
-        eventBatches.append(contentsOf: eventBatchesSelectedToDelete)
-        eventBatchesSelectedToDelete = []
-        isEditing = false
+        pendingDeletion = []
     }
-    
-    func reset() {
-        eventBatches = []
-        eventBatchesSelectedToDelete = []
-        isEditing = false
-    }
-}
 
-extension EventBatchDataSource {
-    func eventsForDay(_ day: Date?) -> [EventDataSource] {
-        guard let day else { return events.sorted { $0.date < $1.date } }
-        return events
-            .filter { Calendar.autoupdatingCurrent.isDate($0.date, inSameDayAs: day) }
-            .sorted { $0.date < $1.date }
+    /// `mergeKey`, not `pendingID`: the card was rendered from whatever the registry held
+    /// when the list last drew, and a write landing in between re-mints every row's
+    /// `pendingID`. The persisted id the card was drawn with still names the same row.
+    func open(_ batch: CalendarEventBatch) {
+        store.send(.openBatch(id: batch.mergeKey))
+    }
+
+    func startNewBatch(on day: Date) {
+        store.send(.startNewBatch(on: day))
     }
 }

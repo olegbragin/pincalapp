@@ -53,7 +53,7 @@ final class PinCalAppUITests: XCTestCase {
 
         calendarName.tap()
 
-        let multiselectButton = app.buttons["Multiselect"]
+        let multiselectButton = KeyboardAvoidanceTestSupport.toolbarAction("Multiselect", in: app)
         XCTAssertTrue(multiselectButton.waitForExistence(timeout: 5), "Detail view should appear after tapping a calendar")
 
         let backButton = app.buttons["Back"].exists ? app.buttons["Back"] : app.buttons["BackButton"]
@@ -191,9 +191,15 @@ final class PinCalAppUITests: XCTestCase {
             KeyboardAvoidanceTestSupport.tapDay(day: day, in: app)
         }
 
-        nameField.tap()
-        nameField.typeText(name)
+        // Replace, not append: a new batch arrives with "New Event" already in the field
+        // (§17.3), so `typeText` here would produce "New EventCycle" and every assertion
+        // below would be looking for a name that was never typed.
+        KeyboardAvoidanceTestSupport.replaceText(in: nameField, with: name)
+        // The colour is already the first available one for a new batch, but selecting it
+        // explicitly keeps this helper honest about what the tests it serves depend on.
+        KeyboardAvoidanceTestSupport.selectColor("eventColorOption1", in: app)
         let saveButton = app.buttons["batch-save-button"]
+        XCTAssertTrue(saveButton.isEnabled, "Batch editor Save should be enabled once named and coloured")
         saveButton.tap()
         XCTAssertTrue(saveButton.waitForNonExistence(timeout: 3), "Batch editor should dismiss after Save")
     }
@@ -210,7 +216,7 @@ final class PinCalAppUITests: XCTestCase {
 
         // Open the batch editor.
         womenCycle.tap()
-        let editorSave = app.buttons["Save"]
+        let editorSave = KeyboardAvoidanceTestSupport.toolbarAction("Save", in: app)
         XCTAssertTrue(editorSave.waitForExistence(timeout: 5), "Batch editor should open")
 
         // Toggle off both event days inside the editor's year calendar.
@@ -229,7 +235,7 @@ final class PinCalAppUITests: XCTestCase {
 
         // Back on the single calendar, tapping the day must NOT show the batch list again.
         KeyboardAvoidanceTestSupport.tapDay(day: 10, in: app)
-        XCTAssertTrue(app.buttons["Save"].waitForExistence(timeout: 5),
+        XCTAssertTrue(KeyboardAvoidanceTestSupport.waitForToolbarAction("Save", in: app, timeout: 5),
                       "Tapping an empty day should open the batch editor directly")
         XCTAssertFalse(app.staticTexts["Women Cycle"].waitForExistence(timeout: 2),
                        "Removed events must not reopen the batch list")
@@ -245,7 +251,15 @@ final class PinCalAppUITests: XCTestCase {
         createBatch(named: "Cycle", anchorDay: 11, additionalDays: [12, 13], in: app)
 
         // Re-open the anchor day: the batch list must contain the batch.
-        KeyboardAvoidanceTestSupport.tapDay(day: 11, in: app)
+        //
+        // The tap is needed. `createBatch` starts from an *empty* day, so the editor was
+        // pushed from the calendar rather than from a day list, and the save pops straight
+        // back to the calendar. §16.5's re-anchoring only moves you when a day list was on
+        // the stack to begin with.
+        XCTAssertTrue(
+            KeyboardAvoidanceTestSupport.openDayBatchesList(day: 11, in: app),
+            "The day list for day 11 should open; day 11 now holds a batch"
+        )
         let cycle = app.staticTexts["Cycle"]
         XCTAssertTrue(cycle.waitForExistence(timeout: 5), "Batch list should contain the batch")
 
@@ -257,9 +271,23 @@ final class PinCalAppUITests: XCTestCase {
         saveButton.tap()
         XCTAssertTrue(saveButton.waitForNonExistence(timeout: 3), "Batch editor should dismiss after Save")
 
-        // Bug regression: the batch list must still contain the batch (events on 12 & 13).
+        // Bug regression: removing one of a batch's days must not delete the batch.
+        //
+        // The save re-anchors the session on the day the batch now lives (§16's fix), so
+        // the pop lands on **day 12's** list, not day 11's. That is the point: the batch
+        // still exists, but it no longer *occurs* on day 11 — `dayBatches` is
+        // `batches.filter { $0.occurs(on: day) }` — so before the fix the pop returned to a
+        // day list the batch was not on and rendered empty. Same symptom as §16, one batch.
+        //
+        // This also used to pass without ever running the edit: Save was disabled (the batch
+        // had no colour), so all three events survived, the batch still occurred on day 11,
+        // and the assertion was satisfied by a batch nobody had modified.
         XCTAssertTrue(cycle.waitForExistence(timeout: 5),
-                      "Batch list should still contain the batch after removing the anchor day")
+                      "After removing the anchor day, the save returns to the surviving day's list, which must contain the batch")
+        XCTAssertEqual(
+            app.staticTexts.matching(identifier: "Cycle").count, 1,
+            "and that list must hold exactly one batch, not two and not none"
+        )
     }
 
     @MainActor
@@ -280,7 +308,10 @@ final class PinCalAppUITests: XCTestCase {
                       "Anchor day should be marked after creation; label = \(dayEl.label)")
 
         // Open the batch, remove the anchor day's event, save.
-        KeyboardAvoidanceTestSupport.tapDay(day: 11, in: app)
+        XCTAssertTrue(
+            KeyboardAvoidanceTestSupport.openDayBatchesList(day: 11, in: app),
+            "The day list for day 11 should open; day 11 now holds a batch"
+        )
         let cycle = app.staticTexts["Cycle"]
         XCTAssertTrue(cycle.waitForExistence(timeout: 5), "Batch list should contain the batch")
         cycle.tap()
@@ -291,7 +322,7 @@ final class PinCalAppUITests: XCTestCase {
         XCTAssertTrue(saveButton.waitForNonExistence(timeout: 3), "Batch editor should dismiss after Save")
 
         // Pop back to the single calendar view.
-        KeyboardAvoidanceTestSupport.tapBackButton(in: app)
+        KeyboardAvoidanceTestSupport.leaveCurrentScreen(in: app)
 
         // The anchor day must no longer be marked (its event was removed).
         let dayAfter = app.descendants(matching: .any).matching(identifier: anchorDay).firstMatch
@@ -317,8 +348,9 @@ final class PinCalAppUITests: XCTestCase {
         KeyboardAvoidanceTestSupport.tapDay(day: 11, in: app)
         let nameField = app.textFields["batch-name-field"]
         XCTAssertTrue(nameField.waitForExistence(timeout: 5), "Batch editor should open")
-        nameField.tap()
-        nameField.typeText("Cycle")
+        KeyboardAvoidanceTestSupport.replaceText(in: nameField, with: "Cycle")
+        // Same as `createBatch`: an uncoloured batch has a disabled Save.
+        KeyboardAvoidanceTestSupport.selectColor("eventColorOption1", in: app)
         let saveButton = app.buttons["batch-save-button"]
         saveButton.tap()
         XCTAssertTrue(saveButton.waitForNonExistence(timeout: 3), "Batch editor should dismiss")
@@ -392,7 +424,17 @@ final class PinCalAppUITests: XCTestCase {
 
         // Removing every event empties the batch; Save deletes it and returns
         // to the single calendar view with day 10 unmarked.
+        //
+        // The editor's Save is enabled because the seeded batch is named and coloured and
+        // an *emptied* batch is still savable — that is what makes emptying a batch a way
+        // to delete it. This assertion used to be missing, so the test passed even while
+        // Save was disabled and the tap did nothing: it only checked the marker, which the
+        // marker fix alone had already made correct, and so it could not tell "the batch was
+        // deleted" from "the batch is still open behind us and merely unmarked".
+        XCTAssertTrue(saveButton.isEnabled, "An emptied, named, coloured batch must still be savable")
         saveButton.tap()
+        XCTAssertTrue(saveButton.waitForNonExistence(timeout: 3),
+                      "Saving an emptied batch deletes it and dismisses the editor")
 
         let dayAfter = app.descendants(matching: .any).matching(identifier: day10).firstMatch
         XCTAssertTrue(dayAfter.waitForExistence(timeout: 5), "Should be back on the single calendar view")
@@ -410,21 +452,113 @@ final class PinCalAppUITests: XCTestCase {
         let app = KeyboardAvoidanceTestSupport.launchSeededApp()
         KeyboardAvoidanceTestSupport.openCalendarDetail(app, named: "UI Test Calendar")
 
-        let multiselectButton = app.buttons["Multiselect"]
+        let multiselectButton = KeyboardAvoidanceTestSupport.toolbarAction("Multiselect", in: app)
         XCTAssertTrue(multiselectButton.waitForExistence(timeout: 5), "Multiselect button should be visible")
         multiselectButton.tap()
 
         // Leave the screen via the back button.
-        KeyboardAvoidanceTestSupport.tapBackButton(in: app)
+        KeyboardAvoidanceTestSupport.leaveCurrentScreen(in: app)
 
         // Reopen the calendar.
         KeyboardAvoidanceTestSupport.openCalendarDetail(app, named: "UI Test Calendar")
 
         // Must be in single-select mode: "Multiselect" button, no "Save".
-        let reopenedMultiselect = app.buttons["Multiselect"]
-        XCTAssertTrue(reopenedMultiselect.waitForExistence(timeout: 5),
-                      "After reopening, the calendar should be in single-select mode")
-        XCTAssertFalse(app.buttons["Save"].exists, "Save button indicates multiselect mode; should be single")
+        XCTAssertTrue(
+            KeyboardAvoidanceTestSupport.waitForToolbarAction("Multiselect", in: app),
+            "After reopening, the calendar should be in single-select mode")
+        XCTAssertFalse(
+            KeyboardAvoidanceTestSupport.toolbarActionExists("Save", in: app),
+            "Save button indicates multiselect mode; should be single")
+    }
+
+    // MARK: - Stage 11: the multi-day scenario
+
+    /// The multi-select path, end to end, and the one §6.3 row with no end-to-end cover.
+    ///
+    /// `confirmMultiSelectTapped` has unit coverage but no UI coverage, and it is the only
+    /// way a batch gets more than one day at creation time — every other route builds a
+    /// batch on one day and toggles the rest in afterwards. The assertion is deliberately
+    /// about **one batch with two days**, not two batches: a per-day batch would satisfy
+    /// "the days are marked" and still be the wrong model.
+    ///
+    /// STR: multiselect -> pick a colour -> tap two days -> confirm -> save -> re-open each
+    /// day and find the same single batch on both.
+    @MainActor
+    func testMultiselectTwoDaysProducesOneBatchWithBothDays() throws {
+        let app = KeyboardAvoidanceTestSupport.launchSeededApp()
+        KeyboardAvoidanceTestSupport.openCalendarDetail(app, named: "UI Test Calendar")
+
+        // Enter the session.
+        let multiselect = KeyboardAvoidanceTestSupport.toolbarAction("Multiselect", in: app)
+        XCTAssertTrue(multiselect.waitForExistence(timeout: 5), "Multiselect button should be visible")
+        multiselect.tap()
+
+        // The picker appears only in the session. A colour is required: the reducer
+        // declines `confirmMultiSelectTapped` without one, so the toolbar Save would be a
+        // no-op and the test would fail later for the wrong reason.
+        let colourOption = app.buttons["color-option-eventColorOption3"]
+        XCTAssertTrue(colourOption.waitForExistence(timeout: 5),
+                      "The expanded colour picker should be visible in a multi-select session")
+        colourOption.tap()
+
+        // Two empty days. Both must be clear of the seed, which only uses 10 and 12.
+        KeyboardAvoidanceTestSupport.tapDay(day: 17, in: app)
+        KeyboardAvoidanceTestSupport.tapDay(day: 18, in: app)
+
+        // Confirm. The toolbar button reads "Save" while a session is live.
+        let confirm = KeyboardAvoidanceTestSupport.toolbarAction("Save", in: app)
+        XCTAssertTrue(confirm.waitForExistence(timeout: 5), "Toolbar should offer Save during a session")
+        confirm.tap()
+
+        // The session becomes a staged batch and the editor opens on it.
+        let batchSave = app.buttons["batch-save-button"]
+        XCTAssertTrue(batchSave.waitForExistence(timeout: 5),
+                      "Confirming a session should open the batch editor")
+
+        // The batch needs a name. `PCEventBatchAssembleUnitOfWork.new(all:color:)` builds one with an empty
+        // name, and `canSave` requires a name — so the editor's Save is disabled until this
+        // step, exactly as it is for a batch started by tapping a single day.
+        let batchName = "Fortnight"
+        let nameField = app.textFields["batch-name-field"]
+        XCTAssertTrue(nameField.waitForExistence(timeout: 3), "Batch editor should offer a name field")
+        KeyboardAvoidanceTestSupport.replaceText(in: nameField, with: batchName)
+        XCTAssertTrue(batchSave.isEnabled, "A named, coloured batch must be savable")
+        batchSave.tap()
+        XCTAssertTrue(batchSave.waitForNonExistence(timeout: 3), "Batch editor should dismiss after Save")
+
+        // Back on the calendar: both days are marked.
+        for day in [17, 18] {
+            let cell = app.descendants(matching: .any)
+                .matching(identifier: KeyboardAvoidanceTestSupport.dayIdentifier(day: day))
+                .firstMatch
+            XCTAssertTrue(cell.waitForExistence(timeout: 5), "Day \(day) should be on the calendar")
+            XCTAssertTrue(cell.label.lowercased().contains("event"),
+                          "Day \(day) should be marked; label = \(cell.label)")
+        }
+
+        // The shape assertion. A batch is listed on *every* day it holds an event on, so if
+        // each day shows the same single card, the two days are one batch — not two batches
+        // of one day each, which would satisfy "both days are marked" and still be wrong.
+        KeyboardAvoidanceTestSupport.tapDay(day: 17, in: app)
+        let card = app.staticTexts[batchName]
+        XCTAssertTrue(card.waitForExistence(timeout: 5), "Day 17's list should contain the batch")
+        XCTAssertEqual(app.staticTexts.matching(identifier: batchName).count, 1,
+                       "Day 17's list must hold exactly one batch, not one per day")
+        card.tap()
+
+        // The authoritative check on the shape: one batch, two events.
+        XCTAssertTrue(batchSave.waitForExistence(timeout: 5), "The batch should open for editing")
+        let rows = app.collectionViews.buttons.containing(NSPredicate(format: "label CONTAINS %@", "at"))
+        XCTAssertEqual(rows.count, 2, "The batch must hold both days, as two event rows")
+        batchSave.tap()
+
+        KeyboardAvoidanceTestSupport.leaveCurrentScreen(in: app)
+        KeyboardAvoidanceTestSupport.tapDay(day: 18, in: app)
+        let sameCard = app.staticTexts[batchName]
+        XCTAssertTrue(sameCard.waitForExistence(timeout: 5),
+                      "Day 18 must list the same single batch, not a second one")
+        XCTAssertEqual(app.staticTexts.matching(identifier: batchName).count, 1,
+                       "Day 18's list must also hold exactly one batch")
     }
 
     @MainActor
@@ -445,8 +579,11 @@ final class PinCalAppUITests: XCTestCase {
         // Batch editor opens for a new day. Enter a batch name and save.
         let batchNameField = app.textFields["batch-name-field"]
         XCTAssertTrue(batchNameField.waitForExistence(timeout: 5), "Batch editor should open")
-        batchNameField.tap()
-        batchNameField.typeText("Swim")
+        KeyboardAvoidanceTestSupport.replaceText(in: batchNameField, with: "Swim")
+        // The batch needs a colour before its Save is enabled, and the event editor's own
+        // Save needs the event to have one too — recolouring the batch propagates to its
+        // events, so picking it here covers both.
+        KeyboardAvoidanceTestSupport.selectColor("eventColorOption1", in: app)
         app.buttons["batch-save-button"].tap()
 
         // Back on the calendar. Tap the day again to open the batch list, then the batch.
@@ -465,9 +602,8 @@ final class PinCalAppUITests: XCTestCase {
         // Event editor opens. Enter the event name and save.
         let eventNameField = app.textFields["event-name-field"]
         XCTAssertTrue(eventNameField.waitForExistence(timeout: 5), "Event editor should open")
-        eventNameField.tap()
-        eventNameField.typeText("Lap")
-        app.buttons["Save"].tap()
+        KeyboardAvoidanceTestSupport.replaceText(in: eventNameField, with: "Lap")
+        KeyboardAvoidanceTestSupport.tapToolbarAction("Save", in: app)
 
         // Back in the batch editor. Save the batch (persists it), which dismisses
         // back to the batch list.

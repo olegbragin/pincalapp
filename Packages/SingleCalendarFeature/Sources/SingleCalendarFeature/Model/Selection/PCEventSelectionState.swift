@@ -18,6 +18,17 @@ public enum PCEventSelectionStage: Equatable {
     /// The two ids travel in the stage, not just in the draft, so a back button or a
     /// deep link can identify the pair without reconstructing it from the assembly.
     case eventEditor(batchPendingID: UUID, eventPendingID: UUID)
+
+    /// The day the day-list is scoped to, or `nil` when the session is elsewhere.
+    ///
+    /// For assertions about *which day list* the user is returned to, rather than about
+    /// the stage's shape. It is deliberately `nil` for the other cases rather than
+    /// reporting something adjacent, so a test that means "the list for this day" cannot
+    /// quietly pass against a state that is not a day list.
+    public var asDayList: Date? {
+        if case .dayList(let day) = self { return day }
+        return nil
+    }
 }
 
 /// A navigation the *view layer* should carry out, derived by the reducer rather than
@@ -49,7 +60,7 @@ public struct PCEventSelectionState: Equatable {
     // MARK: Assembly line
 
     public var stage: PCEventSelectionStage = .idle
-    public var assembly: BatchAssembler?
+    public var assembly: PCEventBatchAssembleUnitOfWork?
     /// The event under edit while `stage == .eventEditor`. It lives outside the assembly
     /// because it is not yet part of the batch — the batch only gains it on
     /// `saveEventTapped`.

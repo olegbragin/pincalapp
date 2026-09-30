@@ -1,5 +1,5 @@
 //
-//  BatchAssembler.swift
+//  PCEventBatchAssembleUnitOfWork.swift
 //  SingleCalendarFeature
 //
 //  Created by Oleg Bragin on 28.09.2026.
@@ -24,7 +24,7 @@ import DSKit
 /// It is `Sendable` so it can sit in state that a pure reducer compares. `DSKit` is
 /// already a dependency of this package, and `PCColorOption` is the only reason the type
 /// is not in `CoreDomain`.
-public struct BatchAssembler: Equatable, Sendable {
+public struct PCEventBatchAssembleUnitOfWork: Equatable, Sendable {
     public private(set) var batch: CalendarEventBatch
 
     /// Where this assembly entered the line. `.new` was started by the user;
@@ -44,11 +44,38 @@ public struct BatchAssembler: Equatable, Sendable {
 
     public var isNew: Bool { origin == .new }
 
-    /// A batch is only worth writing with a name, a colour, and at least one day. The
-    /// name check is what stops a freshly-toggled day from being committed as a row of
-    /// blank events.
+    /// The key this assembly's row answers to, *including* an id it has adopted.
+    ///
+    /// Not the same as `batch.mergeKey`. An assembly opened from the registry already
+    /// carries the row's `persistedID`, so the two agree. An assembly that was *new* when
+    /// it was staged only learns its id from `adopting(persistedID:)` during a reload, and
+    /// until it does its `pendingID` can never equal the `.persisted(_)` key of the row
+    /// that came back for it. Anything that has to recognise the staged row as the same
+    /// one the registry holds — the marker projection above all — has to ask this rather
+    /// than `batch.mergeKey`, or it appends a second copy of a row it already has.
+    public var mergeKey: EventBatchKey {
+        adoptedPersistedID.map(EventBatchKey.persisted) ?? batch.mergeKey
+    }
+
+    /// Whether Save is a meaningful action on this batch.
+    ///
+    /// A name and a colour are what a batch needs to be *written*, and the name check is
+    /// what stops a freshly-tapped day from being committed as a row of blank events.
+    ///
+    /// An empty batch is deliberately still savable, because removing every event is how a
+    /// user deletes a batch from the editor, and the reducer already implements that:
+    /// `saveTapped` finds `resolved()` is `nil`, drops the row, and returns to the calendar.
+    /// Requiring `!events.isEmpty` here did not make that any safer — it made it
+    /// unreachable. The editor's Save is disabled from exactly the state that would trigger
+    /// the delete, which stranded the user in an editor whose only remaining way out is
+    /// Back, and Back *discards* the deletion rather than committing it. The batch was
+    /// undeletable by the only route the screen offered.
+    ///
+    /// This says nothing about whether there is anything to write. `resolved()` still
+    /// returns `nil` for an empty batch, so it is `commitTapped`'s `let row =` guard, not
+    /// this flag, that keeps an eventless row from ever being persisted.
     public var canSave: Bool {
-        !batch.name.isEmpty && !batch.colorName.isEmpty && !batch.events.isEmpty
+        !batch.name.isEmpty && !batch.colorName.isEmpty
     }
 
     private init(batch: CalendarEventBatch, origin: Origin) {
@@ -58,23 +85,34 @@ public struct BatchAssembler: Equatable, Sendable {
 
     // MARK: - Identity
 
-    /// A brand-new batch holding one day, unnamed and uncoloured.
+    /// A brand-new batch holding one day, arriving ready to save.
+    ///
+    /// Named and coloured by default. This used to produce an *unnamed, uncoloured* batch,
+    /// which combined with `canSave` to make a freshly-tapped day a dead end: the editor
+    /// opened on a grey picker and an empty field, Save was disabled, and the user had to
+    /// find both controls before the batch could be committed at all. Defaults mean the
+    /// common case — tap a day, notice the mistake, undo it — needs no edits, and a batch
+    /// the user does want is savable straight away.
+    ///
+    /// Both parameters still take arguments, for the tests that assert the uncoloured and
+    /// unnamed shapes, but the defaults are what production callers get.
     ///
     /// The anchor is normalised to the start of its day, because a batch is day-granular
     /// and every later comparison — `occurs(on:using:)`, `hasSameContent(as:using:)`,
     /// the day-marker projection — keys on a start-of-day value.
     public static func new(
         anchor: Date,
-        colorName: String,
+        name: String = PCEventBatchAssembleUnitOfWork.defaultBatchName,
+        colorName: String = PCColorOption.firstAvailable.colorName,
         using dataProvider: PCCalendarDataProvider
-    ) -> BatchAssembler {
+    ) -> PCEventBatchAssembleUnitOfWork {
         let day = dataProvider.startOfDay(for: anchor)
         let batch = CalendarEventBatch(
-            name: "",
+            name: name,
             colorName: colorName,
             events: [placeholder(on: day, colorName: colorName)]
         )
-        return BatchAssembler(batch: batch, origin: .new)
+        return PCEventBatchAssembleUnitOfWork(batch: batch, origin: .new)
     }
 
     /// A brand-new batch holding one placeholder per selected day, for the multi-select
@@ -84,24 +122,32 @@ public struct BatchAssembler: Equatable, Sendable {
         all days: [Date],
         color: PCColorOption?,
         using dataProvider: PCCalendarDataProvider
-    ) -> BatchAssembler {
-        let colorName = color?.colorName ?? ""
+    ) -> PCEventBatchAssembleUnitOfWork {
+        // A nil colour is *not* a reason to build an unsavable batch. The multi-select
+        // path can only reach here through the reducer, which refuses to confirm without a
+        // colour, so the nil is defensive — and defaulting keeps the two entry points to
+        // "a new batch" agreeing about what one looks like.
+        let colorName = color?.colorName ?? PCColorOption.firstAvailable.colorName
         let events = days
             .map { placeholder(on: dataProvider.startOfDay(for: $0), colorName: colorName) }
             .sorted { $0.date < $1.date }
-        let batch = CalendarEventBatch(name: "", colorName: colorName, events: events)
-        return BatchAssembler(batch: batch, origin: .new)
+        let batch = CalendarEventBatch(
+            name: PCEventBatchAssembleUnitOfWork.defaultBatchName,
+            colorName: colorName,
+            events: events
+        )
+        return PCEventBatchAssembleUnitOfWork(batch: batch, origin: .new)
     }
 
     /// Opens a batch already in the registry for editing. Its `pendingID` is recorded so
     /// the commit can find the row again by `mergeKey`.
-    public static func existing(_ batch: CalendarEventBatch) -> BatchAssembler {
-        BatchAssembler(batch: batch, origin: .existing(pendingID: batch.pendingID))
+    public static func existing(_ batch: CalendarEventBatch) -> PCEventBatchAssembleUnitOfWork {
+        PCEventBatchAssembleUnitOfWork(batch: batch, origin: .existing(pendingID: batch.pendingID))
     }
 
     // MARK: - Transformations
 
-    public func renaming(_ name: String) -> BatchAssembler {
+    public func renaming(_ name: String) -> PCEventBatchAssembleUnitOfWork {
         var copy = self
         copy.batch = batch.with(name: name)
         return copy
@@ -115,7 +161,7 @@ public struct BatchAssembler: Equatable, Sendable {
     /// wrong here: the day markers are projected from *event* colours, so a batch
     /// recoloured to nothing while its events kept the old colour would keep painting
     /// markers for a colour the batch no longer has.
-    public func recoloring(_ color: PCColorOption?) -> BatchAssembler {
+    public func recoloring(_ color: PCColorOption?) -> PCEventBatchAssembleUnitOfWork {
         let colorName = color?.colorName ?? ""
         var copy = self
         copy.batch = batch
@@ -131,7 +177,7 @@ public struct BatchAssembler: Equatable, Sendable {
     /// is gone before anything is added, so no input can produce a second event there.
     /// The append is then conditional — if the removal took something, this was a toggle
     /// *off* and we stop.
-    public func toggling(day: Date, using dataProvider: PCCalendarDataProvider) -> BatchAssembler {
+    public func toggling(day: Date, using dataProvider: PCCalendarDataProvider) -> PCEventBatchAssembleUnitOfWork {
         let target = dataProvider.startOfDay(for: day)
         let remaining = batch.events.filter { !dataProvider.isSameDay($0.date, target) }
         var copy = self
@@ -144,7 +190,7 @@ public struct BatchAssembler: Equatable, Sendable {
         return copy
     }
 
-    public func removingEvent(pendingID: UUID) -> BatchAssembler {
+    public func removingEvent(pendingID: UUID) -> PCEventBatchAssembleUnitOfWork {
         let remaining = batch.events.filter { $0.pendingID != pendingID }
         guard remaining.count != batch.events.count else { return self }
         var copy = self
@@ -162,7 +208,7 @@ public struct BatchAssembler: Equatable, Sendable {
     /// moving an event onto an occupied day a move rather than a duplicate — and it
     /// holds even when the edit changes an existing event's date onto a taken day, which
     /// the pendingID-only rule would let through.
-    public func applying(_ event: CalendarEvent, using dataProvider: PCCalendarDataProvider) -> BatchAssembler {
+    public func applying(_ event: CalendarEvent, using dataProvider: PCCalendarDataProvider) -> PCEventBatchAssembleUnitOfWork {
         let incoming = event.with(date: dataProvider.startOfDay(for: event.date))
         let survivors = batch.events.filter {
             $0.pendingID != incoming.pendingID && !dataProvider.isSameDay($0.date, incoming.date)
@@ -172,7 +218,7 @@ public struct BatchAssembler: Equatable, Sendable {
         return copy
     }
 
-    public func adopting(persistedID: Int64?) -> BatchAssembler {
+    public func adopting(persistedID: Int64?) -> PCEventBatchAssembleUnitOfWork {
         var copy = self
         copy.adoptedPersistedID = persistedID
         return copy
@@ -206,9 +252,35 @@ public struct BatchAssembler: Equatable, Sendable {
 
     // MARK: - Placeholder
 
-    /// An event occupying a day but not yet named. An empty `name` is what marks it as
-    /// unedited, and is what `saveEventTapped`'s "name non-empty" guard rejects.
+    /// An event occupying a day, named by default.
+    ///
+    /// It used to be empty, and the empty name is what `saveEventTapped`'s "name non-empty"
+    /// guard reads as *unedited*. That made the guard useless in practice: a placeholder
+    /// could never be saved and every one of them had to be typed out first, and a batch
+    /// whose events were never opened could not be committed at all. The guard still means
+    /// "has a name" — it just no longer rejects a value that is already there.
     private static func placeholder(on day: Date, colorName: String) -> CalendarEvent {
-        CalendarEvent(name: "", date: day, colorName: colorName)
+        CalendarEvent(name: defaultEventName, date: day, colorName: colorName)
     }
+
+    // MARK: Defaults
+    //
+    // Display strings, in a domain type, which is the one layering compromise here and is
+    // worth naming rather than hiding: a new batch's *name* has to be born somewhere, and
+    // the alternatives are worse. The view cannot supply it — the name is store state, and
+    // pre-filling a text field that is bound to it would fight the binding on the first
+    // keystroke. A factory taking a name would push the default up to every call site and
+    // they would drift.
+    //
+    // So they live here, in English, and are *not* localised. A localised default needs the
+    // generated string table, and the batch name is the user's own text once they touch it —
+    // it is a starting point, not chrome. If a translated default is ever wanted, the
+    // honest place is a `BatchNaming` port injected alongside `dataProvider`, and this
+    // constant becomes its English fallback.
+
+    /// What a new batch is called before the user says otherwise.
+    public static let defaultBatchName = "New Event"
+
+    /// What a new event inside a batch is called.
+    public static let defaultEventName = "New Event Day"
 }

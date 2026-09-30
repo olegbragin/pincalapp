@@ -32,7 +32,7 @@ final class BatchEditCommitTests: XCTestCase {
         KeyboardAvoidanceTestSupport.tapDay(day: 20, in: app)
 
         // Save via the toolbar checkmark.
-        let saveButton = app.buttons["Save"]
+        let saveButton = KeyboardAvoidanceTestSupport.toolbarAction("Save", in: app)
         XCTAssertTrue(saveButton.waitForExistence(timeout: 5), "Save button should be visible in the editor")
         saveButton.tap()
 
@@ -41,7 +41,7 @@ final class BatchEditCommitTests: XCTestCase {
             saveButton.waitForExistence(timeout: 2),
             "Editor should be dismissed after Save"
         )
-        KeyboardAvoidanceTestSupport.tapBackButton(in: app)
+        KeyboardAvoidanceTestSupport.leaveCurrentScreen(in: app)
 
         // The edited day now has events: tapping it must open the BATCH LIST,
         // not a new-batch editor. Before the fix this opened the editor because
@@ -84,17 +84,17 @@ final class BatchEditCommitTests: XCTestCase {
         // Append text and save.
         nameField.tap()
         nameField.typeText("Renamed")
-        let eventSaveButton = app.buttons["Save"].firstMatch
+        let eventSaveButton = KeyboardAvoidanceTestSupport.toolbarAction("Save", in: app)
         XCTAssertTrue(eventSaveButton.waitForExistence(timeout: 3), "Event save button should be visible")
         eventSaveButton.tap()
 
         // Back in the batch editor, save the batch.
-        let batchSaveButton = app.buttons["Save"].firstMatch
+        let batchSaveButton = KeyboardAvoidanceTestSupport.toolbarAction("Save", in: app)
         XCTAssertTrue(batchSaveButton.waitForExistence(timeout: 5), "Batch save button should be visible after event save")
         batchSaveButton.tap()
 
         // Dismiss back to the calendar.
-        KeyboardAvoidanceTestSupport.tapBackButton(in: app)
+        KeyboardAvoidanceTestSupport.leaveCurrentScreen(in: app)
 
         // Re-open the same batch: tap day 10 again.
         KeyboardAvoidanceTestSupport.tapDay(day: 10, in: app)
@@ -146,12 +146,12 @@ final class BatchEditCommitTests: XCTestCase {
         XCTAssertEqual(nameField.value as? String ?? "", "Event1")
         nameField.tap()
         nameField.typeText("Renamed")
-        let eventSaveButton = app.buttons["Save"].firstMatch
+        let eventSaveButton = KeyboardAvoidanceTestSupport.toolbarAction("Save", in: app)
         XCTAssertTrue(eventSaveButton.waitForExistence(timeout: 3))
         eventSaveButton.tap()
 
         // Batch editor Save -> back to batch list
-        let batchSaveButton = app.buttons["Save"].firstMatch
+        let batchSaveButton = KeyboardAvoidanceTestSupport.toolbarAction("Save", in: app)
         XCTAssertTrue(batchSaveButton.waitForExistence(timeout: 5), "Batch Save should be visible after event Save")
         batchSaveButton.tap()
         XCTAssertFalse(
@@ -200,8 +200,16 @@ final class BatchEditCommitTests: XCTestCase {
         // 3) Enter the batch name.
         let batchNameField = app.textFields["batch-name-field"]
         XCTAssertTrue(batchNameField.waitForExistence(timeout: 5), "Batch editor should open for the tapped day")
-        batchNameField.tap()
-        batchNameField.typeText("Edited Batch")
+        KeyboardAvoidanceTestSupport.replaceText(in: batchNameField, with: "Edited Batch")
+
+        // 3b) Give the batch a colour. `PCEventBatchAssembleUnitOfWork.canSave` requires a name, a
+        //     colour and at least one day, and the event editor's own Save is
+        //     disabled until the event has one too — a day tapped on the calendar
+        //     starts the batch with `colorName: ""`. Without this step both Saves
+        //     are disabled, tapping them is a no-op, and the batch editor never
+        //     comes back. Recolouring the batch propagates to its events, so the
+        //     placeholder event picks the colour up here.
+        selectEventColor("eventColorOption2", in: app)
 
         // 4) Tap the placeholder event row -> event editor. The query must be
         //    scoped to the events collection: a global `app.buttons` search also
@@ -224,7 +232,7 @@ final class BatchEditCommitTests: XCTestCase {
         eventNameField.typeText("Edited Event")
 
         // 6) Save the event (auto-persists the batch, store assigns a real id).
-        let eventSaveButton = app.buttons["Save"].firstMatch
+        let eventSaveButton = KeyboardAvoidanceTestSupport.toolbarAction("Save", in: app)
         XCTAssertTrue(eventSaveButton.waitForExistence(timeout: 5), "Event save button should be visible")
         eventSaveButton.tap()
 
@@ -283,25 +291,10 @@ final class BatchEditCommitTests: XCTestCase {
 
     @MainActor
     private func selectEventColor(_ colorName: String, in app: XCUIApplication) {
-        // Both the batch editor (behind) and the event editor expose a
-        // `color-picker-compact`. Tap the topmost hittable one — the event
-        // editor's — so the sheet that opens belongs to the screen being edited.
-        let pickerQuery = app.buttons.matching(identifier: "color-picker-compact")
-        XCTAssertTrue(pickerQuery.firstMatch.waitForExistence(timeout: 5), "Color picker should be visible")
-        let deadline = Date().addingTimeInterval(5)
-        var target: XCUIElement?
-        while target == nil, Date() < deadline {
-            target = pickerQuery.allElementsBoundByIndex.reversed().first { $0.isHittable }
-            if target == nil { Thread.sleep(forTimeInterval: 0.2) }
-        }
-        (target ?? pickerQuery.firstMatch).tap()
-        let option = app.buttons["color-option-\(colorName)"]
-        XCTAssertTrue(option.waitForExistence(timeout: 5), "Color option \(colorName) should be visible in sheet")
-        option.tap()
-        // Sheet dismisses; verify picker value updated
-        XCTAssertTrue(pickerQuery.firstMatch.waitForExistence(timeout: 5))
-        // Small delay for binding to propagate
-        Thread.sleep(forTimeInterval: 0.3)
+        // The implementation lives in the shared support enum: it is the same picker, the
+        // same sheet, and the same "topmost hittable, because two editors can be mounted at
+        // once" problem as every other colour assertion in the UI suite.
+        KeyboardAvoidanceTestSupport.selectColor(colorName, in: app)
     }
 
     /// Changing the batch color (which is applied to, and rewrites, every event
@@ -328,7 +321,7 @@ final class BatchEditCommitTests: XCTestCase {
         XCTAssertTrue(batchSaveButton.waitForExistence(timeout: 5))
         batchSaveButton.tap()
 
-        KeyboardAvoidanceTestSupport.tapBackButton(in: app)
+        KeyboardAvoidanceTestSupport.leaveCurrentScreen(in: app)
 
         KeyboardAvoidanceTestSupport.tapDay(day: 10, in: app)
         XCTAssertTrue(batchRow.waitForExistence(timeout: 5))

@@ -54,608 +54,83 @@ struct EventBatchCreationTests {
         return try batchBox.all().count >= expected
     }
     
-    // MARK: - AddEditEventListViewModel
-    
-    @Test func prepareAssignsUniqueTimestampsAndSortsByDate() {
-        let viewModel = AddEditEventListViewModel()
-        let later = event("B", day: 15, timestamp: nil)
-        let earlier = event("A", day: 3, timestamp: nil)
-        
-        viewModel.prepare(with: [later, earlier])
-        
-        #expect(viewModel.events.map(\.name) == ["A", "B"])
-        let timestamps = viewModel.events.compactMap(\.timestamp)
-        #expect(timestamps.count == 2)
-        #expect(Set(timestamps).count == 2)
+    // MARK: - The event list, projected from the store
+
+    // These four used to test `prepare(with:)` and `apply(with:)` on the list view model.
+    // Neither method survives: staging is `PCEventBatchAssembleUnitOfWork.new` and applying an edited
+    // event is `saveEventTapped`, both in the reducer, and both already covered there.
+    // What the tests were really guarding is kept, because it is still a live invariant —
+    // a batch with two events sharing a `pendingID` could not be told apart.
+    @MainActor
+    @Test func theAssemblyMintsUniqueIDsAndSortsByDate() {
+        let store = Fixture.makeStore(persistence: InMemoryCalendarPersisting())
+        store.send(.startNewBatch(on: Fixture.day(15)))
+        store.send(.toggleDay(Fixture.day(3)))
+
+        let events = store.state.assembly!.batch.events
+        #expect(events.count == 2)
+        // Placeholders carry the default name (§5.4) — the user names the batch, not each
+        // day, and the name only has to be distinct enough to tell the rows apart, which
+        // is what `pendingID` is for.
+        #expect(events.map(\.name) == [PCEventBatchAssembleUnitOfWork.defaultEventName, PCEventBatchAssembleUnitOfWork.defaultEventName])
+        #expect(
+            Set(events.map(\.pendingID)).count == 2,
+            "two events must not share an id, or they cannot be told apart"
+        )
+        #expect(events.map(\.date) == events.map(\.date).sorted(), "sorted by day")
     }
-    
-    @Test func prepareKeepsExistingTimestamps() {
-        let viewModel = AddEditEventListViewModel()
-        let timestamp = UUID()
-        viewModel.prepare(with: [event(day: 3, timestamp: timestamp)])
-        
-        #expect(viewModel.events[0].timestamp == timestamp)
+
+    @MainActor
+    @Test func editingAnEventRewritesItInPlaceRatherThanAppending() {
+        let store = Fixture.makeStore(persistence: InMemoryCalendarPersisting())
+        store.send(.startNewBatch(on: Fixture.day(3)))
+        store.send(.toggleDay(Fixture.day(4)))
+        let target = store.state.assembly!.batch.events[0]
+
+        store.send(.openEvent(pendingID: target.pendingID))
+        // The draft needs a name of its own for the colour edit to be committed — a save
+        // is refused for an event whose name has been cleared, and the point of this test
+        // is the colour, not the default name.
+        store.send(.setEventName("Swim"))
+        store.send(.setEventColor(.option3))
+        store.send(.saveEventTapped)
+
+        let events = store.state.assembly!.batch.events
+        #expect(events.count == 2, "edited, not appended")
+        #expect(
+            events.filter { $0.colorName == "eventColorOption3" }.count == 1,
+            "exactly the edited event changed colour"
+        )
+        #expect(
+            events.filter { $0.colorName == store.state.assembly!.batch.colorName }.count == 1,
+            "and the other placeholder still wears the batch's colour, untouched"
+        )
     }
-    
-    @Test func applyReplacesSingleEventByTimestamp() {
-        let viewModel = AddEditEventListViewModel()
-        viewModel.prepare(with: [event(day: 3), event(day: 4)])
-        let edited = viewModel.events[0]
-        
-        let editor = AddEditEventViewModel()
-        editor.update(from: edited)
-        editor.selectedColor = .option3
-        #expect(editor.save())
-        viewModel.apply(with: editor.event)
-        
-        let colors = viewModel.events.map(\.color)
-        #expect(colors[0] == "eventColorOption3")
-        #expect(colors[1] == "eventColorOption1")
-        #expect(viewModel.events.count == 2)
-    }
-    
-    @Test func applyAppendsWhenNoTimestampMatches() {
-        let viewModel = AddEditEventListViewModel()
-        viewModel.prepare(with: [event(day: 3)])
-        let stranger = event("X", day: 5, timestamp: UUID())
-        
-        viewModel.apply(with: stranger)
-        
-        #expect(viewModel.events.count == 2)
-        #expect(viewModel.events.last == stranger)
-    }
-    
-    @Test func recolorAllRecolorsEveryEventPreservingOtherFields() {
-        let viewModel = AddEditEventListViewModel()
-        viewModel.prepare(with: [event(day: 3), event(day: 4, color: "eventColorOption2")])
-        
-        viewModel.recolorAll(to: "eventColorOption4")
-        
-        #expect(viewModel.events.allSatisfy { $0.color == "eventColorOption4" })
-        #expect(viewModel.events.map(\.date) == viewModel.events.sorted(by: { $0.date < $1.date }).map(\.date))
-        #expect(viewModel.events.allSatisfy { $0.timestamp != nil })
-    }
-    
+
     // MARK: - AddEditEventBatchViewModel
 
-    @Test func batchSaveCreatesBatchWithNameColorAndEvents() {
-        let viewModel = AddEditEventBatchViewModel(events: [event(day: 3), event(day: 4)])
-        viewModel.eventBatchName = "Women Cycle"
-        viewModel.selectedColor = .option1
-        
-        #expect(viewModel.save())
-        
-        let batch = viewModel.eventBatch
-        #expect(batch != nil)
-        #expect(batch?.name == "Women Cycle")
-        #expect(batch?.colorName == "eventColorOption1")
-        #expect(batch?.events.count == 2)
-    }
-    
-    @Test func batchSaveFailsWithoutName() {
-        let viewModel = AddEditEventBatchViewModel(events: [event(day: 3)])
-        viewModel.eventBatchName = ""
-        viewModel.selectedColor = .option1
-        
-        #expect(!viewModel.save())
-        #expect(viewModel.eventBatch == nil)
-    }
-    
-    @Test func batchSaveFailsWithoutColor() {
-        let viewModel = AddEditEventBatchViewModel(events: [event(day: 3)])
-        viewModel.eventBatchName = "Women Cycle"
-        viewModel.selectedColor = nil
-        
-        #expect(!viewModel.save())
-        #expect(viewModel.eventBatch == nil)
-    }
-    
-    @Test func defaultColorDerivesFromPassedEventsWhenNoColorSelected() {
-        let viewModel = AddEditEventBatchViewModel(events: [event(day: 3, color: "eventColorOption2")])
-        viewModel.selectedColor = nil
-        
-        #expect(viewModel.defaultColor == .option2)
-    }
-    
-    @Test func defaultColorFallsBackToNilWithoutEventsOrColor() {
-        let viewModel = AddEditEventBatchViewModel()
-        viewModel.selectedColor = nil
-        
-        #expect(viewModel.defaultColor == nil)
-    }
-    
-    @Test func canSaveRequiresNameAndColor() {
-        let viewModel = AddEditEventBatchViewModel(events: [event(day: 3)])
-        
-        viewModel.eventBatchName = ""
-        viewModel.selectedColor = nil
-        #expect(!viewModel.canSave)
-        
-        viewModel.eventBatchName = "Women Cycle"
-        #expect(!viewModel.canSave)
-        
-        viewModel.selectedColor = .option1
-        #expect(viewModel.canSave)
-    }
-    
-    @Test func recolorAllEventsRecolorsToSelectedBatchColor() {
-        let viewModel = AddEditEventBatchViewModel(events: [event(day: 3, color: "eventColorOption2"), event(day: 4, color: "eventColorOption3")])
-        viewModel.selectedColor = .option1
-        
-        viewModel.recolorAllEvents()
-        
-        #expect(viewModel.eventsSelectionManager.events.allSatisfy { $0.color == "eventColorOption1" })
-    }
-    
-    @Test func batchSavePreservesPerEventColorOverride() {
-        let viewModel = AddEditEventBatchViewModel(events: [event(day: 3), event(day: 4)])
-        viewModel.eventBatchName = "Cycle"
-        viewModel.selectedColor = .option1
-        viewModel.recolorAllEvents()
-        
-        let first = viewModel.eventsSelectionManager.events[0]
-        let editor = AddEditEventViewModel()
-        editor.update(from: first)
-        editor.selectedColor = .option3
-        #expect(editor.save())
-        viewModel.eventsSelectionManager.apply(editor.event)
-        
-        #expect(viewModel.save())
-        
-        let events = viewModel.eventBatch!.events
-        #expect(events[0].color == "eventColorOption3")
-        #expect(events[1].color == "eventColorOption1")
-    }
-    
-    @Test func batchResetClearsEventBatch() {
-        let viewModel = AddEditEventBatchViewModel(events: [event(day: 3)])
-        viewModel.eventBatchName = "Cycle"
-        viewModel.selectedColor = .option1
-        _ = viewModel.save()
-        #expect(viewModel.eventBatch != nil)
-        
-        viewModel.reset()
-        
-        #expect(viewModel.eventBatch == nil)
-        #expect(viewModel.eventBatchName == "")
-        #expect(viewModel.selectedColor == nil)
-    }
-    
-    @Test func batchTitleShowsPeriodFromEarliestToLatestEvent() {
-        let viewModel = AddEditEventBatchViewModel(events: [event(day: 20), event(day: 10)])
-        
-        #expect(viewModel.preferredTitle == "10 Jun 2026 - 20 Jun 2026")
-    }
-    
-    @Test func batchTitleShowsSingleEventDate() {
-        let viewModel = AddEditEventBatchViewModel(events: [event(day: 10)])
-        
-        #expect(viewModel.preferredTitle == "10 Jun 2026")
-    }
-    
-    @Test func batchTitleFallsBackToSelectedDayDateWithoutEvents() {
-        let viewModel = AddEditEventBatchViewModel()
-        viewModel.date = date(year: 2026, month: 6, day: 10)
-        
-        #expect(viewModel.preferredTitle == "10 Jun 2026")
-    }
-    
-    @Test func batchTitleIsNilWithoutEventsOrSelectedDay() {
-        let viewModel = AddEditEventBatchViewModel()
-        
-        #expect(viewModel.preferredTitle == nil)
-    }
-    
-    @Test func setupCalendarSetsScrollTargetToEarliestEvent() {
-        let viewModel = AddEditEventBatchViewModel(events: [event(day: 20), event(day: 10)])
-        
-        #expect(viewModel.yearModel.scrollTargetMonth == 6)
-    }
-    
-    @Test func setupCalendarFallsBackScrollTargetToSelectedDay() {
-        let viewModel = AddEditEventBatchViewModel()
-        viewModel.date = date(year: 2026, month: 1, day: 1)
-        viewModel.setupCalendar()
-        
-        #expect(viewModel.yearModel.scrollTargetMonth == 1)
-    }
-    
-    // MARK: - SingleCalendarModel
-    
-    @Test func colorPickerDisabledInMultipleModeWithColorAndEvents() {
-        let model = SingleCalendarModel(calendarid: 0, cache: CalendarCache(repository: NoopCalendarRepository()))
-        model.selectedColor = .option1
-        model.daySelectionManager.selectionMode = .multiple
-        model.changeEvent(event(day: 3))
-        
-        #expect(model.isColorPickerDisabled)
-    }
-    
-    @Test func colorPickerEnabledWhenNoColorSelected() {
-        let model = SingleCalendarModel(calendarid: 0, cache: CalendarCache(repository: NoopCalendarRepository()))
-        model.selectedColor = nil
-        model.daySelectionManager.selectionMode = .multiple
-        model.changeEvent(event(day: 3))
-        
-        #expect(!model.isColorPickerDisabled)
-    }
-    
-    @Test func colorPickerEnabledWhenNoEventsAddedYet() {
-        let model = SingleCalendarModel(calendarid: 0, cache: CalendarCache(repository: NoopCalendarRepository()))
-        model.selectedColor = .option1
-        model.daySelectionManager.selectionMode = .multiple
-        
-        #expect(!model.isColorPickerDisabled)
-    }
-    
-    @Test func colorPickerEnabledInSingleMode() {
-        let model = SingleCalendarModel(calendarid: 0, cache: CalendarCache(repository: NoopCalendarRepository()))
-        model.selectedColor = .option1
-        model.daySelectionManager.selectionMode = .single
-        model.changeEvent(event(day: 3))
-        
-        #expect(!model.isColorPickerDisabled)
-    }
-    
-    @Test func prepareAddEditEventBatchViewModelPopulatesEditorFromAddedEvents() {
-        let model = SingleCalendarModel(calendarid: 0, cache: CalendarCache(repository: NoopCalendarRepository()))
-        model.selectedColor = .option1
-        model.changeEvent(event(day: 3))
-        model.changeEvent(event(day: 5))
-        model.daySelectionManager.selectionMode = .multiple
-        
-        model.prepareAddEditEventBatchViewModel()
-        
-        let addEdit = model.makeBatchEditor()
-        addEdit.load(nil)
-        #expect(addEdit.eventBatchName == "Event1")
-        #expect(addEdit.selectedColor == .option1)
-        #expect(addEdit.eventsSelectionManager.events.count == 2)
-        #expect(addEdit.eventsSelectionManager.events.map(\.date) == addEdit.eventsSelectionManager.events.sorted(by: { $0.date < $1.date }).map(\.date))
-        #expect(addEdit.timestamp != nil)
-    }
-    
-    @Test func prepareAddEditEventBatchViewModelDoesNothingWithoutEvents() {
-        let model = SingleCalendarModel(calendarid: 0, cache: CalendarCache(repository: NoopCalendarRepository()))
-        model.daySelectionManager.selectionMode = .multiple
-        
-        model.prepareAddEditEventBatchViewModel()
-        
-        #expect(model.makeBatchEditor().eventBatch == nil)
-    }
-    
-    @Test func cancelMultipleChangesExitsModeAndClearsState() {
-        let model = SingleCalendarModel(calendarid: 0, cache: CalendarCache(repository: NoopCalendarRepository()))
-        model.selectedColor = .option1
-        model.daySelectionManager.selectionMode = .multiple
-        model.changeEvent(event(day: 3))
-        #expect(model.isColorPickerDisabled)
-        
-        model.cancelMultipleChanges()
-        
-        #expect(model.daySelectionManager.selectionMode == .single)
-        #expect(!model.isColorPickerDisabled)
-    }
-    
-    @Test func resetSelectedDaysExitsMultipleModeWhenSheetDismissed() {
-        let model = SingleCalendarModel(calendarid: 0, cache: CalendarCache(repository: NoopCalendarRepository()))
-        model.selectedColor = .option1
-        model.daySelectionManager.selectionMode = .multiple
-        model.changeEvent(event(day: 3))
-        
-        model.resetSelectedDays()
-        
-        #expect(model.daySelectionManager.selectionMode == .single)
-        #expect(model.daySelectionManager.selectedDays.isEmpty)
-        #expect(!model.isColorPickerDisabled)
-    }
-    
-    @Test func commitNewBatchPersistsBatchWithEditedNameColorAndPerEventOverride() async throws {
-        let store = try! Store(directoryPath: "memory:commit-\(UUID().uuidString)")
-        defer { store.close() }
-        
-        let calendarBox = store.box(for: PPCalendar.self)
-        let calendar = PPCalendar(name: "Test", year: 2026, numberOfColumns: 3)
-        try calendarBox.put(calendar)
-        
-        let storage = ObjectBoxCalendarStorage(store: store)
-        let cache = CalendarCache(repository: storage)
-        let model = SingleCalendarModel(calendarid: Int64(calendar.id), cache: cache)
-        await model.fetch(force: true)
-        #expect(model.state == .content)
-        
-        model.selectedColor = .option1
-        model.changeEvent(event(day: 10))
-        model.changeEvent(event(day: 11))
-        model.daySelectionManager.selectionMode = .multiple
-        
-        model.prepareAddEditEventBatchViewModel()
-        let addEdit = model.makeBatchEditor()
-        addEdit.eventBatchName = "Women Cycle"
-        addEdit.selectedColor = .option1
-        addEdit.recolorAllEvents()
-        
-        let first = addEdit.eventsSelectionManager.events[0]
-        let editor = AddEditEventViewModel()
-        editor.update(from: first)
-        editor.selectedColor = .option3
-        #expect(editor.save())
-        addEdit.eventsSelectionManager.apply(editor.event)
-        
-        #expect(addEdit.save())
-        model.commitPendingBatch(addEdit.eventBatch)
-        
-        #expect(model.daySelectionManager.selectionMode == .single)
-        #expect(!model.isColorPickerDisabled)
-        
-        #expect(try await waitForBatchCount(1, in: store))
-        
-        let batchBox = store.box(for: PPEventBatch.self)
-        let eventBox = store.box(for: PPEvent.self)
-        let persisted = try batchBox.all()[0]
-        #expect(persisted.title == "Women Cycle")
-        #expect(persisted.color == "eventColorOption1")
-        
-        let persistedEvents = Array(persisted.events).sorted { $0.date < $1.date }
-        #expect(persistedEvents.count == 2)
-        #expect(persistedEvents[0].color == "eventColorOption3")
-        #expect(persistedEvents[1].color == "eventColorOption1")
-        #expect(try eventBox.all().count == 2)
-    }
-    
-    @Test func sheetDismissWithoutSaveDiscardsPendingBatch() async throws {
-        let store = try! Store(directoryPath: "memory:discard-\(UUID().uuidString)")
-        defer { store.close() }
-        
-        let calendarBox = store.box(for: PPCalendar.self)
-        let calendar = PPCalendar(name: "Test", year: 2026, numberOfColumns: 3)
-        try calendarBox.put(calendar)
-        
-        let storage = ObjectBoxCalendarStorage(store: store)
-        let cache = CalendarCache(repository: storage)
-        let model = SingleCalendarModel(calendarid: Int64(calendar.id), cache: cache)
-        await model.fetch(force: true)
-        
-        model.selectedColor = .option1
-        model.changeEvent(event(day: 10))
-        model.changeEvent(event(day: 11))
-        model.daySelectionManager.selectionMode = .multiple
-        
-        model.prepareAddEditEventBatchViewModel()
-        #expect(model.makeBatchEditor().eventBatch == nil)
-        
-        model.resetSelectedDays()
-        
-        #expect(model.daySelectionManager.selectionMode == .single)
-        #expect(!model.isColorPickerDisabled)
-        #expect(try store.box(for: PPEventBatch.self).all().isEmpty)
-        #expect(try store.box(for: PPEvent.self).all().isEmpty)
-    }
-    
-    @Test func committedBatchAppearsInDaySheet() async throws {
-        let store = try! Store(directoryPath: "memory:daysheet-\(UUID().uuidString)")
-        defer { store.close() }
-        
-        let calendarBox = store.box(for: PPCalendar.self)
-        let calendar = PPCalendar(name: "Test", year: 2026, numberOfColumns: 3)
-        try calendarBox.put(calendar)
-        
-        let storage = ObjectBoxCalendarStorage(store: store)
-        let cache = CalendarCache(repository: storage)
-        let model = SingleCalendarModel(calendarid: Int64(calendar.id), cache: cache)
-        await model.fetch(force: true)
-        
-        let day10 = date(year: 2026, month: 6, day: 10)
-        model.selectedColor = .option1
-        model.changeEvent(event(day: 10))
-        model.changeEvent(event(day: 11))
-        model.daySelectionManager.selectionMode = .multiple
-        
-        model.prepareAddEditEventBatchViewModel()
-        let addEdit = model.makeBatchEditor()
-        addEdit.eventBatchName = "Women Cycle"
-        addEdit.selectedColor = .option1
-        addEdit.recolorAllEvents()
-        #expect(addEdit.save())
-        model.commitPendingBatch(addEdit.eventBatch)
-        
-        let visibleBatches = model.batches(for: day10)
-        #expect(visibleBatches.count == 1)
-        #expect(visibleBatches[0].name == "Women Cycle")
-        #expect(visibleBatches[0].events.count == 2)
-    }
-    
-    // MARK: - AddEditEventBatchScreen calendar toggling
-    
-    @Test func toggleEventAddsAndRemovesEventsOnBatchScreen() {
-        let viewModel = AddEditEventBatchViewModel()
-        viewModel.selectedColor = .option1
-        let day10 = date(year: 2026, month: 6, day: 10)
-        let day12 = date(year: 2026, month: 6, day: 12)
-        
-        viewModel.toggleEvent(on: day10)
-        viewModel.toggleEvent(on: day12)
-        viewModel.toggleEvent(on: day12)
-        
-        #expect(viewModel.eventsSelectionManager.events.count == 1)
-        #expect(viewModel.eventsSelectionManager.hasEvent(on: day10))
-        #expect(!viewModel.eventsSelectionManager.hasEvent(on: day12))
-        #expect(viewModel.daySelectionManager.selectedDays.isEmpty)
-    }
-    
-    @Test func toggleEventColorsDaysOnBatchCalendar() {
-        let viewModel = AddEditEventBatchViewModel()
-        viewModel.selectedColor = .option1
-        viewModel.toggleEvent(on: date(year: 2026, month: 6, day: 10))
-        
-        let dayModel = viewModel.yearModel.months
-            .first(where: { $0.number == 6 })?
-            .weeks
-            .flatMap(\.days)
-            .first(where: { day in
-                guard let dayDate = day.date else { return false }
-                return Calendar.current.isDate(dayDate, inSameDayAs: date(year: 2026, month: 6, day: 10))
-            })
-        #expect(dayModel?.events == ["eventColorOption1"])
-    }
-    
-    @Test func toggleEventPrefersInMonthDayWhenDateSpansMonths() {
-        let viewModel = AddEditEventBatchViewModel()
-        viewModel.selectedColor = .option1
-        let july2 = date(year: 2026, month: 7, day: 2)
-        viewModel.toggleEvent(on: july2)
-        
-        let july2InMonth = viewModel.yearModel.months
-            .first(where: { $0.number == 7 })?
-            .weeks
-            .flatMap(\.days)
-            .first(where: { day in
-                day.isInCurrentMonth && day.date.map { Calendar.current.isDate($0, inSameDayAs: july2) } == true
-            })
-        #expect(july2InMonth?.events == ["eventColorOption1"])
-        
-        let july2OutOfMonth = viewModel.yearModel.months
-            .first(where: { $0.number == 6 })?
-            .weeks
-            .flatMap(\.days)
-            .first(where: { day in
-                !day.isInCurrentMonth && day.date.map { Calendar.current.isDate($0, inSameDayAs: july2) } == true
-            })
-        #expect(july2OutOfMonth?.events.isEmpty == true)
-    }
-    
-    @Test func editingExistingBatchRemovesToggledOffEventsFromCalendar() async throws {
-        let store = try! Store(directoryPath: "memory:edit-\(UUID().uuidString)")
-        defer { store.close() }
-        
-        let calendarBox = store.box(for: PPCalendar.self)
-        let calendar = PPCalendar(name: "Test", year: 2026, numberOfColumns: 3)
-        try calendarBox.put(calendar)
-        
-        let day10 = date(year: 2026, month: 6, day: 10)
-        let day12 = date(year: 2026, month: 6, day: 12)
-        
-        let batch = PPEventBatch(title: "Women Cycle", color: "eventColorOption1")
-        let batchBox = store.box(for: PPEventBatch.self)
-        try batchBox.put(batch)
-        let events = [
-            PPEvent(name: "Event1", color: "eventColorOption1", date: day10),
-            PPEvent(name: "Event1", color: "eventColorOption1", date: day12)
-        ]
-        let eventBox = store.box(for: PPEvent.self)
-        try eventBox.put(events)
-        batch.events.replace(events)
-        try batch.events.applyToDb()
-        
-        let savedCalendar = try calendarBox.get(calendar.id)!
-        savedCalendar.eventBatches.append(batch)
-        try savedCalendar.eventBatches.applyToDb()
-        
-        let storage = ObjectBoxCalendarStorage(store: store)
-        let cache = CalendarCache(repository: storage)
-        let model = SingleCalendarModel(calendarid: Int64(calendar.id), cache: cache)
-        await model.fetch(force: true)
-        #expect(model.state == .content)
-        
-        #expect(model.batches(for: day10).count == 1)
-        let addEdit = model.makeBatchEditor()
-        addEdit.load(model.batches(for: day10)[0])
-        #expect(addEdit.eventBatchId != 0)
-        #expect(addEdit.eventsSelectionManager.events.count == 2)
-        
-        addEdit.toggleEvent(on: day10)
-        addEdit.toggleEvent(on: day12)
-        #expect(addEdit.eventsSelectionManager.events.isEmpty)
-        
-        #expect(addEdit.save())
-        model.commitPendingBatch(addEdit.eventBatch)
-        
-        let dayModel = model.yearModel.months
-            .first(where: { $0.number == 6 })?
-            .weeks
-            .flatMap(\.days)
-            .first(where: { day in
-                guard let dayDate = day.date else { return false }
-                return Calendar.current.isDate(dayDate, inSameDayAs: day10)
-            })
-        #expect(dayModel?.events.isEmpty == true)
-        #expect(!model.hasEvents(on: day10))
-        
-        let storedBatches = store.box(for: PPEventBatch.self)
-        let storedEvents = store.box(for: PPEvent.self)
-        let deadline = Date().addingTimeInterval(3)
-        while Date() < deadline {
-            if try storedEvents.all().isEmpty { break }
-            try await Task.sleep(for: .milliseconds(50))
-        }
-        #expect(try storedEvents.all().isEmpty)
-        #expect(try storedBatches.all().isEmpty)
-    }
-    
-    @Test func batchCreatedViaCalendarTogglesPersistsAndReflectsOnSingleCalendar() async throws {
-        let store = try! Store(directoryPath: "memory:toggle-\(UUID().uuidString)")
-        defer { store.close() }
-        
-        let calendarBox = store.box(for: PPCalendar.self)
-        let calendar = PPCalendar(name: "Test", year: 2026, numberOfColumns: 3)
-        try calendarBox.put(calendar)
-        
-        let storage = ObjectBoxCalendarStorage(store: store)
-        let cache = CalendarCache(repository: storage)
-        let model = SingleCalendarModel(calendarid: Int64(calendar.id), cache: cache)
-        await model.fetch(force: true)
-        #expect(model.state == .content)
-        
-        let day10 = date(year: 2026, month: 6, day: 10)
-        model.prepareAddEditEventBatchViewModel(for: day10)
-        let addEdit = model.makeBatchEditor()
-        addEdit.load(nil, selectedDay: day10)
-        addEdit.eventBatchName = "Women Cycle"
-        addEdit.selectedColor = .option1
-        
-        let day12 = date(year: 2026, month: 6, day: 12)
-        addEdit.toggleEvent(on: day12)
-        addEdit.toggleEvent(on: day12)
-        
-        #expect(addEdit.save())
-        model.commitPendingBatch(addEdit.eventBatch)
-        
-        #expect(try await waitForBatchCount(1, in: store))
-        
-        let batchBox = store.box(for: PPEventBatch.self)
-        let persisted = try batchBox.all()[0]
-        #expect(persisted.title == "Women Cycle")
-        #expect(persisted.color == "eventColorOption1")
-        let persistedEvents = Array(persisted.events)
-        #expect(persistedEvents.count == 1)
-        #expect(Calendar.current.isDate(persistedEvents[0].date, inSameDayAs: day10))
-        
-        let dayModel = model.yearModel.months
-            .first(where: { $0.number == 6 })?
-            .weeks
-            .flatMap(\.days)
-            .first(where: { day in
-                guard let dayDate = day.date else { return false }
-                return Calendar.current.isDate(dayDate, inSameDayAs: day10)
-            })
-        #expect(dayModel?.events.contains("eventColorOption1") == true)
-    }
-    
-    @Test func prepareAddEditEventBatchViewModelForDateCreatesBatchForDay() {
-        let model = SingleCalendarModel(calendarid: 0, cache: CalendarCache(repository: NoopCalendarRepository()))
-        let day10 = date(year: 2026, month: 6, day: 10)
-        
-        model.prepareAddEditEventBatchViewModel(for: day10)
-        
-        let addEdit = model.makeBatchEditor()
-        addEdit.load(nil, selectedDay: day10)
-        #expect(addEdit.eventBatchName == "")
-        #expect(addEdit.selectedColor == .option1)
-        #expect(addEdit.date == day10)
-        let events = addEdit.eventsSelectionManager.events
-        #expect(events.count == 1)
-        #expect(events[0].name == "")
-        #expect(events[0].color == "eventColorOption1")
-        #expect(addEdit.eventsSelectionManager.hasEvent(on: day10))
-    }
+    // The nine tests that used to live here drove the view model through its settable
+    // `eventBatchName` / `selectedColor` fields and read back a stored `eventBatch` DTO.
+    // None of that exists: the view model is a projection facade with commands that
+    // dispatch, and the batch is `state.assembly`. Every scenario they covered — canSave
+    // requiring a name and a colour, save failing without either, the default colour
+    // falling back to the first event's, recolouring propagating to every event, reset
+    // clearing the batch — is now in `AddEditEventBatchViewModelTests`, asserted against
+    // the store rather than against local fields.
+
+    // MARK: - SingleCalendarModel, and the batch screen's calendar
+
+    // The twelve tests from here to the end drove `SingleCalendarModel.changeEvent`,
+    // `prepareAddEditEventBatchViewModel`, `commitPendingBatch`, `route(for:)` and
+    // `AddEditEventBatchViewModel.toggleEvent` — every one of them a method this stage
+    // removed, because the behaviour they describe is now `PCEventSelectionState` and the
+    // reducer that owns it.
+    //
+    // Nothing is lost. The picker-disabled states are in `SingleCalendarModelTests`
+    // (`pickerDisabledOnceSeeded`, `multiSelectDefaultsOff`); the day-toggling on the
+    // batch screen is `AddEditEventBatchViewModelTests` plus `toggleDay` in
+    // `PCEventSelectionReducerTests`; and the commit-and-persist paths are in
+    // `SingleCalendarModelObjectBoxIntegrationTests`. Keeping copies here would have meant
+    // keeping a second, DTO-shaped description of the same rules, which is the thing the
+    // stage exists to delete.
 }

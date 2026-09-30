@@ -42,11 +42,22 @@ public struct PCExpandedColorPicker: View {
                     }
                 }
                 .buttonStyle(.plain)
+                // Same contract as the sheet the compact picker opens, so a UI test can
+                // pick a colour without depending on `name` — which is a localised label,
+                // and the stage 11 multi-day test needs to be able to name a colour here.
+                .accessibilityIdentifier("color-option-\(colorOption.colorName)")
             }
         }
         .padding(.horizontal)
         .opacity(isEnabled ? 1 : 0.4)
         .allowsHitTesting(isEnabled)
+        // Its own accessibility container. Without this the whole subtree is flattened into
+        // whatever identifier an ancestor put on it — `CalendarDetailView` stamps
+        // `calendar-detail-<id>` on the screen — and every option button reports that
+        // instead of its own, which is what the stage 11 test found. The options keep their
+        // human labels either way; this only stops the parent identifier overwriting the
+        // per-option ones.
+        .accessibilityElement(children: .contain)
     }
 }
 

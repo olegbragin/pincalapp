@@ -21,7 +21,7 @@ final class PerfScrollTests: XCTestCase {
         XCTAssertTrue(womenCycle.waitForExistence(timeout: 5), "Batch list should show the existing batch")
         womenCycle.tap()
 
-        let editorSave = app.buttons["Save"]
+        let editorSave = KeyboardAvoidanceTestSupport.toolbarAction("Save", in: app)
         XCTAssertTrue(editorSave.waitForExistence(timeout: 5), "Batch editor should open")
 
         let editorCalendar = app.descendants(matching: .any).matching(identifier: "batch-editor-calendar").firstMatch

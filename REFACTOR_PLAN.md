@@ -120,12 +120,13 @@ Entry points, all reachable from whichever screen owns the interaction:
 |---|---|---|
 | From a view (day tap) | `dayTappedInCalendar(_:)` | `SingleCalendarView` calendar |
 | From a view (new batch on an existing day) | `startNewBatch(on:)` | `AddEditEventBatchListView` "+" button |
-| From an existing batch grabbed off the tapped day | `openBatch(pendingID:)` | `AddEditEventBatchListView` card tap |
+| From an existing batch grabbed off the tapped day | `openBatch(id:)` | `AddEditEventBatchListView` card tap |
 | From a multi-select session | `confirmMultiSelectTapped` | `SingleCalendarView` toolbar |
 
-`openBatch(pendingID:)` resolves the batch out of `state.batches`; the day the user
+`openBatch(id:)` resolves the batch out of `state.batches`; the day the user
 tapped is already `state.day`, so the batch is *grabbed from the tapped day*, as
-required.
+required. It identifies the row by `mergeKey` rather than by `pendingID` — see §5.4.3 for
+why the session id cannot be used to look a row up.
 
 ---
 
@@ -542,7 +543,7 @@ public struct BatchAssembler: Equatable, Sendable {
 
     public var isNew: Bool { origin == .new }
     public var canSave: Bool {
-        !batch.name.isEmpty && !batch.colorName.isEmpty && !batch.events.isEmpty
+        !batch.name.isEmpty && !batch.colorName.isEmpty
     }
 
     // Identity
@@ -638,6 +639,56 @@ Two smaller decisions, stated rather than left implicit:
   `nil` whenever the batch is empty — an emptied row must leave the calendar, and an
   emptied `.new` assembly was never in it, so `nil` is the right answer in both cases.
 
+#### 5.4.2 `canSave` means "Save is meaningful", not "there is something to write"
+
+`canSave` requires a name and a colour and **not** a non-empty event list, and the two
+are deliberately different questions. §6.3's `saveTapped` has a branch for a batch that
+saves but resolves to nothing: the row is dropped and the app returns to the calendar.
+That branch is the *delete* — removing every event is how a user deletes a batch from the
+editor — so `canSave` has to stay `true` in exactly the state that triggers it.
+
+Stage 8 shipped this with `!batch.events.isEmpty` added, on the reasoning that an empty
+batch was not worth writing. The UI made the cost of that decision visible: the editor's
+Save is `.disabled(!canSave)`, so the branch became **unreachable**. A user who removed
+every event could not commit the removal, and the only way out left was Back — which
+*discards* the staged edit rather than committing it. The batch was undeletable by the
+only route its own screen offered. Five UI tests were sitting on the disabled button, and
+`BatchAssemblerTests` had pinned the wrong rule as if it were intended.
+
+What keeps it safe without the event check is `resolved()`, which still returns `nil` for
+an empty batch. It is `commitTapped`'s `let row =` guard — not `canSave` — that stops an
+eventless row from ever being persisted. The flag and the write are separate decisions
+and should stay separate.
+
+#### 5.4.3 `openBatch` must identify a row by its durable key
+
+The paragraph above ends with "a reloaded row's `mergeKey` is `.persisted(id)` where a
+staged one is `.pending(uuid)`. No equality between them is possible, ever." That
+observation has a direct consequence for lookup, and it was got wrong in Stage 8.
+
+`openBatch` was given a `pendingID` and matched `$0.pendingID == pendingID` against
+`state.batches`. But the rows in `state.batches` are exactly the rows a DTO reload
+re-mints, and `SingleCalendarModel` re-syncs on **every** calendar write. So any write
+from anywhere invalidates the `pendingID` of the row a card on screen was drawn from. The
+card's closure still held the value from the last render, the lookup missed, the action
+was rejected, and the tap did nothing — silently, with no error anywhere. The test that
+taps a card immediately after a save sits squarely in that window and passed on timing
+rather than on correctness.
+
+`openBatch` now carries the row's `mergeKey`. For a committed row that is `.persisted(id)`
+and a reload cannot change it; it degrades to `.pending(_)` only for a batch that has
+never been written, which is the one case with no durable identity to offer.
+`BatchAssembler.mergeKey` exists for this and differs from `batch.mergeKey` in exactly one
+way — it folds in `adoptedPersistedID` — because an assembly that was new when it was
+staged only learns its id during a reload, and until it does, `batch.mergeKey` cannot
+match the row that came back for it.
+
+`openEvent` and `removeEvent` still match on `pendingID`, and that is correct rather than
+inconsistent: their targets are events *inside the staged assembly*, which is one value in
+state and is never rebuilt from a DTO, so those ids are stable for as long as the edit
+lasts. The rule is not "prefer durable ids" but "match on whatever is stable for the
+lifetime of the thing you are looking up".
+
 
 ---
 
@@ -731,7 +782,7 @@ public enum PCEventSelectionAction: Equatable {
     case ensureAssemblyStarted
     case dayTappedInCalendar(Date)
     case startNewBatch(on: Date)
-    case openBatch(pendingID: UUID)
+    case openBatch(id: EventBatchKey)
     // DEFERRED to Stage 7, with `multiSelectColor`: an assembly cannot be built
     // without a colour. See the 5b row.
     case confirmMultiSelectTapped
@@ -792,7 +843,7 @@ public let pcEventSelectionReducer: (PCEventSelectionState, PCEventSelectionActi
 | `dayTappedInCalendar(d)` | `!multiSelectMode`, day has no batches | `day = d`; `assembly = .new(anchor: d, …)`; `stage = .batchEditor`; `scrollAnchor = d`; `editorYear = nil`; `isDirty = true` | `pushBatchEditor` |
 | `dayTappedInCalendar(d)` | `!multiSelectMode`, day has batches | `day = d`; `stage = .dayList(day: d)`; `assembly = nil` | `pushDayList` |
 | `startNewBatch(on: d)` | — | `day = d`; `assembly = .new(anchor: d, …)`; `stage = .batchEditor`; `scrollAnchor = d`; `isDirty = true` | `pushBatchEditor` |
-| `openBatch(pendingID:)` | batch found in `batches` | `day = batch.date`; `assembly = .existing(batch)`; `stage = .batchEditor`; `scrollAnchor = batch.date`; `editorYear = nil`; `isDirty = true` | `pushBatchEditor` |
+| `openBatch(id:)` | row found in `batches` by `mergeKey` | `day = batch.date`; `assembly = .existing(batch)`; `stage = .batchEditor`; `scrollAnchor = batch.date`; `editorYear = nil`; `dayEventColors` rebuilt; `isDirty = true` | `pushBatchEditor` |
 | `confirmMultiSelectTapped` | `multiSelectMode`, days non-empty, colour set | `assembly = .new(all: multiSelectDays, color:, using:)`; `day`/`scrollAnchor` = earliest selected day; `stage = .batchEditor`; the whole session is then cleared | `pushBatchEditor` |
 
 #### Stage transitions
@@ -832,11 +883,11 @@ public let pcEventSelectionReducer: (PCEventSelectionState, PCEventSelectionActi
 |---|---|---|---|
 | `commitTapped` | `assembly != nil`, `canSave` | assembly merged into `batches` by `mergeKey`; `isDirty = true` | — |
 | `saveTapped` | `stage == .dayList` | `stage = .idle`; `day = nil` | `popToCalendarRoot` |
-| `saveTapped` | `stage == .batchEditor`, `canSave`, resolved batch non-empty | merged into `batches`; `assembly = nil`; `stage = .dayList(day)`; `didSave = true`; `isDirty = false` | `pop` |
-| `saveTapped` | `stage == .batchEditor`, resolved batch `nil` | assembly's row removed from `batches` by `mergeKey`; `assembly = nil`; `stage = .idle`; `didSave = true`; `isDirty = false` | `popToCalendarRoot` |
+| `saveTapped` | `stage == .batchEditor`, `canSave`, resolved batch non-empty | merged into `batches`; `assembly = nil`; `stage = .dayList(day)`; `dayEventColors` rebuilt; `didSave = true`; `isDirty = false` | `pop` |
+| `saveTapped` | `stage == .batchEditor`, resolved batch `nil` (the **delete**) | assembly's row removed from `batches` by `mergeKey`; `assembly = nil`; `stage = .idle`; `dayEventColors` rebuilt; `didSave = true`; `isDirty = false` | `popToCalendarRoot` |
 | `saveTapped` | `stage == .eventEditor`, `canSave` | draft applied to assembly, assembly merged into `batches`; `eventDraft = nil`; `assembly = nil`; `stage = .dayList(day)`; `didSave = true` | `pop` |
 | `deleteBatches(list)` | — | rows removed from `batches` by `mergeKey`; `isDirty = true`; `dayEventColors` rebuilt | `popToCalendarRoot` when `dayBatches` empties, else none |
-| `syncCalendar(id, incoming)` | `id == calendarID` | staged assembly adopted against `incoming` (§6.5); `batches = incoming`; `calendarID = id`; `isDirty = false` | — |
+| `syncCalendar(id, incoming)` | `id == calendarID` | `batches = incoming`; `calendarID = id`; `isDirty = false`; staged assembly adopted against `incoming` (§6.5) **before** the markers are projected, so the adopted row is recognised as the incoming one; `dayEventColors` rebuilt | — |
 | `resetSession` | — | `= .init(dataProvider: dataProvider)` | — |
 
 #### Main calendar and misc
@@ -845,7 +896,7 @@ public let pcEventSelectionReducer: (PCEventSelectionState, PCEventSelectionActi
 |---|---|---|
 | `setMultiSelectMode(on)` | — | `multiSelectMode = on`; on `false`, also clears days and colour |
 | `setMultiSelectColor(c)` | — | `multiSelectColor = c`. Selecting a colour selects no days, so nothing else moves | — |
-| `cancelMultiSelectTapped` | — | `multiSelectDays = []`; `multiSelectColor = nil`; `dayEventColors` rebuilt |
+| `cancelMultiSelectTapped` | — | `multiSelectMode = false`; `multiSelectDays = []`; `multiSelectColor = nil`; `dayEventColors` rebuilt |
 | `setNumberOfColumns(n)` | — | `numberOfColumns = n`; `isDirty = true` |
 | `setEditorYear(y)` | — | `editorYear = y` |
 | `setScrollAnchor(d)` | — | `scrollAnchor = d` |
@@ -1098,8 +1149,33 @@ enum PCCalendarMarkerProjector {
         using: PCCalendarDataProvider
     )
     static func colorsByDay(from batches: [CalendarEventBatch], using: PCCalendarDataProvider) -> [Date: [String]]
+    static func colorsByDay(
+        from batches: [CalendarEventBatch],
+        includingStaged: BatchAssembler?,
+        using: PCCalendarDataProvider
+    ) -> [Date: [String]]
 }
 ```
+
+**The staged batch replaces its committed row; it does not join it.** The overload that
+takes a staged assembly is the one place that decides what a marker means mid-edit, and
+Stage 8 shipped it appending the two lists. Staging is not always *creating*: an assembly
+opened from the registry with `existing(_:)` **is** that row, still carrying its
+`persistedID`, so appending unioned a row with itself. Two consequences, both observed:
+
+- an event deleted from the staged copy kept painting its marker, because the committed
+  copy still listed it. Removing the last event of a day left that day marked
+  permanently. No re-projection could clear it — the payload was wrong, not the
+  projection — which is why the two obvious hypotheses ("the main calendar isn't
+  re-projecting", "two screens both fulfil the pop") both came up empty.
+- a day both copies held was counted twice, so a batch with one event on a day was
+  labelled with two.
+
+So the staged row *replaces* the committed row sharing its `mergeKey`, and is appended
+only when no such row exists — the genuinely-new case, where §5.4.1's "no equality is
+possible, ever" guarantees the keys cannot match. Which is why the lookup needs
+`BatchAssembler.mergeKey` (§5.4.3) rather than `batch.mergeKey`: a just-saved new batch
+has only adopted its id, and is otherwise still on its `.pending` key.
 
 This deletes the two near-identical copies in
 `PCEventsSelectionManager.updateYearModel`/`eventColorsByDay` and
@@ -1363,15 +1439,61 @@ The main calendar's markers are projected with
 `PCCalendarMarkerProjector.colorsByDay(from: state.batches, days:)`, so both panels
 read the same committed registry through the same code.
 
-`SingleCalendarModel` keeps its Combine subscription to `CalendarCache.changes` for
+~~`SingleCalendarModel` keeps its Combine subscription to `CalendarCache.changes` for
 calendar metadata (`label`, `year`, `isArchived`, column count). It is the calendar's
 own metadata, not batch state, and the manager is the only writer and the only owner
-of batches. §13 records why the alternative was rejected.
+of batches.~~ — **Stage 9 deleted this**, see §9.1.
 
 Two independent `PCCalendarYearModel` trees remain: the main calendar and the editor
 each navigate years independently, and the UI tests target the editor's calendar by
 its `batch-editor-calendar` identifier. What is removed is the duplicated *logic* —
 construction through one builder, markers through one projector.
+
+### 9.1 Stage 9: the last `import CorePersistence`, and why it was never a port question
+
+The paragraph above is what Stage 8 inherited, and Stage 9 deleted it. Every part of the
+slimming — `save(for:)`, `commitPendingBatch`, `deleteBatches`, `route(for:)`,
+`updateYearModel`, `dayModel(for:)`, `colorsByStartOfDay`, the `addedEvents` staging and
+the 350 ms debounce — went with Stage 8, because a view model cannot be rebuilt as a
+projection while the model beside it still holds a second implementation of the assembly
+line. What survived was one line: `import CorePersistence`, held by a `CalendarCache` used
+for exactly one thing.
+
+That one thing was the calendar's **metadata change feed** — name, year, archived flag,
+column count. It was never batch state, so it never belonged on `CalendarPersisting`; and
+the plan's own rule (§3.2) is that a port that can push is a second event source, so it
+could not be bolted onto the batch port either. It needed a third door, and
+`CalendarManaging` — added in 4b for the calendar *list* — was already it. `calendar(id:)`
+moves the read, `changes()` moves the feed, and the cache is not needed for either.
+
+So the shape is now: one `CalendarStore` in the composition root, exposed under two
+protocols, handed to `PCCalendarSession` as both. The model takes `any CalendarManaging`
+and `any CalendarPersisting` and cannot see a DTO even if it wanted to. `Package.swift` no
+longer lists `CorePersistence` under the `SingleCalendarFeature` target at all, and
+`PCEventSelectionManagerTests` asserts that over **every** file in `Sources/` rather than
+the one that changed — an import that creeps back into any file is the same regression, and
+a per-file check only catches the one somebody thought of.
+
+Two things worth recording because they cost time:
+
+- **The fake has to apply the write as well as announce it.** The test target now has
+  `InMemoryCalendarManaging` beside `InMemoryCalendarPersisting`, and they are separate
+  objects — which is the honest shape, since a write goes through one port and the
+  announcement comes from the other. The first version of the feed test published a change
+  without touching the persisting fake, so the model re-fetched the *old* value and the
+  test failed for a reason that had nothing to do with the feed. `publish(_:onto:)` does
+  both, because a test that only does one of them is testing a world where the
+  announcement is a lie.
+- **`AsyncStream`'s builder closure cannot touch actor state.** Registering the
+  continuation inside `AsyncStream { continuation in ... }` does not compile against an
+  `actor` fake — the closure is `@Sendable` and nonisolated. The fix is `makeStream()` plus
+  an actor hop, which is what `CalendarListFeatureTests` already does; the new fake follows
+  it rather than inventing a second pattern.
+
+`removed` is included in the feed's id set deliberately. A calendar that has been deleted
+should send the model looking, find nothing, and go `.empty`, rather than leave a stale
+calendar on screen — the old `ChangeOperation` path only matched `.change`, so this is a
+small behaviour change and it has its own test.
 
 ---
 
@@ -1413,6 +1535,31 @@ Each is checkable, and each maps to a test in §12.
     no codegen re-run.
 
 ---
+
+### 10.1 Stage 10: the leftovers were already gone
+
+The stage names three things. All three were absent before it was picked up:
+`PCEventsSelectionManager` and `RenamedTypeShims` went with Stage 8, and
+`onEventsChanged`, `onEventApplied` and `columnCountSaveTask` were properties of the old
+`SingleCalendarModel` and went with the same rewrite. The only surviving mentions of the
+deleted type are in comments explaining what something replaced, which is the right place
+for them.
+
+Two checks were run rather than a name match, because "the symbol is gone" and "nothing is
+left over" are different claims:
+
+- **Dead API.** Every `func`/`var`/`let` declaration in the package's `Sources/` was
+  counted against its references across the whole repository, with comments and string
+  literals stripped so prose does not count as a use. Two candidates came back, and both
+  were local `let`s used inside string interpolations. There is no dead public surface.
+- **Unused imports.** Abandoned as a method. The only reliable signal is the module's own
+  name appearing in the body, and `SwiftUI` and `Foundation` are used unqualified, so the
+  check flagged essentially every view. It is a false-positive machine, not a finding.
+
+One thing deliberately *not* treated as leftover: `Packages/AutoTestRunner`. It looks like
+an orphan — an executable target no scheme references — but §14.4 records it as the
+planned alternative to `xcodebuild` for full-suite runs, where the tool times out. That is
+a design decision, not debris.
 
 ## 11. Stages
 
@@ -1481,11 +1628,55 @@ which every fixture awaits.
 | 5b | **The UDF value types, reducer and effect derivation.** `PCEventSelectionState`/`Stage`/`NavigationRequest`, `PCEventSelectionAction`, `pcEventSelectionReducer`, `PCEventSelectionEffect` + `pcEventSelectionEffects`, and `PCCalendarMarkerProjector` extracted from its two near-identical copies. Still no caller wired — Stage 6 is the store, Stage 8 the view models. **Blocked on 5a**, since the state holds a `BatchAssembler?`. **`multiSelectColor` is deferred to Stage 7**: `PCEventSelectionState` must be `Equatable` for `send`'s `next != previous`, and `PCColorOption` only becomes `Equatable` in Stage 7. The field is dropped rather than the conformance, because splitting the state type across two stages is worse than landing part of it now. Two actions go with it — `setMultiSelectColor`, and `confirmMultiSelectTapped`, which cannot build an assembly without a colour to build it with. `setMultiSelectMode` and `cancelMultiSelectTapped` need no colour and land in 5b. **Paid off in Stage 7**, which is where all three landed. | 275 unit, 10 UI, plus the §12.1 reducer suites. Achieved: 334 unit, 0 fail, plus the 3 mutation-verified `CalendarListRefreshTests`; the full 10-test UI gate is still unrun and owed at the next UI-touching stage |
 | 6 | **The store.** `PCEventSelectionManager` beside the old manager: `send`, projection, `perform`, `writeChain`; injected via `.environment`. **The `AppNavigation` half of this stage is not executable here and moves to Stage 8** — see §7.1. Achieved: 343 unit, 0 fail, plus the 3 mutation-verified `CalendarListRefreshTests`; the full 10-test UI gate is still unrun and owed at the next UI-touching stage |
 | 7 | **`DSKit`, and the two actions 5b deferred.** `onDayTapped` on `PCCalendarDaySelectionManager`; `Equatable`/`Hashable` on `PCColorOption`; then `multiSelectColor`, `setMultiSelectColor` and `confirmMultiSelectTapped` land — the state is equatable at last, so they can. **"Stop every screen observing `selectedDays`" moves to Stage 8**, for the same reason the route payloads did: the screens doing the observing are the ones Stage 8 rewrites (§8.2). Achieved: 356 unit, 0 fail, plus the 3 mutation-verified `CalendarListRefreshTests`; the full 10-test UI gate is still unrun and owed |
-| 8 | **Thread the assembler through the view models.** Keep all four view models and rebuild each as a projection facade over `PCEventSelectionManager`: no stored domain state, computed projections, commands that `send`. `AddEditEventListView` takes `AddEditEventListViewModel(assembler:)`. Delete the `typealias` shims. **Also lands the `AppNavigation` half of the old Stage 6**: `pop()`, payload-free `dayBatches`/`batchEditor`/`eventEditor`, and `BatchEditorSource`/`EventEditorSource` deleted — deferred here because these five live views are the only readers of those payloads, and they are exactly what this stage rewrites (§7.1). | 29 UI, incl. `BatchEditCommitTests` |
-| 9 | **Slim `SingleCalendarModel`** to §9. Route `fetch` through `syncCalendar`. Remove `save(for:)`, `commitPendingBatch`, `deleteBatches`, `route(for:)`, `updateYearModel`, `dayModel(for:)`, `colorsByStartOfDay`, the `addedEvents` staging and the 350 ms debounce. | 29 UI |
-| 10 | **Delete the leftovers.** The `onEventsChanged` / `onEventApplied` closures, `columnCountSaveTask`, and `PCEventsSelectionManager` itself. | 229 / 29 |
-| 11 | **Close out the UI suite.** New multi-day scenario: tap two days, save, assert one batch with two days. | 29 + 1 UI |
-| 12 | **The bug in §16**, once 4b through 11 are green. Not before — the refactor replaces the machinery it lives in. | §16.4 |
+| 8 | **Thread the assembler through the view models.** Keep all four view models and rebuild each as a projection facade over `PCEventSelectionManager`: no stored domain state, computed projections, commands that `send`. `AddEditEventListView` takes `AddEditEventListViewModel(assembler:)`. Delete the `typealias` shims. **Also lands the `AppNavigation` half of the old Stage 6**: `pop()`, payload-free `dayBatches`/`batchEditor`/`eventEditor`, and `BatchEditorSource`/`EventEditorSource` deleted — deferred here because these five live views are the only readers of those payloads, and they are exactly what this stage rewrites (§7.1). | 29 UI, incl. `BatchEditCommitTests`. **Achieved: 306 unit across 7 targets + 25 in `AppNavigationTests`, 0 fail; full 35-test UI suite 0 failures in 845 s — parity with the §12.3a reference.** The cutover did not go in clean, and the part that mattered most is recorded below. |
+| 9 | **Slim `SingleCalendarModel`** to §9. Route `fetch` through `syncCalendar`. Remove `save(for:)`, `commitPendingBatch`, `deleteBatches`, `route(for:)`, `updateYearModel`, `dayModel(for:)`, `colorsByStartOfDay`, the `addedEvents` staging and the 350 ms debounce. | 29 UI. **Achieved: 309 unit across 7 targets + 25 in `AppNavigationTests`, 0 fail; full 35-test UI suite 0 failures in 835 s.** Nearly all of it landed with Stage 8, because rebuilding the view models as projections is not possible while the model still owns a second implementation of the assembly line. What was left was the package's last `import CorePersistence` — §9.1. |
+| 10 | **Delete the leftovers.** The `onEventsChanged` / `onEventApplied` closures, `columnCountSaveTask`, and `PCEventsSelectionManager` itself. | 229 / 29. **Achieved, and entirely absorbed.** All three were already gone before this stage was picked up: `PCEventsSelectionManager` and `RenamedTypeShims` with Stage 8, and the `onEventsChanged` / `onEventApplied` closures and `columnCountSaveTask` with the same `SingleCalendarModel` rewrite. Nothing was left to delete, so this row records a completion rather than a change. See §10.1. |
+| 11 | **Close out the UI suite.** New multi-day scenario: tap two days, save, assert one batch with two days. | 29 + 1 UI. **Achieved: `testMultiselectTwoDaysProducesOneBatchWithBothDays`, mutation-verified. Full suite 36 / 36, 0 failures, 873 s.** The last §6.3 row with no end-to-end cover. See §11.3. |
+| 12 | **The bug in §16**, once 4b through 11 are green. Not before — the refactor replaces the machinery it lives in. | **Achieved: §16.5.** The batch was never deleted — the save returned the user to the day list for a day the edit had just emptied. Full suite **37 / 37**, 0 failures. || 13 | **Three reported behaviours** (§17) and the test runner. Multi-select markers (§17.2), new-batch defaults (§17.3), the runner's three defects (§17.1). Bug 2 of the three not reproduced (§17.4). | see §17 |
+| 13 | **Three reported behaviours** (§17) and the test runner. Multi-select markers (§17.2), new-batch defaults (§17.3), the runner's three defects (§17.1). Bug 2 of the three not reproduced (§17.4). | see §17 |
+
+### 11.3 Stage 11: the multi-day scenario, and the accessibility flattening it found
+
+`confirmMultiSelectTapped` is the only route that gives a batch more than one day *at
+creation time* — every other path builds one day and toggles the rest in afterwards. It
+had unit coverage and no end-to-end cover, and the plan asks for exactly one batch with
+two days.
+
+`testMultiselectTwoDaysProducesOneBatchWithBothDays` asserts the shape, not the presence of
+markers: a batch is listed on **every** day it holds an event on, so if day 17 and day 18
+each show the same single card, the two days are one batch. Two batches of one day each
+would satisfy "both days are marked" and still be the wrong model, so the day-listing and
+the event-row count are both checked.
+
+**Mutation-verified**, as §14.6 sets out for `CalendarListRefreshTests`. Truncating
+`BatchAssembler.new(all:)` to `prefix(1)` — a batch with one day instead of two — was
+expected to fail the test, and does, at `Day 18 should be marked`. A test that cannot fail
+against the wrong shape is worse than no test, and this one can.
+
+Writing it found a real accessibility defect, and the fix belongs in the plan rather than
+only in the diff:
+
+> **An ancestor's `.accessibilityIdentifier` overwrites its descendants'.**
+
+`CalendarDetailView` stamps `calendar-detail-<id>` on the screen. `PCExpandedColorPicker`
+had no identifiers of its own, so its four option buttons reported *that* as their
+identifier, and a test could not address a single colour. Adding
+`color-option-<colorName>` to the buttons — matching the sheet the compact picker already
+uses — was not enough on its own: the subtree was still being flattened into the
+ancestor's identifier. `.accessibilityElement(children: .contain)` on the picker gives it
+its own boundary, and the per-option identifiers survive.
+
+The alternative was to query by the option's visible label, which is `Вариант 3` — a
+localised string, and localised strings in test selectors are a liability, not a contract.
+The three-level rule that follows: **a UI-test handle should be an identifier that is not
+also a human label, and the component owning it must not be inside something that renames
+it.**
+
+Two things the test also had to account for, both consequences of §5.4.2 rather than bugs:
+a batch staged by `confirmMultiSelectTapped` has an **empty name**, so the editor's Save is
+disabled until one is typed — the same rule as a single-day batch; and the toolbar button
+reads `Save` during a session, which is the *confirm* action, distinct from the editor's
+`batch-save-button`.
 
 ### 11.1.1 The rule Stage 4a established
 
@@ -1571,9 +1762,9 @@ One test per row of the §6.3 and §6.4 tables. Plus:
 - every `PCEventSelectionAction` case appears in at least one test, enforced by
   iterating an `allActions` list and asserting each either changes state or emits an
   effect, so a newly added action cannot ship unhandled;
-  - ~~`allActions` is derived from the enum~~ — **this was wrong, and Stage 7 proved it.**
+      - ~~`allActions` is derived from the enum~~ — **this was wrong, and Stage 7 proved it.**
     `allActions` is hand-written, and it has to be: `dayTappedInCalendar(Date)` and
-    `openBatch(pendingID:)` need a payload that only matches a particular state, so the
+    `openBatch(id:)` need a payload that only matches a particular state, so the
     list cannot be built from the enum. The consequence was demonstrated rather than
     predicted — when Stage 7 added `setMultiSelectColor` and `confirmMultiSelectTapped`,
     the list stayed at 28 entries and `#expect(cases.count == 28)` still passed, so the
@@ -1619,6 +1810,48 @@ one was covered by Stage 3 and is listed here only for completeness.
   final state. This is the test that the double-persist bug can never return.
 - The store's only `import` list contains no `CorePersistence` — asserted by a
   grep-based test or a lint rule in CI.
+
+### 12.3a The pre-cutover reference
+
+Stage 8 deletes the implementation the current behaviour comes from, so the whole UI
+suite was run **first**, against the old code, and banked. A cutover with no reference is
+a rewrite with no oracle: when something breaks afterwards there is no way to tell a new
+bug from a pre-existing one. Recorded at `5dc8f23` (Stage 7 merged), 830 s:
+
+| Suite | Tests | Result |
+|---|---|---|
+| `PinCalAppUITests` | 14 | pass |
+| `BatchEditCommitTests` | 7 | pass |
+| `PinCalAppUITestsLaunchTests` | 4 | pass |
+| `CalendarListRefreshTests` | 3 | pass |
+| `KeyboardAvoidanceTests` | 3 | pass |
+| `EditorKeyboardAvoidanceTests` | 3 | pass |
+| `KeyboardAvoidanceLandscapeTests` | 2 | pass |
+| `PerfScrollTests` | 1 | pass |
+| **Total** | **35** | **0 failures** |
+
+Unit at the same commit: 356 passing. `BatchEditCommitTests` is the acceptance suite for
+the entire plan — it is the only end-to-end check that a committed batch survives a
+reopen — so it is the one to watch most closely across the cutover.
+
+This is also where the 10-test UI gate deferred at Stages 6 and 7 is finally paid: with
+Stage 8 deleting the old path, deferring it further would have meant cutting over with
+three stages of ungated UI.
+
+**Post-cutover result: 35 / 35, 0 failures, 845 s** — parity with the reference above,
+which is the point of having banked it. Reaching it took four defects, none of which the
+unit suite could see and two of which were in the machinery §5.4 and §7.3 specify:
+
+| Defect | Kind | Where it is recorded |
+|---|---|---|
+| `SingleCalendarView` never fulfilled `navigationRequest`, so a day tap staged a batch and nothing happened | product | handover §3 |
+| The marker projection unioned the staged batch with its committed row instead of replacing it | product | §7.3 |
+| `openBatch` looked a row up by a non-durable `pendingID`, so a card tap after any intervening write was silently dropped | product | §5.4.3 |
+| `canSave` required a non-empty batch, making the delete branch unreachable and five UI tests sit on a disabled button | product + test | §5.4.2 |
+
+The first is the one that argues for the whole approach: **299 unit tests were green
+while all 19 batch-flow UI tests failed.** A pure reducer can be exhaustively covered and
+still leave a view layer that never acts on what it returns.
 
 ### 12.4 View models
 
@@ -1840,6 +2073,15 @@ should start, in the order given.
    `AddEditEventBatchScreen` treats `viewModel.eventBatch?.events.isEmpty == true` as
    "the batch was deleted" and navigates to the calendar root — the exact shape of the
    reported AB, including a list that ends up empty.
+
+   **Partly retired, and the surviving half is the lead.** Stage 8 kept the
+   name-and-colour rule on purpose (§5.4.2): emptying a batch *is* how a user deletes one,
+   and the branch is what does it. So this is no longer a candidate explanation in the
+   form written — the behaviour is intended. What it does establish is that **an emptied
+   batch must be reached by accident for the AB to be a bug**, which makes hypothesis 1
+   the one to instrument: the question is no longer "is an emptied batch treated as a
+   delete" (yes, correctly) but "why did removing three of four events empty the fourth".
+   Start by printing `assembly.batch.events.count` immediately before Save in step 6.
 3. **`commit` drops the row.** In `PCEventsSelectionManager.commit`, a batch with no
    events is removed from `batches` and not re-added. If hypothesis 1 or 2 empties the
    event list, the row is deleted rather than updated. This is the most direct route to
@@ -1880,3 +2122,238 @@ there but the list query misses it", which the UI alone cannot distinguish.
 - If the fix removes the `isEmpty`-means-delete behaviour, that is the moment
   `BatchAssembler.resolved()` (§5.4) takes over the decision, and hypothesis 2
   becomes structurally impossible rather than merely guarded.
+
+### 16.5 Fixed — the batch was never deleted; the user was shown the wrong day
+
+**The bug was the save's navigation, not the save.** `saveTapped` popped back to the day
+list for `state.day`, and `state.day` came from `openBatch`, which sets it to the row's
+**first** event. §16's edit removes that first event. So the save succeeded, wrote a
+correct single-event batch, and then returned the user to the list of a day the batch was no
+longer on — which renders empty, with nothing deleted, nothing erroring, and no way to tell
+from the UI that the batch was alive the whole time.
+
+The fix re-anchors on the saved row's own date:
+
+```swift
+next.day = row.date   // §5.4: `date` is derived from the first event
+```
+
+which cannot land on a day the batch is absent from, because `resolved()` returns `nil` for
+an empty batch — so a row that gets there has at least one event, on `row.date` by
+construction.
+
+**What this says about §16.3's six hypotheses.** Five are retired, and not by argument:
+
+| Hypothesis | Verdict |
+|---|---|
+| 1 — the removal path empties the batch | **Retired.** Before the save, the editor holds exactly one event, the named event on the anchor day is gone, and the kept day's cell is still marked. The removals did precisely what they were asked. |
+| 2 — `canSave` / the delete branch treats an emptied batch as a delete | **Retired as a cause**, and the behaviour is *intended* (§5.4.2). The batch was never emptied, so no delete branch ran. |
+| 3 — `commit` drops the row | **Retired.** `CalendarStoreTests` drives the port directly: create a four-day batch, re-save it by its real id with one event, and the batch comes back with that one event and the same `persistedID`. |
+| 4 — `eventBatchId` is still 0 at the third save | **Retired.** The write carries the batch's own id and the surviving event's own id; asserted at the port boundary. |
+| 5 — orphaned-event cleanup silently empties a batch | **Retired.** The same store test reads the boxes: four rows before, one after, zero orphans when emptied. |
+| 6 — `date` drift | **This was closest, and in the wrong direction.** `date` *is* the problem — but the stored `date` was never wrong. The *session's* `day` was, and nothing in the write path reads it. |
+
+The plan's instinct in 16.3 was right to suspect `date`; what it missed is that `date` is
+now **derived** (§5.4), so the persisted value cannot drift. The value that drifted was
+`state.day`, a different field with a similar name, which nothing on the write path reads.
+
+**Three of the ways this was nearly got wrong**, recorded because each produced a confident
+wrong answer before measurement corrected it:
+
+- **A plausible storage bug that was not one.** The mapper writes `id: 0` for every new
+  event, and `ObjectBoxCalendarStorage` passes it straight into `PPEvent(id:)`, which reads
+  0 as a primary key rather than as "unset" — so *four* new events should have collapsed
+  into one row. A test was written, a fix applied, and the failure persisted. Isolating
+  ObjectBox (four puts, both ways) showed 4 → 4 rows either way. The change was reverted
+  rather than left in with a comment asserting a mechanism that was false.
+- **A test fixture that was not testing the claim.** `["Event"].enumerated().map { … }`
+  iterates a **one**-element array, so a four-event fixture held one event — and the
+  "storage collapses batches" conclusion was drawn from it.
+- **A marker check on a covered view.** After the save the day list covers the calendar, and
+  a day cell absent from the accessibility tree is indistinguishable from an unmarked one.
+  A helper returning `contains { $0.exists && … }` reported "not marked" for a cell that was
+  merely hidden, which pointed the search at a *second* non-existent cause. The helper now
+  fails when no cell is present, so the two facts can never again be conflated.
+
+**Acceptance, per §16.4.** `BatchEditorKnownBugTests.testRemovingThreeOfFourDaysLeavesTheBatchWithTheFourth`
+encodes 16.1 step for step (the STR's October days renumbered to four consecutive empty ones
+in the current month, same shape). It was verified failing on the pre-fix build, and it fails
+*informatively*: the two pre-save assertions distinguish "the removals were wrong" from "the
+save discarded a good batch", and they now pass, which is what retired hypotheses 1 and 2.
+The suite is **37 / 37** and unit **314** across 7 targets plus **25** in `AppNavigationTests`.
+
+One existing test broke on the fix and was **correct to break**:
+`testBatchListStillShowsBatchAfterRemovingAnchorDay` asserted that the save returns to the
+anchor day's (empty) list — it had encoded the bug, written during Stage 8 to make a disabled
+Save button look like a passing test. It now asserts the batch is on the surviving day's
+list, which is the behaviour the fix introduces.
+
+---
+
+## 17. Stage 13 — three reported behaviours, and a runner that could not have found them
+
+Appended after Stage 12. Three behaviours were reported by hand after §16 was closed. Two
+were real and are fixed; **one could not be reproduced on either device** and is recorded as
+a guard rather than a fix. The stage also fixed the test runner, without which none of this
+would have been verifiable on the intended hardware.
+
+### 17.1 The runner could not run a test, and said so by succeeding — five defects
+
+`Packages/AutoTestRunner` is the project's UI-test entry point: two dedicated `-AutoTest`
+simulators, erased before every run, `iphone` / `ipad` profiles. Every earlier result in
+this plan was measured with `xcodebuild` against the MCP default simulator instead, because
+§14.4 described the runner only as "an alternative to `xcodebuild`" and left it unwired.
+It was not an alternative. Three defects, each reproduced by running it:
+
+1. **`--profile` does not exist.** `mobilebuildmcp simulator test --profile iphone` →
+   `Unknown defaults profile 'iphone'`. The installed CLI (2.7.0) has no such flag, and
+   `config.yaml` carries a flat `sessionDefaults:` with no `sessionDefaultsProfiles:`
+   section for a profile to select from. Fixed by passing `--workspace-path`, `--scheme` and
+   `--simulator-id` **explicitly** — which is also why the call had to stop going through the
+   config: a relative `workspacePath` does not survive the CLI resolving its own project
+   root, and `simulator test` came back with *"scheme is required"*.
+2. **The config sync silently no-opped.** It searched for `.xcodebuildmcp/config.yaml`; the
+   directory was renamed to `.mobilebuildmcp` when the tool became MobileBuildMCP, and
+   `guard let runDirectory else { return }` swallowed the miss. `--check` printed
+   "Preflight OK" the whole time.
+3. **The headline guarantee failed silently.** `simctl erase` refuses a **Booted** device
+   and the call was made with `expectingSuccess: false`, so a run could start on whatever
+   the previous run left behind and still look successful. Now: shutdown first (ignoring
+   the benign "already shut down" error), and a failed **erase is fatal**.
+
+(3) is the one that matters. It is the difference between a clean run and a run on
+whatever was there before, and it is invisible unless you go looking for it.
+
+### 17.2 Bug 1 — a multi-select tap did nothing you could see
+
+**Root cause: a deferral that was never undone.** `dayTappedInCalendar` carried this:
+
+> The marker payload does not move: it is projected from `batches` plus the staged
+> assembly, and neither contains a multi-select day until the session is confirmed — which
+> is deferred to Stage 7 along with the colour that would give a marker anything to paint.
+
+Stage 7 landed `multiSelectColor`. Nothing revisited the deferral. So for the whole life of
+the feature, tapping a day in a multi-select session recorded the day, armed the toolbar's
+Save, and **changed nothing on the calendar**. The only feedback a tap produced was the
+colour picker greying out — which is precisely how it was reported: *"every tap toggles the
+colour picker disabled and enabled"*. The user was watching the picker because the calendar
+had nothing to show.
+
+`PCCalendarMarkerProjector.colorsByDay` now takes the session — days plus the chosen colour,
+which is the one part of the payload with no row anywhere — and projects it last, on top.
+It is re-projected on a day tap, on choosing a colour (so days picked *before* the colour
+get painted in it), and on leaving the session.
+
+### 17.3 Bug 3 — a new batch was a dead end until you filled it in
+
+A batch staged by tapping a day arrived **unnamed and uncoloured**, and `canSave` requires
+both, so the editor opened with Save disabled and the user had to find the name field *and*
+the colour picker before anything could be committed. Same for the event, whose placeholder
+name was empty — which also made `saveEventTapped`'s "an unnamed event is not a save" guard
+unreachable in practice, because no placeholder could ever be saved.
+
+`BatchAssembler.new` now defaults to `"New Event"` and `PCColorOption.firstAvailable`, and
+its placeholder event to `"New Event Day"`. The explicit `name:`/`colorName:` parameters
+stay, because the undefaulted shapes are real states the reducer tests need to reach.
+
+**The cost, stated plainly.** A field that arrives filled is not an empty field: `typeText`
+*appends*. Seven UI tests were naming batches and events by typing, and all seven broke by
+asserting on `"New EventCycle"` instead of `"Cycle"` — failing much later, on a list lookup,
+with a name the test never typed. `KeyboardAvoidanceTestSupport.replaceText(in:with:)` now
+exists for that, and any *new* test that wants a specific name must use it. This is also
+what a human tester will hit, and it is worth knowing before the next manual pass.
+
+**A layering compromise, named rather than hidden.** `"New Event"` and `"New Event Day"` are
+display strings in a domain type. A new batch's name has to be born *somewhere*, and the
+alternatives are worse: the view cannot supply it, because the name is store state and
+pre-filling a bound text field fights the binding on the first keystroke; and a factory
+argument pushes the default up to every call site, where they drift. So they live in
+`BatchAssembler` as constants, in English, and are **not localised** — a batch name is the
+user's own text once they touch it, so it is a starting point rather than chrome. If a
+translated default is wanted, the honest place is a naming port injected beside
+`dataProvider`, and the constants become its English fallback.
+
+### 17.4 Bug 2 — not reproduced, and therefore not "fixed"
+
+**STR:** multiselect → colour → day → Save → name → Save. AB: the user lands on the
+calendars list. EB: back on the single calendar view.
+
+`MultiselectAndDefaultsTests.testSavingAConfirmedMultiselectSessionReturnsToTheCalendar`
+encodes it and **passes**, on `iPhone 17 Pro - AutoTest` and on
+`iPad Pro 13-inch (M5) - AutoTest`, before and after the other two fixes. The assertion is
+about *day cells existing*, which is the right question: the calendar detail is not a
+navigation-stack entry at all (`RootNavigation` shows it through `detailCalendarID` and a
+compact-column preference), so "are we on the calendar" cannot be asked of the back button —
+the calendars list has one too.
+
+The obvious mechanism is a pop to an empty path letting the split view show its sidebar
+column, and that is exactly what `RootView`'s `compactBinding` would do on a compact size
+class. It does not fire here, and I have not found the state that makes it fire.
+
+**So: no fix is claimed, and the test stands as a guard.** A report that cannot be
+reproduced is a question, not a defect to be papered over — the honest next step is a
+recording of the failing path, or the steps with the state that produced it.
+
+
+### 17.5 The cost of the pre-fill, in numbers
+
+Seven UI tests broke on §17.3 and **all seven broke the same way**: they typed a name into a
+field that now arrives filled, so `typeText` appended and the batch was called
+`"New EventCycle"` rather than `"Cycle"`. Every one of them then failed on a *list lookup*
+asserting a name the test never typed — which is why the failures pointed at the batch list
+and the day list rather than at the name field, and why the first fix attempt (converting
+six of the sites) left two still red: they went through the shared `createBatch` helper,
+which was the seventh site.
+
+That is the whole cost of the pre-fill, stated as a fact rather than a warning: **any test
+or script that wants a specific batch or event name has to replace the field's contents, not
+type into it.** `KeyboardAvoidanceTestSupport.replaceText(in:with:)` is that, and a new test
+that forgets will fail far from the cause.
+
+One test also needed a *navigation* change rather than a typing one.
+`testBatchListStillShowsBatchAfterRemovingAnchorDay` had to keep its `tapDay` after
+`createBatch`, which was briefly removed on the reasoning that §16.5's re-anchoring already
+returns you to the right day list. That is true only when a day list was on the stack;
+`createBatch` starts from an empty day, so the editor was pushed from the calendar and the
+save pops back to the calendar. The re-anchoring matters when you *arrived* from a day list,
+and not otherwise — which is worth writing down, because it reads the same either way.
+
+
+### 17.6 A fifth runner defect, found by a log that was missing from its own run
+
+`swift run AutoTestRunner --profile ipad > ipad.log` produced a log containing the MCP
+test banner, 381 test results, and **none of the runner's own output** — no `config.yaml`
+line, no `Resetting AutoTest simulators...`, no `Reset complete`. The reset messages turned
+up only at the very end, when the process exited and flushed.
+
+The cause is not subtle: Swift's `print` to a pipe is block-buffered, so under any
+redirection — `>`, `nohup`, CI — the preamble sat in a buffer and only appeared on exit.
+Unbuffered at the top of `main` fixes it, and `--print-config` through a pipe is now the
+regression check.
+
+This is worth its own entry because of *what* it hid. The runner's whole purpose is the
+guarantee that the simulators were erased, and this bug means the evidence for that
+guarantee arrived an hour after the run it was evidence for, in a log whose first hour
+looked like a run that had silently skipped the reset. It is defect 3's failure mode with
+the messages intact and the ordering destroyed — and the original defect 3, where the erase
+failed and nothing was printed, is the same failure mode with the messages dropped. The two
+together are why the reset is now fatal *and* unbuffered: one makes a failure impossible to
+miss, the other makes a success impossible to miss.
+
+### 17.7 What Stage 13 cost, as a number
+
+The suite went 376 → 381: `MultiselectAndDefaultsTests` added 3, and nothing was deleted, so
+the growth is entirely additive. The 2 pre-existing iPad failures were neither fixed nor
+worsened by any of Stage 13 — confirmed by name on both sides of the change, which matters
+because they were the only unattributed red in the suite.
+
+**End state, both devices, full plan, all 381, through `AutoTestRunner`:**
+
+| Device | Result |
+|---|---|
+| `iPhone 17 Pro - AutoTest` | **381 passed, 0 failures, 0 skipped** — reset on attempt 1 |
+| `iPad Pro 13-inch (M5) (16GB) - AutoTest` | 379 passed, 2 failures — the two pre-existing iPad layout tests |
+
+The first iPhone run found the 2 `createBatch` failures (§17.5); after the fix the same full
+plan was re-run and came back clean. The iPad run is the one that says something the iPhone
+run cannot: Stage 13 left its 2 failures exactly as they were.

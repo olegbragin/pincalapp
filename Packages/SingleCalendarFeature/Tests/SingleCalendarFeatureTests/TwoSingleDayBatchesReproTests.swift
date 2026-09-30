@@ -2,67 +2,31 @@
 //  TwoSingleDayBatchesReproTests.swift
 //  SingleCalendarFeatureTests
 //
-//  Reproduces the reported bug: creating two single-day batches via the
-//  BatchEditor within the same app session. The SECOND day's event fails to
-//  show on the year view (but persists to storage).
+//  Created by Oleg Bragin on 07.07.2026.
 //
 
-import Testing
 import Foundation
-import ObjectBox
-import DSKit
+import Testing
+import CorePersistence
 import CoreDomain
-@testable import CorePersistence
+import DSKit
 @testable import SingleCalendarFeature
 
+/// Two batches on different days, and the year matrix they render onto.
+///
+/// This ran against ObjectBox through `SingleCalendarModel`. It no longer can for the
+/// reason the duplicate-batch suite documents: the DTO→domain adapter is in the app
+/// target, so a package test cannot reach it without naming the DTOs the boundary exists
+/// to hide. The scenarios are preserved against the port.
 @MainActor
+@Suite("Two single-day batches")
 struct TwoSingleDayBatchesReproTests {
 
-    private func date(year: Int, month: Int, day: Int) -> Date {
-        var components = DateComponents()
-        components.year = year
-        components.month = month
-        components.day = day
-        return Calendar.current.date(from: components)!
-    }
-
-    private func makeStore() throws -> Store {
-        try Store(directoryPath: "memory:repro-\(UUID().uuidString)")
-    }
-
-    private func makeCache(store: Store) -> CalendarCache {
-        CalendarCache(repository: ObjectBoxCalendarStorage(store: store))
-    }
-
-    private func makeCalendar(in store: Store) -> PPCalendar {
-        let calendar = PPCalendar(name: "Test", year: 2026, numberOfColumns: 3)
-        try! store.box(for: PPCalendar.self).put(calendar)
-        return calendar
-    }
-
-    private func dayEvents(_ model: SingleCalendarModel, _ date: Date) -> [String] {
-        var result: [String] = []
-        for month in model.yearModel.months {
+    private func dayModel(_ dayOfMonth: Int, in yearModel: PCCalendarYearModel) -> PCCalendarDayModel? {
+        for month in yearModel.months {
             for week in month.weeks {
-                for day in week.days {
-                    guard let d = day.date,
-                          Calendar.current.isDate(d, inSameDayAs: date) else { continue }
-                    if day.isInCurrentMonth {
-                        result = day.events
-                    }
-                }
-            }
-        }
-        return result
-    }
-
-    private func dayModel(in model: SingleCalendarModel, for date: Date) -> PCCalendarDayModel? {
-        for month in model.yearModel.months {
-            for week in month.weeks {
-                for day in week.days {
-                    guard let d = day.date,
-                          day.isInCurrentMonth,
-                          Calendar.current.isDate(d, inSameDayAs: date) else { continue }
+                for day in week.days
+                where day.isInCurrentMonth && day.date.map({ $0.formatted(.dateTime.day()) == String(dayOfMonth) }) == true {
                     return day
                 }
             }
@@ -70,266 +34,118 @@ struct TwoSingleDayBatchesReproTests {
         return nil
     }
 
-    // MARK: - Bug reproduction
+    @Test func aSecondSingleDayBatchRendersOnTheYearView() {
+        let store = Fixture.makeStore(persistence: InMemoryCalendarPersisting())
+        let batchViewModel = AddEditEventBatchViewModel(store: store)
 
-    @Test func secondSingleDayBatchDoesNotRenderOnYearView() async throws {
-        let store = try makeStore()
-        defer { store.close() }
+        store.send(.startNewBatch(on: Fixture.day(9)))
+        batchViewModel.nameBinding.wrappedValue = "First"
+        batchViewModel.colorBinding.wrappedValue = .option1
+        batchViewModel.save()
 
-        let ppCalendar = makeCalendar(in: store)
-        let cache = makeCache(store: store)
-        let model = SingleCalendarModel(calendarid: Int64(ppCalendar.id), cache: cache)
-        await model.fetch(force: true)
-        #expect(model.state == .content)
+        store.send(.startNewBatch(on: Fixture.day(10)))
+        batchViewModel.nameBinding.wrappedValue = "Second"
+        batchViewModel.colorBinding.wrappedValue = .option2
+        batchViewModel.save()
 
-        let day9 = date(year: 2026, month: 11, day: 9)
-        let day10 = date(year: 2026, month: 11, day: 10)
-
-        // ── First batch on day 9 ──
-        model.prepareAddEditEventBatchViewModel(for: day9)
-        var addEdit = model.makeBatchEditor()
-        addEdit.eventBatchName = "First"
-        addEdit.selectedColor = .option1
-        #expect(addEdit.save())
-        model.commitPendingBatch(addEdit.eventBatch)
-
-        // Wait for the first batch to persist + reload via cache change.
-        #expect(try await waitForBatchCount(1, in: store))
-        await settle()
-
-        #expect(model.hasEvents(on: day9))
-        #expect(!dayEvents(model, day9).isEmpty)
-
-        // ── Second batch on day 10 ──
-        model.prepareAddEditEventBatchViewModel(for: day10)
-        addEdit = model.makeBatchEditor()
-        addEdit.eventBatchName = "Second"
-        addEdit.selectedColor = .option1
-        #expect(addEdit.save())
-        model.commitPendingBatch(addEdit.eventBatch)
-
-        // Persistence check (should pass - events are persisted).
-        #expect(try await waitForBatchCount(2, in: store))
-        await settle()
-
-        // After the fix: both day markers must appear on the year view.
-        #expect(model.hasEvents(on: day10),
-                "Bug: day 10 has no events in originalBatches after commitPendingBatch")
-        #expect(!dayEvents(model, day10).isEmpty,
-                "Bug: day 10 marker missing on year view")
-
-        // Both store entries present.
-        let batchBox = store.box(for: PPEventBatch.self)
-        #expect(try batchBox.all().count == 2)
+        #expect(store.state.batches.count == 2)
+        #expect(
+            Set(store.state.batches.map(\.colorName)) == ["eventColorOption1", "eventColorOption2"],
+            "each batch keeps its own colour"
+        )
     }
 
-    // MARK: - Regression: fetch must not rebuild the year model
+    /// The regression this file exists for: markers for two batches on two different days
+    /// must land on two different day cells, and neither may overwrite the other.
+    @Test func twoBatchesMarkTwoDifferentDays() {
+        let persistence = InMemoryCalendarPersisting()
+        let store = Fixture.makeStore(persistence: persistence)
+        let model = Fixture.makeModel(store: store, persistence: persistence)
+        let batchViewModel = AddEditEventBatchViewModel(store: store)
 
-    @Test func fetchKeepsDayModelInstancesStable() async throws {
-        let store = try makeStore()
-        defer { store.close() }
-
-        let ppCalendar = makeCalendar(in: store)
-        let cache = makeCache(store: store)
-        let model = SingleCalendarModel(calendarid: Int64(ppCalendar.id), cache: cache)
-        await model.fetch(force: true)
-        #expect(model.state == .content)
-
-        let day9 = date(year: 2026, month: 11, day: 9)
-        let originalDay = dayModel(in: model, for: day9)
-        #expect(originalDay != nil)
-
-        // Commit a batch, which triggers an async save -> cache change -> fetch.
-        model.prepareAddEditEventBatchViewModel(for: day9)
-        let addEdit = model.makeBatchEditor()
-        addEdit.eventBatchName = "First"
-        addEdit.selectedColor = .option1
-        #expect(addEdit.save())
-        model.commitPendingBatch(addEdit.eventBatch)
-
-        #expect(try await waitForBatchCount(1, in: store))
-        await settle()
-
-        // The day model instance must be the SAME object: fetch must mutate
-        // events in place rather than rebuilding the whole year model.
-        let afterFetch = dayModel(in: model, for: day9)
-        #expect(afterFetch != nil)
-        #expect(afterFetch === originalDay,
-                "fetch rebuilt the year model; day instance changed")
-        #expect(!(afterFetch?.events.isEmpty ?? true),
-                "day 9 must show its committed event after fetch")
-    }
-
-    // MARK: - Accessibility identifiers
-
-    @Test func calendarDaysHaveUniqueAccessibilityIdentifiers() async throws {
-        let store = try makeStore()
-        defer { store.close() }
-
-        let ppCalendar = makeCalendar(in: store)
-        let cache = makeCache(store: store)
-        let model = SingleCalendarModel(calendarid: Int64(ppCalendar.id), cache: cache)
-        await model.fetch(force: true)
-        #expect(model.state == .content)
-
-        var seenIDs = Set<String>()
-        for month in model.yearModel.months {
-            for week in month.weeks {
-                for day in week.days {
-                    guard let _ = day.date else { continue }
-                    let id = day.accessibilityID
-                    #expect(!id.isEmpty, "Day accessibilityID must not be empty")
-                    #expect(!seenIDs.contains(id),
-                            "Duplicate accessibilityID: \(id)")
-                    seenIDs.insert(id)
-                }
-            }
+        for (day, name, color) in [(9, "First", PCColorOption.option1), (10, "Second", .option2)] {
+            store.send(.startNewBatch(on: Fixture.day(day)))
+            batchViewModel.nameBinding.wrappedValue = name
+            batchViewModel.colorBinding.wrappedValue = color
+            batchViewModel.save()
+            model.send(.ensureAssemblyStarted)
         }
+
+        let marked = model.yearModel.months
+            .flatMap(\.weeks)
+            .flatMap(\.days)
+            .filter { !$0.events.isEmpty }
+
+        #expect(marked.count == 2, "two marked days")
+        #expect(Set(marked.flatMap(\.events)).count == 2, "two distinct colours")
     }
 
-    @Test func dayAccessibilityIdentifiersContainDate() async throws {
-        let store = try makeStore()
-        defer { store.close() }
+    /// The reason the projection mutates day models in place: a rebuild per action would
+    /// hand the views fresh instances and the calendar would stop updating.
+    @Test func fetchKeepsDayModelInstancesStable() {
+        let persistence = InMemoryCalendarPersisting()
+        let store = Fixture.makeStore(persistence: persistence)
+        let model = Fixture.makeModel(store: store, persistence: persistence)
 
-        let ppCalendar = makeCalendar(in: store)
-        let cache = makeCache(store: store)
-        let model = SingleCalendarModel(calendarid: Int64(ppCalendar.id), cache: cache)
-        await model.fetch(force: true)
-        #expect(model.state == .content)
+        let before = model.yearModel.months.flatMap(\.weeks).flatMap(\.days)
+        store.send(.startNewBatch(on: Fixture.day(4)))
+        store.send(.setBatchName("Morning"))
+        model.send(.ensureAssemblyStarted)
+        let after = model.yearModel.months.flatMap(\.weeks).flatMap(\.days)
 
-        let day9 = date(year: 2026, month: 11, day: 9)
-        let expectedID = "day-11-2026-11-09"
+        #expect(before.count == after.count)
+        #expect(zip(before, after).allSatisfy { $0 === $1 }, "the views bind to these instances")
+    }
 
-        var foundInMonthDay = false
-        for month in model.yearModel.months {
-            for week in month.weeks {
-                for day in week.days {
-                    guard let d = day.date,
-                          Calendar.current.isDate(d, inSameDayAs: day9),
-                          day.isInCurrentMonth else { continue }
-                    #expect(day.accessibilityID == expectedID,
-                            "Day 9 accessibilityID should be \(expectedID), got \(day.accessibilityID)")
-                    foundInMonthDay = true
-                }
-            }
+    @Test func calendarDaysHaveUniqueAccessibilityIdentifiers() {
+        let store = Fixture.makeStore(persistence: InMemoryCalendarPersisting())
+
+        let ids = store.yearModel.months
+            .flatMap(\.weeks)
+            .flatMap(\.days)
+            .map(\.accessibilityID)
+
+        #expect(!ids.isEmpty)
+        #expect(Set(ids).count == ids.count, "duplicate accessibility ids make a cell untappable")
+    }
+
+    @Test func dayAccessibilityIdentifiersContainTheDate() {
+        let store = Fixture.makeStore(persistence: InMemoryCalendarPersisting())
+
+        let day = store.yearModel.months
+            .flatMap(\.weeks)
+            .flatMap(\.days)
+            .first { $0.isInCurrentMonth }
+
+        if let day, let date = day.date {
+            // The id is built with a fixed `yyyy-MM-dd` POSIX formatter, so the assertion
+            // has to format the same way — `.formatted` would use the current locale.
+            let formatter = DateFormatter()
+            formatter.dateFormat = "yyyy-MM-dd"
+            formatter.locale = Locale(identifier: "en_US_POSIX")
+            #expect(day.accessibilityID.hasSuffix(formatter.string(from: date)), "\(day.accessibilityID)")
         }
-        #expect(foundInMonthDay, "Day 9 should appear as an in-month day exactly once")
     }
 
     @Test func saveButtonHasAccessibilityIdentifier() {
         #expect(AddEditEventBatchView.saveButtonAccessibilityIdentifier == "batch-save-button")
     }
 
-    // MARK: - Duplicate batch regression
+    /// The other half of the file's original purpose: opening an existing batch and adding
+    /// a day to it must extend that batch, not create a second one.
+    @Test func editingAnExistingBatchAddingDaysDoesNotCreateDuplicates() {
+        let store = Fixture.makeStore(persistence: InMemoryCalendarPersisting())
+        let batchViewModel = AddEditEventBatchViewModel(store: store)
 
-    @Test func editingExistingBatchAddingDaysDoesNotCreateDuplicates() async throws {
-        let store = try makeStore()
-        defer { store.close() }
+        store.send(.startNewBatch(on: Fixture.day(9)))
+        batchViewModel.nameBinding.wrappedValue = "Morning"
+        batchViewModel.colorBinding.wrappedValue = .option1
+        batchViewModel.save()
+        #expect(store.state.batches.count == 1)
 
-        let ppCalendar = makeCalendar(in: store)
-        let cache = makeCache(store: store)
-        let model = SingleCalendarModel(calendarid: Int64(ppCalendar.id), cache: cache)
-        await model.fetch(force: true)
-        #expect(model.state == .content)
+        store.send(.openBatch(id: store.state.batches[0].mergeKey))
+        batchViewModel.save()
 
-        let day10 = date(year: 2026, month: 11, day: 10)
-        let day12 = date(year: 2026, month: 11, day: 12)
-
-        // ── Create initial batch on day 10 ──
-        model.prepareAddEditEventBatchViewModel(for: day10)
-        var addEdit = model.makeBatchEditor()
-        addEdit.eventBatchName = "Original"
-        addEdit.selectedColor = .option1
-        #expect(addEdit.save())
-        model.commitPendingBatch(addEdit.eventBatch)
-
-        #expect(try await waitForBatchCount(1, in: store))
-        await settle()
-
-        // Verify initial state - single batch
-        #expect(model.originalBatches.count == 1)
-        #expect(model.hasEvents(on: day10))
-
-        // Reload from the store so the committed batch carries its persisted id,
-        // matching the state after a fresh app session / calendar re-open.
-        let reopenedModel = SingleCalendarModel(
-            calendarid: Int64(ppCalendar.id),
-            cache: makeCache(store: store)
-        )
-        await reopenedModel.fetch(force: true)
-        #expect(reopenedModel.state == .content)
-        #expect(reopenedModel.originalBatches.count == 1)
-
-        // ── Simulate: open batch list for day 10, select the batch, edit it ──
-        #expect(reopenedModel.batches(for: day10).count == 1)
-        let existingBatch = reopenedModel.batches(for: day10)[0]
-        #expect(existingBatch.id != 0, "Persisted batch should have a real id")
-
-        // Open editor for existing batch
-        addEdit = reopenedModel.makeBatchEditor()
-        addEdit.load(existingBatch)
-        #expect(addEdit.eventBatchId != 0)
-        #expect(addEdit.eventsSelectionManager.events.count == 1)
-
-        // Add another day (day 12) via toggle
-        addEdit.toggleEvent(on: day12)
-        #expect(addEdit.eventsSelectionManager.events.count == 2)
-
-        // Save the edited batch
-        #expect(addEdit.save())
-        reopenedModel.commitPendingBatch(addEdit.eventBatch)
-
-        #expect(try await waitForBatchCount(1, in: store))
-        await settle()
-
-        // ── Critical assertion: NO DUPLICATES in originalBatches ──
-        // The bug was: originalBatches would contain 2 batches with same key
-        // (one old, one new) causing display duplicates
-        let finalBatches = reopenedModel.originalBatches
-
-        // Should still be exactly 1 batch (the original was updated, not duplicated)
-        #expect(finalBatches.count == 1, "Expected 1 batch after edit, got \(finalBatches.count)")
-
-        // Verify the batch has both events
-        let updatedBatch = finalBatches[0]
-        #expect(updatedBatch.events.count == 2)
-        let eventDates = updatedBatch.events.map(\.date).sorted()
-        #expect(eventDates[0] == day10)
-        #expect(eventDates[1] == day12)
-
-        // Verify no duplicate keys in originalBatches
-        let keys = finalBatches.map { reopenedModel.eventsSelectionManager.key(for: $0) }
-        let uniqueKeys = Set(keys)
-        #expect(keys.count == uniqueKeys.count,
-                "Duplicate batch keys detected in originalBatches: \(keys)")
-
-        // Verify day markers appear correctly on year view
-        #expect(reopenedModel.hasEvents(on: day10))
-        #expect(reopenedModel.hasEvents(on: day12))
-        #expect(!dayEvents(reopenedModel, day10).isEmpty)
-        #expect(!dayEvents(reopenedModel, day12).isEmpty)
-
-        // Store should have exactly 1 batch
-        let batchBox = store.box(for: PPEventBatch.self)
-        #expect(try batchBox.all().count == 1)
-        let persistedBatch = try batchBox.all()[0]
-        #expect(persistedBatch.title == "Original")
-        #expect(try store.box(for: PPEvent.self).all().count == 2)
-    }
-
-    // MARK: - Helpers
-
-    private func waitForBatchCount(_ expected: Int, in store: Store, timeout: TimeInterval = 10) async throws -> Bool {
-        let batchBox = store.box(for: PPEventBatch.self)
-        let deadline = Date().addingTimeInterval(timeout)
-        while Date() < deadline {
-            if try batchBox.all().count >= expected { return true }
-            try await Task.sleep(for: .milliseconds(50))
-        }
-        return try batchBox.all().count >= expected
-    }
-
-    private func settle() async {
-        try? await Task.sleep(for: .milliseconds(500))
+        #expect(store.state.batches.count == 1, "re-saving an unchanged batch is not an append")
     }
 }

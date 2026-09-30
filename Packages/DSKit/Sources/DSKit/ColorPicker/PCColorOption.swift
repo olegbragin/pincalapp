@@ -9,12 +9,20 @@
 /// state, which is compared with `==` to decide whether a transition changed anything
 /// (`PCEventSelectionManager.send`). Without it a state carrying a colour could not be
 /// `Equatable`, and the whole store would have to be split across stages. `Hashable`
-/// because a `BatchAssembler` treats colour identity as a value, not a reference.
+/// because a `PCEventBatchAssembleUnitOfWork` treats colour identity as a value, not a reference.
 public enum PCColorOption: CaseIterable, Equatable, Hashable {
     case option1,
          option2,
          option3,
          option4
+
+    /// The colour a new batch starts on.
+    ///
+    /// Named rather than spelled as `.option1` at each call site, because "the first colour
+    /// the picker offers" is a product decision that has exactly one answer and several
+    /// places that need it. Before this existed a new batch had *no* colour, so its Save was
+    /// disabled and the user had to go looking for the picker to do anything at all.
+    public static var firstAvailable: PCColorOption { .option1 }
 
     public var colorName: String {
         switch self {

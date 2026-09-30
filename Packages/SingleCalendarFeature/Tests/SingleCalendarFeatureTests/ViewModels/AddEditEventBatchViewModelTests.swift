@@ -1,187 +1,177 @@
+//
+//  AddEditEventBatchViewModelTests.swift
+//  SingleCalendarFeatureTests
+//
+//  Created by Oleg Bragin on 02.07.2026.
+//
+
 import Foundation
 import Testing
-import CorePersistence
-import DSKit
 import CoreDomain
+import DSKit
 @testable import SingleCalendarFeature
 
+/// The view model is a projection facade, so these tests are really about two things:
+/// that it reports what the store says, and that its commands *dispatch* rather than
+/// assign. The second is the point of the rewrite — the previous version had settable
+/// `eventBatchId`/`eventBatchName` fields, so a test could set them and assert they stuck
+/// without ever involving the batch.
 @MainActor
-@Suite("AddEditEventBatchViewModel Tests")
+@Suite("AddEditEventBatchViewModel")
 struct AddEditEventBatchViewModelTests {
 
-    private func day(_ year: Int, _ month: Int, _ dayOfMonth: Int) -> Date {
-        Calendar.autoupdatingCurrent.date(from: DateComponents(year: year, month: month, day: dayOfMonth))!
+    private func makeContext(
+        batches: [CalendarEventBatch] = []
+    ) -> (AddEditEventBatchViewModel, PCEventSelectionManager, InMemoryCalendarPersisting) {
+        let persistence = InMemoryCalendarPersisting()
+        let store = Fixture.makeStore(batches: batches, persistence: persistence)
+        return (AddEditEventBatchViewModel(store: store), store, persistence)
     }
 
-    @Test("init prepares the event list and calendar")
-    func initPrepares() {
-        let date = day(2026, 6, 1)
-        let vm = AddEditEventBatchViewModel(events: [
-            EventDataSource(name: "A", date: date, color: "eventColorOption1")
-        ])
+    @Test("With no assembly, every projection is empty and it cannot be saved")
+    func emptyWithoutAssembly() {
+        let (vm, _, _) = makeContext()
 
-        #expect(vm.eventsSelectionManager.events.count == 1)
-        #expect(vm.yearModel.months.count == 12)
-        #expect(vm.yearModel.numberOfCurrentMonth > 0)
+        #expect(vm.name.isEmpty)
+        #expect(vm.events.isEmpty)
+        #expect(vm.defaultColor == nil)
+        #expect(!vm.canSave)
     }
 
-    @Test("canSave requires a name and a color")
+    @Test("Starting a batch makes the editor show it")
+    func reflectsTheStore() {
+        let (vm, store, _) = makeContext()
+
+        store.send(.startNewBatch(on: Fixture.day(4)))
+
+        #expect(vm.events.count == 1, "one placeholder day")
+        #expect(vm.events.first?.date == store.state.dataProvider.startOfDay(for: Fixture.day(4)))
+        #expect(vm.canSave, "a new batch arrives named and coloured, so it is savable at once")
+    }
+
+    /// The name and the colour are what `canSave` reads, and clearing either one still
+    /// refuses the save. What changed is the *starting point*: a new batch arrives with
+    /// both already set (§5.4), so this walks the batch back down rather than up.
+    @Test("canSave refuses a batch whose name or colour has been cleared")
     func canSaveRequirements() {
-        let vm = AddEditEventBatchViewModel()
-        vm.setup()
-        #expect(!vm.canSave)
+        let (vm, store, _) = makeContext()
+        store.send(.startNewBatch(on: Fixture.day(4)))
 
-        vm.eventBatchName = "Summer"
+        #expect(vm.canSave, "a new batch arrives ready to save")
+        store.send(.setBatchName(""))
+        #expect(!vm.canSave, "no name")
+        store.send(.setBatchName("Morning"))
         #expect(vm.canSave)
+        store.send(.setBatchColor(nil))
+        #expect(!vm.canSave, "no colour")
+    }
 
-        vm.selectedColor = nil
+    @Test("A recolour to nil clears the colour and makes the batch unsavable again")
+    func recolouringNilClears() {
+        let (vm, store, _) = makeContext()
+        store.send(.startNewBatch(on: Fixture.day(4)))
+        store.send(.setBatchName("Morning"))
+        store.send(.setBatchColor(.option1))
+        #expect(vm.defaultColor == .option1)
+
+        store.send(.setBatchColor(nil))
+
+        #expect(vm.defaultColor == nil)
         #expect(!vm.canSave)
     }
 
-    @Test("save returns false when invalid")
-    func saveIsInvalid() {
-        let vm = AddEditEventBatchViewModel()
+    @Test("The name binding dispatches; it does not assign")
+    func nameBindingDispatches() {
+        let (vm, store, _) = makeContext()
+        store.send(.startNewBatch(on: Fixture.day(4)))
 
-        #expect(vm.save() == false)
-        #expect(vm.eventBatch == nil)
+        vm.nameBinding.wrappedValue = "Evening"
+
+        #expect(store.state.assembly?.batch.name == "Evening", "the store moved, not a local field")
+        #expect(vm.name == "Evening", "and the projection follows it")
     }
 
-    @Test("save builds an event batch from current fields")
-    func saveBuildsBatch() {
-        let date = day(2026, 6, 1)
-        let storedEvent = EventDataSource(name: "Swim", date: date, color: "eventColorOption1")
-        let vm = AddEditEventBatchViewModel(events: [storedEvent])
-        vm.eventBatchId = 7
-        vm.eventBatchName = "Beach"
-        vm.selectedColor = .option2
-        vm.date = date
-        let timestampToUse = UUID()
-        vm.timestamp = timestampToUse
+    @Test("The colour binding dispatches a colour option")
+    func colorBindingDispatches() {
+        let (vm, store, _) = makeContext()
+        store.send(.startNewBatch(on: Fixture.day(4)))
 
-        #expect(vm.save() == true)
+        vm.colorBinding.wrappedValue = .option3
 
-        #expect(vm.eventBatch != nil)
-        #expect(vm.eventBatch?.id == 7)
-        #expect(vm.eventBatch?.name == "Beach")
-        #expect(vm.eventBatch?.colorName == PCColorOption.option2.colorName)
-        // Setting the batch color rewrites every event's color in the batch.
-        #expect(vm.eventBatch?.events == [storedEvent.withColor("eventColorOption2")])
-        #expect(vm.eventBatch?.date == date)
-        #expect(vm.eventBatch?.timestamp == timestampToUse)
-    }
-
-    @Test("defaultColor falls back to the first event color")
-    func defaultColorFallback() {
-        let vm = AddEditEventBatchViewModel(events: [
-            EventDataSource(name: "A", date: day(2026, 6, 1), color: PCColorOption.option3.colorName)
-        ])
-
+        #expect(store.state.assembly?.batch.colorName == "eventColorOption3")
         #expect(vm.defaultColor == .option3)
     }
 
-    @Test("toggleEvent adds and removes an event for the tapped day")
-    func toggleEvent() {
-        let date = day(2026, 6, 1)
-        let vm = AddEditEventBatchViewModel()
-        vm.eventBatchName = "Trip"
-        vm.selectedColor = .option2
+    @Test("A colourless batch's default colour is nil, not a guess")
+    func defaultColourIsNilWhenThereIsNothingToFallBackTo() {
+        // `recoloring(nil)` clears the batch *and* every event's colour, so there is
+        // nothing left to infer. Inventing a colour here would put a swatch on screen that
+        // contradicts the batch.
+        //
+        // The colour has to be cleared explicitly: a new batch now *arrives* coloured
+        // (§5.4), so a colourless batch is a state the user reaches rather than the one
+        // they start in.
+        let (vm, store, _) = makeContext()
+        store.send(.startNewBatch(on: Fixture.day(4)))
+        #expect(vm.defaultColor != nil, "precondition: a new batch arrives coloured")
+        store.send(.setBatchColor(nil))
 
-        vm.toggleEvent(on: date)
-
-        #expect(vm.eventsSelectionManager.events.count == 1)
-        #expect(vm.eventsSelectionManager.events.first?.name == "Trip")
-        #expect(vm.eventsSelectionManager.events.first?.color == PCColorOption.option2.colorName)
-        #expect(vm.daySelectionManager.selectedDays.isEmpty)
-
-        vm.toggleEvent(on: date)
-
-        #expect(vm.eventsSelectionManager.events.isEmpty)
+        #expect(vm.defaultColor == nil)
+        #expect(!vm.canSave, "and an uncoloured batch is not savable")
     }
 
-    @Test("recolorAllEvents applies the selected color to all events")
-    func recolorAllEvents() {
-        let date = day(2026, 6, 1)
-        let vm = AddEditEventBatchViewModel(events: [
-            EventDataSource(name: "A", date: date, color: "eventColorOption1")
-        ])
-        vm.selectedColor = .option4
+    @Test("Saving an unsavable batch writes nothing")
+    func saveIsGuarded() async {
+        let (vm, store, persistence) = makeContext()
+        store.send(.startNewBatch(on: Fixture.day(4)))
+        // The name is what has to go, since a new batch is otherwise already savable.
+        store.send(.setBatchName(""))
+        #expect(!vm.canSave, "precondition: the batch really is unsavable")
+        let writesBefore = await persistence.writes.count
 
-        vm.recolorAllEvents()
+        vm.save()
 
-        #expect(vm.eventsSelectionManager.events.allSatisfy { $0.color == PCColorOption.option4.colorName })
+        #expect(store.state.batches.isEmpty, "nothing was committed")
+        #expect(await persistence.writes.count == writesBefore, "and nothing was written")
     }
 
-    @Test("preferredTitle formats a single date")
-    func preferredTitleSingleDate() {
-        let vm = AddEditEventBatchViewModel()
-        vm.date = day(2026, 6, 1)
+    @Test("Saving a valid batch commits it to the registry")
+    func saveCommits() {
+        let (vm, store, _) = makeContext()
+        store.send(.startNewBatch(on: Fixture.day(4)))
+        store.send(.setBatchName("Morning"))
+        store.send(.setBatchColor(.option1))
+
+        vm.save()
+
+        #expect(store.state.batches.count == 1)
+        #expect(store.state.batches.first?.name == "Morning")
+        #expect(store.state.assembly == nil, "the assembly has left the line")
+    }
+
+    @Test("Titles describe the batch's day span")
+    func titles() {
+        let (vm, store, _) = makeContext()
+        store.send(.startNewBatch(on: Fixture.day(4)))
+        store.send(.toggleDay(Fixture.day(5)))
 
         #expect(vm.preferredTitle != nil)
-        #expect(vm.preferredTitle?.contains("2026") == true)
-        #expect(vm.preferredTitle?.contains(" - ") == false)
-    }
-
-    @Test("preferredTitle formats a range of dates")
-    func preferredTitleRange() {
-        let vm = AddEditEventBatchViewModel(events: [
-            EventDataSource(name: "A", date: day(2026, 6, 1), color: "eventColorOption1"),
-            EventDataSource(name: "B", date: day(2026, 6, 10), color: "eventColorOption1")
-        ])
-
-        #expect(vm.preferredTitle?.contains("2026") == true)
-        #expect(vm.preferredTitle?.contains(" - ") == true)
-    }
-
-    @Test("compactTitle is produced for a numeric date")
-    func compactTitle() {
-        let date = day(2026, 6, 1)
-        let vm = AddEditEventBatchViewModel(events: [
-            EventDataSource(name: "A", date: date, color: "eventColorOption1")
-        ])
-
         #expect(vm.compactTitle != nil)
-        #expect(vm.compactTitle?.isEmpty == false)
+        // Two days, so the preferred title is a range rather than one date.
+        #expect(vm.preferredTitle?.contains("-") == true, "\(vm.preferredTitle ?? "nil")")
     }
 
-    @Test("titles are nil without events or a date")
-    func titlesNilWithoutContent() {
-        let vm = AddEditEventBatchViewModel()
+    @Test("A single-day batch's title is a date, not a range")
+    func singleDayTitle() {
+        let (vm, store, _) = makeContext()
+        store.send(.startNewBatch(on: Fixture.day(4)))
 
-        #expect(vm.preferredTitle == nil)
-        #expect(vm.compactTitle == nil)
+        #expect(vm.preferredTitle?.contains("-") == false, "\(vm.preferredTitle ?? "nil")")
     }
 
-    @Test("prepare replaces the event list and rebuilds the calendar")
-    func prepareReplacesEvents() {
-        let newDate = day(2027, 6, 1)
-        let replacement = [EventDataSource(name: "B", date: newDate, color: "eventColorOption2")]
-        let vm = AddEditEventBatchViewModel(events: [
-            EventDataSource(name: "A", date: day(2026, 6, 1), color: "eventColorOption1")
-        ])
-
-        vm.prepare(with: replacement)
-
-        #expect(vm.eventsSelectionManager.events.map(\.name) == ["B"])
-        #expect(vm.eventsSelectionManager.events.first?.date == newDate)
-        #expect(vm.yearModel.months.count == 12)
-    }
-
-    @Test("reset clears editor state")
-    func resetClears() {
-        let vm = AddEditEventBatchViewModel(events: [
-            EventDataSource(name: "A", date: day(2026, 6, 1), color: "eventColorOption1")
-        ])
-        vm.eventBatchName = "X"
-        vm.selectedColor = .option1
-
-        vm.reset()
-
-        #expect(vm.eventBatchName == "")
-        #expect(vm.selectedColor == nil)
-        #expect(vm.date == nil)
-        #expect(vm.timestamp == nil)
-        #expect(vm.eventBatch == nil)
-        #expect(vm.daySelectionManager.selectedDays.isEmpty)
-        #expect(vm.yearModel.months.isEmpty)
+    @Test("The year model is the store's, not a copy")
+    func yearModelIsTheStores() {
+        let (vm, store, _) = makeContext()
+        #expect(vm.yearModel === store.yearModel)
     }
 }

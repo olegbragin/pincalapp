@@ -1,6 +1,6 @@
 //
 //  AddEditEventBatchView.swift
-//  PinCalApp
+//  SingleCalendarFeature
 //
 //  Created by Oleg Bragin on 02.07.2026.
 //
@@ -9,37 +9,35 @@ import SwiftUI
 import DSKit
 
 public struct AddEditEventBatchView: View {
-    @Bindable public var viewModel: AddEditEventBatchViewModel
+    @Environment(PCEventSelectionManager.self) private var store
 
     public static let saveButtonAccessibilityIdentifier = "batch-save-button"
-    
-    public init(viewModel: AddEditEventBatchViewModel) {
-        self.viewModel = viewModel
-    }
-    
+
+    public init() {}
+
     public var body: some View {
+        let viewModel = AddEditEventBatchViewModel(store: store)
+
         VStack(alignment: .leading, spacing: 24) {
-            // Поле ввода имени с выбором цвета
             VStack(alignment: .leading, spacing: 8) {
                 Text("Имя")
                     .font(.headline)
                     .fontWeight(.medium)
-                
+
                 HStack(spacing: 12) {
-                    PCTextField(title: "Введите имя", text: $viewModel.eventBatchName, identifier: "batch-name-field")
-                    
-                    PCColorPickerView(selectedColor: $viewModel.selectedColor, defaultColor: viewModel.defaultColor)
+                    PCTextField(title: "Введите имя", text: viewModel.nameBinding, identifier: "batch-name-field")
+
+                    PCColorPickerView(selectedColor: viewModel.colorBinding, defaultColor: viewModel.defaultColor)
                 }
                 .padding(.horizontal, 4)
             }
-            
-            // Events
+
             VStack(alignment: .leading, spacing: 8) {
                 Text("События")
                     .font(.headline)
                     .fontWeight(.medium)
-                
-                AddEditEventListView(manager: viewModel.eventsSelectionManager)
+
+                AddEditEventListView()
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
@@ -49,7 +47,7 @@ public struct AddEditEventBatchView: View {
         .toolbar {
             ToolbarItem(placement: .pcTrailing) {
                 PCButton {
-                    _ = viewModel.save()
+                    viewModel.save()
                 } label: {
                     Image(systemName: "checkmark")
                         .accessibilityLabel("Save")
@@ -62,6 +60,6 @@ public struct AddEditEventBatchView: View {
 }
 
 #Preview {
-    AddEditEventBatchView(viewModel: .init(events: [.init(name: "1", date: Date(), color: "eventColorOption1")]))
+    AddEditEventBatchView()
         .environment(PCKeyboardState())
 }

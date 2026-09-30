@@ -23,7 +23,23 @@ public enum PCEventSelectionAction: Equatable {
     case ensureAssemblyStarted
     case dayTappedInCalendar(Date)
     case startNewBatch(on: Date)
-    case openBatch(pendingID: UUID)
+    /// "Open this batch for editing."
+    ///
+    /// Carries the row's `mergeKey`, not its `pendingID`. `pendingID` is *session*
+    /// identity and is not durable: a DTO carries none, so every row is re-minted with a
+    /// fresh `UUID` on every load, and `SingleCalendarModel` re-syncs on every calendar
+    /// write. Matching on it meant that a card tapped after any intervening reload named
+    /// a row that no longer existed — the lookup failed, the action was rejected, and the
+    /// tap did nothing at all, with no error anywhere to explain it.
+    ///
+    /// `mergeKey` is `.persisted(id)` for a committed row, and a reload cannot change it.
+    /// It falls back to `.pending(_)` only for a batch that has never been written, which
+    /// is the one case where there is no durable identity to offer.
+    ///
+    /// `openEvent` and `removeEvent` still match on `pendingID`, and that is right: their
+    /// targets live inside the *staged assembly*, which is one value in state and is never
+    /// rebuilt from a DTO, so their ids are stable for as long as the edit lasts.
+    case openBatch(id: EventBatchKey)
     /// "Turn this multi-select session into a batch." Needs a colour to build the batch
     /// with, so the reducer declines while `multiSelectColor` is `nil`. It was deferred to
     /// Stage 7 along with the colour itself.

@@ -8,6 +8,7 @@
 import Foundation
 import Testing
 import CoreDomain
+import DSKit
 @testable import SingleCalendarFeature
 
 /// Records every write, and how long it held the port for.
@@ -63,6 +64,27 @@ actor RecordingCalendarPersisting: CalendarPersisting {
 }
 
 @MainActor
+extension RecordingCalendarPersisting {
+
+    /// Waits until `expected` writes have landed, or the deadline passes.
+    ///
+    /// A fixed sleep is the wrong tool here and was a real flake: the write chain is
+    /// drained by the scheduler, so how long that takes depends on the machine, and a
+    /// busy one can still be mid-chain when a 500 ms sleep expires — which reads as
+    /// "writes were lost" rather than "the test gave up waiting". Polling for the
+    /// condition distinguishes those two.
+    func waitForWrites(_ expected: Int, timeout: Duration = .seconds(5)) async -> [Int] {
+        let deadline = ContinuousClock.now + timeout
+        while ContinuousClock.now < deadline {
+            let columns = await writtenColumns
+            if columns.count >= expected { return columns }
+            try? await Task.sleep(for: .milliseconds(10))
+        }
+        return await writtenColumns
+    }
+}
+
+@MainActor
 @Suite("PCEventSelectionManager")
 struct PCEventSelectionManagerTests {
 
@@ -107,6 +129,7 @@ struct PCEventSelectionManagerTests {
         let store = PCEventSelectionManager(
             initialState: PCEventSelectionState(dataProvider: PCCalendarDataProvider()),
             persistence: persistence,
+            daySelectionManager: PCCalendarDaySelectionManager(),
             columnCountResolver: columnCountResolver
         )
         store.send(.syncCalendar(calendarID: calendarID, batches: batches))
@@ -134,8 +157,14 @@ struct PCEventSelectionManagerTests {
         let store = makeStore(persistence: persistence)
 
         let before = store.state
-        // An unnamed batch cannot be committed, so the reducer must decline.
+        // A batch with no name cannot be committed, so the reducer must decline. The name
+        // is cleared explicitly: a new batch arrives named (§5.4), so "unnamed" is now a
+        // state the user reaches rather than the one they start in. What is under test is
+        // that a declined action is inert, and that has to be set up deliberately.
         store.send(.startNewBatch(on: day(4)))
+        store.send(.setBatchName(""))
+        let staged = store.state
+        #expect(!staged.canSave, "precondition: the batch really is unsavable")
         store.send(.commitTapped)
         let afterCommit = store.state
 
@@ -193,12 +222,9 @@ struct PCEventSelectionManagerTests {
             store.send(.setNumberOfColumns(columns))
         }
 
-        // The chain drains on its own, but each write holds the port for `delay`, so this
-        // has to wait on the clock rather than on scheduling turns.
-        try? await Task.sleep(for: .milliseconds(500))
+        let columns = await persistence.waitForWrites(4)
         let recorded = await persistence.log
         let overlap = await persistence.maximumOverlap
-        let columns = await persistence.writtenColumns
 
         #expect(overlap == 1, "writes overlapped: \(recorded)")
         #expect(columns == [1, 2, 3, 4], "and they landed out of order")
@@ -210,12 +236,15 @@ struct PCEventSelectionManagerTests {
         let persistence = RecordingCalendarPersisting()
         let store = PCEventSelectionManager(
             initialState: PCEventSelectionState(dataProvider: PCCalendarDataProvider()),
-            persistence: persistence
+            persistence: persistence,
+            daySelectionManager: PCCalendarDaySelectionManager()
         )
 
         // No `syncCalendar` first, so `calendarID` is still 0.
         store.send(.setNumberOfColumns(2))
-        try? await Task.sleep(for: .milliseconds(200))
+        // Nothing should arrive; give the chain the same chance to be wrong as the
+        // ordering test does before concluding it stayed quiet.
+        _ = await persistence.waitForWrites(1, timeout: .milliseconds(300))
         let recorded = await persistence.log
 
         #expect(recorded.isEmpty, "there is no calendar 0 to write to")
@@ -297,6 +326,40 @@ struct PCEventSelectionManagerTests {
         #expect(
             imports.contains("import CoreDomain") && imports.contains("import DSKit"),
             "the port and the render target are both named: \(imports)"
+        )
+    }
+
+    /// Stage 9's gate: the package must be off `CorePersistence` entirely.
+    ///
+    /// `SingleCalendarModel` held the last one, for the calendar's metadata change feed.
+    /// That feed is not batch state, so it never belonged on `CalendarPersisting`, and it
+    /// is not storage, so the feature should not name the storage vocabulary to get it —
+    /// `CalendarManaging` carries it. The test is over *every* source file, not just the
+    /// one that changed: an import that creeps back into any file in the package is the
+    /// same regression, and a per-file check would only catch the one someone thought of.
+    @Test("No file in the package imports CorePersistence")
+    func packageDoesNotImportCorePersistence() throws {
+        let packageRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent() // SingleCalendarFeatureTests
+            .deletingLastPathComponent() // Tests
+            .deletingLastPathComponent() // SingleCalendarFeature (the package root)
+        let sources = packageRoot.appendingPathComponent("Sources/SingleCalendarFeature")
+
+        let offenders = try FileManager.default
+            .enumerator(at: sources, includingPropertiesForKeys: nil)?
+            .compactMap { $0 as? URL }
+            .filter { $0.pathExtension == "swift" }
+            .compactMap { url -> String? in
+                let contents = try String(contentsOf: url, encoding: .utf8)
+                guard contents.split(separator: "\n").contains("import CorePersistence") else {
+                    return nil
+                }
+                return url.lastPathComponent
+            } ?? []
+
+        #expect(
+            offenders.isEmpty,
+            "these files still name the storage layer: \(offenders.sorted())"
         )
     }
 }

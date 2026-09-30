@@ -7,46 +7,60 @@
 
 import SwiftUI
 import AppNavigation
-import CorePersistence
 import DSKit
 import CoreDomain
 
+/// The batches on one day.
+///
+/// Takes no parameters: which day is `state.day`, and the batches on it are
+/// `state.dayBatches`. It used to be handed both, plus a stored copy of the answer.
 public struct AddEditEventBatchListView: View {
     @Environment(RootNavigation.self) var navigation
     @Environment(\.pcVibe) private var vibe
+    @Environment(PCEventSelectionManager.self) private var store
 
-    @State private var viewModel: AddEditEventBatchListViewModel
+    /// Held, not built per render.
+    ///
+    /// This is the one view model that stores anything: `pendingDeletion` is view-scoped
+    /// state, and a fresh instance per `body` evaluation throws it away. Building it
+    /// inline looks harmless because the other three view models are structs holding no
+    /// state — but here the delete would set `pendingDeletion` on an object SwiftUI then
+    /// discards, `onChange` would never fire, and the batch would silently survive.
+    @State private var viewModel: AddEditEventBatchListViewModel?
 
-    private let calendarId: Int64
-    private let selectedDay: Date?
+    private let calendarID: Int64
 
-    public init(
-        eventsSelectionManager: PCEventsSelectionManager,
-        daySelectionManager: PCCalendarDaySelectionManager,
-        calendarId: Int64,
-        selectedDay: Date?
-    ) {
-        _viewModel = State(initialValue: AddEditEventBatchListViewModel(
-            eventsSelectionManager: eventsSelectionManager,
-            daySelectionManager: daySelectionManager
-        ))
-        self.calendarId = calendarId
-        self.selectedDay = selectedDay
+    public init(calendarID: Int64) {
+        self.calendarID = calendarID
     }
 
     public var body: some View {
-        // A ScrollView + LazyVStack (rather than a List) so the cards animate
-        // their collapse/expand height smoothly; List snaps its row heights and
-        // would make the toggle jump.
+        Group {
+            if let viewModel {
+                content(viewModel)
+            } else {
+                ProgressView()
+            }
+        }
+        .task {
+            // The store comes from the environment, so it is not available in `init`.
+            if viewModel == nil {
+                viewModel = AddEditEventBatchListViewModel(store: store)
+            }
+        }
+    }
+
+    // A ScrollView + LazyVStack (rather than a List) so the cards animate
+    // their collapse/expand height smoothly; List snaps its row heights and
+    // would make the toggle jump.
+    private func content(_ viewModel: AddEditEventBatchListViewModel) -> some View {
         ScrollView {
             LazyVStack(spacing: 12) {
-                ForEach(viewModel.eventBatches, id: \.self) { eventBatch in
+                ForEach(viewModel.eventBatches) { eventBatch in
                     HStack(spacing: 12) {
                         BatchEventCard(
                             eventBatch: eventBatch,
-                            onOpen: {
-                                navigation.goTo(AppRoute.batchEditor(.existingBatch(eventBatch.id)))
-                            }
+                            onOpen: { viewModel.open(eventBatch) }
                         )
 
                         Button {
@@ -75,7 +89,7 @@ public struct AddEditEventBatchListView: View {
             }
             ToolbarItem(placement: .pcTrailing) {
                 Button {
-                    startNewBatch()
+                    viewModel.startNewBatch(on: viewModel.selectedDay ?? Date())
                 } label: {
                     Image(systemName: "plus")
                 }
@@ -84,29 +98,17 @@ public struct AddEditEventBatchListView: View {
             }
         }
         .background(vibe.color(for: .backgroundMain))
-        .onAppear {
-            viewModel.prepare(with: viewModel.eventsSelectionManager.batches(for: selectedDay ?? Date()), and: selectedDay)
-        }
-        .onChange(of: viewModel.eventBatchesToDelete) { _, newValue in
-            guard !newValue.isEmpty else { return }
-            viewModel.deleteBatches(newValue)
-            viewModel.prepare(with: viewModel.eventsSelectionManager.batches(for: selectedDay ?? Date()), and: selectedDay)
+        .onChange(of: viewModel.pendingDeletion) { _, staged in
+            guard !staged.isEmpty else { return }
+            viewModel.confirmDelete()
+            // No re-priming: `eventBatches` is computed from the store, so a deletion is
+            // already reflected in the next render.
             if viewModel.eventBatches.isEmpty {
-                navigation.goTo(.calendar(calendarId, toRoot: true))
+                navigation.goTo(.calendar(calendarID, toRoot: true))
             }
         }
     }
 
-    ///// Opens the batch editor for a brand-new batch anchored on the tapped day.
-    ///// It stages a placeholder event (mirroring the day-tap path from the single
-    ///// calendar view) so the editor has a starting event and the day preselected.
-    private func startNewBatch() {
-        let day = selectedDay ?? Date()
-        viewModel.eventsSelectionManager.prepare(with: [
-            EventDataSource(name: "", date: day, color: PCColorOption.option1.colorName)
-        ])
-        navigation.goTo(.batchEditor(.newDay(day)))
-    }
 }
 
 /// A single batch card in the list. It shows the batch name and the events it
@@ -114,7 +116,7 @@ public struct AddEditEventBatchListView: View {
 /// `collapsedMaxHeight` when collapsed; if its content overflows that limit a
 /// "Show more"/"Show less" toggle is shown so the user can expand it to full height.
 private struct BatchEventCard: View {
-    let eventBatch: EventBatchDataSource
+    let eventBatch: CalendarEventBatch
     let onOpen: () -> Void
 
     @Environment(\.pcVibe) private var vibe
@@ -187,7 +189,7 @@ private struct BatchEventCard: View {
     }
 
     private var eventRows: some View {
-        ForEach(eventBatch.events, id: \.self) { event in
+        ForEach(eventBatch.events) { event in
             HStack(spacing: 8) {
                 Circle()
                     .fill(eventColor(event))
@@ -228,13 +230,13 @@ private struct BatchEventCard: View {
     }
 
     private var batchColor: Color {
-        let colorNameToUse = eventBatch.colorName.isEmpty ? eventBatch.events.first?.color : eventBatch.colorName
+        let colorNameToUse = eventBatch.colorName.isEmpty ? eventBatch.events.first?.colorName : eventBatch.colorName
         guard let colorNameToUse, !colorNameToUse.isEmpty else { return .clear }
         return vibe.eventColor(named: colorNameToUse)
     }
 
-    private func eventColor(_ event: EventDataSource) -> Color {
-        vibe.eventColor(named: event.color)
+    private func eventColor(_ event: CalendarEvent) -> Color {
+        vibe.eventColor(named: event.colorName)
     }
 }
 
@@ -246,41 +248,8 @@ private struct BatchCardHeightKey: PreferenceKey {
 }
 
 #Preview {
-    let day = Calendar.autoupdatingCurrent.startOfDay(for: Date())
-    let manager = PCEventsSelectionManager()
-    manager.batches = [
-        EventBatchDataSource(
-            id: 1,
-            name: "Morning routine",
-            colorName: "eventColorOption1",
-            events: (0..<8).map { index in
-                EventDataSource(
-                    id: Int64(index + 1),
-                    name: "Task \(index + 1)",
-                    date: day.addingTimeInterval(TimeInterval(index) * 3600),
-                    color: "eventColorOption1"
-                )
-            },
-            date: day
-        ),
-        EventBatchDataSource(
-            id: 2,
-            name: "Evening",
-            colorName: "eventColorOption2",
-            events: [
-                EventDataSource(name: "Dinner", date: day.addingTimeInterval(19 * 3600), color: "eventColorOption2"),
-                EventDataSource(name: "Movie", date: day.addingTimeInterval(21 * 3600), color: "eventColorOption2"),
-            ],
-            date: day
-        ),
-    ]
-    return NavigationStack {
-        AddEditEventBatchListView(
-            eventsSelectionManager: manager,
-            daySelectionManager: manager.daySelectionManager,
-            calendarId: 1,
-            selectedDay: day
-        )
+    NavigationStack {
+        AddEditEventBatchListView(calendarID: 1)
     }
     .environment(RootNavigation())
 }

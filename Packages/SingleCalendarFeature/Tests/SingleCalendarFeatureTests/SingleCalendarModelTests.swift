@@ -1,113 +1,60 @@
+//
+//  SingleCalendarModelTests.swift
+//  SingleCalendarFeatureTests
+//
+//  Created by Oleg Bragin on 04.02.2026.
+//
+
 import Foundation
 import Testing
-import CorePersistence
 import DSKit
 import CoreDomain
-import AppNavigation
 @testable import SingleCalendarFeature
 
-final class InMemoryCalendarRepository: CalendarRepository, @unchecked Sendable {
-    private var calendars: [Int64: CalendarDataSource] = [:]
-    private var nextID: Int64 = 1
-
-    init(seed: [CalendarDataSource] = []) {
-        for calendar in seed {
-            calendars[calendar.id] = calendar
-            if calendar.id >= nextID {
-                nextID = calendar.id + 1
-            }
-        }
-    }
-
-    func getCalendar(id: Int64) async throws -> CalendarDataSource? {
-        calendars[id]
-    }
-
-    @discardableResult
-    func saveCalendar(_ calendar: CalendarDataSource) async throws -> Int64 {
-        var stored = calendar
-        if stored.id == 0 {
-            stored.id = nextID
-            nextID += 1
-        }
-        calendars[stored.id] = stored
-        return stored.id
-    }
-
-    @discardableResult
-    func deleteCalendar(_ calendarId: Int64) async throws -> Int64 {
-        calendars.removeValue(forKey: calendarId)
-        return calendarId
-    }
-
-    func getAllCalendars() async throws -> [CalendarDataSource] {
-        calendars.values.sorted { $0.id < $1.id }
-    }
-
-    func getActiveCalendars() async throws -> [CalendarDataSource] {
-        calendars.values.filter { !$0.isArchived }.sorted { $0.id < $1.id }
-    }
-
-    func getArchivedCalendars() async throws -> [CalendarDataSource] {
-        calendars.values.filter { $0.isArchived }.sorted { $0.id < $1.id }
-    }
-
-    func archiveCalendar(_ calendarId: Int64) async throws {
-        guard var calendar = calendars[calendarId] else { return }
-        calendar.isArchived = true
-        calendars[calendarId] = calendar
-    }
-
-    func restoreCalendar(_ calendarId: Int64) async throws {
-        guard var calendar = calendars[calendarId] else { return }
-        calendar.isArchived = false
-        calendars[calendarId] = calendar
-    }
-
-    func removeEvents(_ eventIds: [Int64], calendarId: Int64) async throws {}
-
-    func renameCalendar(_ id: Int64, to name: String) {
-        guard var calendar = calendars[id] else { return }
-        calendar.name = name
-        calendars[id] = calendar
-    }
+/// The model, the store it dispatches to, and the management port that feeds it metadata.
+///
+/// Built over two domain fakes and no `CorePersistence` at all, which is the point: the
+/// model reached a `CalendarCache` for exactly one thing — its metadata change feed — and
+/// dropping that removed the package's last dependency on the storage vocabulary.
+@MainActor
+private func makeFixture(
+    calendar: PinCalendar
+) -> (
+    InMemoryCalendarPersisting,
+    InMemoryCalendarManaging,
+    PCEventSelectionManager,
+    SingleCalendarModel
+) {
+    let persistence = InMemoryCalendarPersisting(calendar: calendar)
+    let managing = InMemoryCalendarManaging(calendar: calendar)
+    let store = PCEventSelectionManager(
+        initialState: PCEventSelectionState(dataProvider: PCCalendarDataProvider()),
+        persistence: persistence,
+        daySelectionManager: PCCalendarDaySelectionManager()
+    )
+    let model = SingleCalendarModel(
+        calendarid: calendar.id,
+        managing: managing,
+        persistence: persistence,
+        store: store
+    )
+    return (persistence, managing, store, model)
 }
 
 @MainActor
 private func makeCalendar(
     id: Int64 = 42,
-    name: String = "Test Calendar",
+    name: String = "Calendar",
     year: Int = 2026,
-    columns: Int = 3,
-    isArchived: Bool = false,
-    eventBatches: [EventBatchDataSource] = []
-) -> CalendarDataSource {
-    CalendarDataSource(
+    archived: Bool = false
+) -> PinCalendar {
+    PinCalendar(
         id: id,
         name: name,
         year: year,
-        numberOfColumns: columns,
-        isArchived: isArchived,
-        eventBatches: eventBatches
+        numberOfColumns: 3,
+        isArchived: archived
     )
-}
-
-@MainActor
-private func day(_ year: Int, _ month: Int, _ dayOfMonth: Int) -> Date {
-    Calendar.autoupdatingCurrent.date(from: DateComponents(year: year, month: month, day: dayOfMonth))!
-}
-
-@MainActor
-private func event(_ name: String, on date: Date, color: String = "eventColorOption1") -> EventDataSource {
-    EventDataSource(name: name, date: date, color: color)
-}
-
-@MainActor
-private func makeFixture(calendar: CalendarDataSource) -> (InMemoryCalendarRepository, CalendarCache, SingleCalendarModel) {
-    let repository = InMemoryCalendarRepository(seed: [calendar])
-    let cache = CalendarCache(repository: repository)
-    let model = SingleCalendarModel(calendarid: calendar.id, cache: cache)
-    return (repository, cache, model)
 }
 
 @MainActor
@@ -121,360 +68,253 @@ private func waitUntil(
     }
 }
 
+/// The main calendar panel.
+///
+/// This suite is now deliberately narrow. It used to test `route(for:)`,
+/// `prepareAddEditEventBatchViewModel`, `commitPendingBatch`, `deleteBatches`,
+/// `cancelMultipleChanges` and `save(for:)` — all of which moved into the reducer and the
+/// store, where `PCEventSelectionReducerTests` and `PCEventSelectionManagerTests` cover
+/// them directly and without a database in the way. What is left here is what this object
+/// still owns: loading a calendar, projecting markers onto the main matrix, and dispatching.
 @MainActor
 @Suite("SingleCalendarModel Tests")
 struct SingleCalendarModelTests {
 
-    @MainActor
-    private func makeBatchEditor(for model: SingleCalendarModel) -> AddEditEventBatchViewModel {
-        model.makeBatchEditor()
-    }
-
     @Test("Initial state is empty with no content")
-    func initialState() {
-        let (_, _, model) = makeFixture(calendar: makeCalendar())
-
+    func initialStateIsEmpty() {
+        let (_, _, _, model) = makeFixture(calendar: makeCalendar())
         #expect(model.state == .empty)
-        #expect(model.label == "")
-        #expect(model.calendarid == 42)
-        #expect(model.isArchived == false)
-        // The year model is built by the factory for the current year even
-        // before content is fetched; the empty state refers to content only.
-        #expect(model.yearModel.months.count == 12)
-        #expect(model.yearModel.year == Calendar.current.component(.year, from: Date()))
+        #expect(model.label.isEmpty)
     }
 
-    @Test("fetch loads calendar and builds the year model")
-    func fetchPopulatesContent() async throws {
-        let (_, _, model) = makeFixture(calendar: makeCalendar(name: "My Calendar", year: 2026))
-
+    @Test("fetch loads the calendar and builds the year model")
+    func fetchBuildsYearModel() async {
+        let (_, _, _, model) = makeFixture(calendar: makeCalendar(year: 2026))
         await model.fetch(force: true)
 
         #expect(model.state == .content)
-        #expect(model.label == "My Calendar")
-        #expect(model.isArchived == false)
-        #expect(model.yearModel.months.count == 12)
-        #expect(model.yearModel.numberOfCurrentMonth > 0)
+        #expect(model.label == "Calendar")
+        #expect(model.yearModel.year == 2026)
+        #expect(!model.yearModel.months.isEmpty)
     }
 
     @Test("fetch without force does not reload existing content")
-    func fetchUsesCachedContent() async throws {
-        let (repository, _, model) = makeFixture(calendar: makeCalendar(name: "Original", year: 2026))
+    func fetchWithoutForceIsSkipped() async {
+        let (_, _, _, model) = makeFixture(calendar: makeCalendar(name: "Original"))
         await model.fetch(force: true)
         #expect(model.label == "Original")
-
-        // A change made directly to the repository bypasses the cache, which is
-        // the single source of truth. fetch therefore does not observe it.
-        repository.renameCalendar(42, to: "Renamed")
 
         await model.fetch()
         #expect(model.label == "Original")
-
-        await model.fetch(force: true)
-        #expect(model.label == "Original")
     }
 
-    @Test("fetch reloads from the cache after a cache update")
-    func fetchReloadsFromCacheAfterUpdate() async throws {
-        let (_, cache, model) = makeFixture(calendar: makeCalendar(name: "Original", year: 2026))
+    @Test("fetch reloads after a metadata change is published")
+    func fetchReloadsFromManaging() async {
+        let (persistence, managing, _, model) = makeFixture(calendar: makeCalendar(name: "Original"))
         await model.fetch(force: true)
         #expect(model.label == "Original")
 
-        let renamed = CalendarDataSource(id: 42, name: "Renamed", year: 2026, numberOfColumns: 3)
-        try await cache.updateCalendar(renamed)
+        // The feed, not a read. This is the path that needed the cache: a push stream has
+        // no replay, so a change published before the model's `for await` is live is simply
+        // dropped. `publish` applies the write to the persisting fake *and* waits for the
+        // subscriber, so the announcement and the data cannot disagree.
+        await managing.publish(.changed(makeCalendar(name: "Renamed")), onto: persistence)
+
         await waitUntil { model.label == "Renamed" }
+
         #expect(model.label == "Renamed")
     }
 
-    @Test("fetch marks state empty when calendar is missing")
-    func fetchMissingCalendar() async throws {
-        let repository = InMemoryCalendarRepository()
-        let cache = CalendarCache(repository: repository)
-        let model = SingleCalendarModel(calendarid: 99, cache: cache)
-
+    @Test("A metadata change about a different calendar is ignored")
+    func ignoresOtherCalendarsChanges() async {
+        let (_, managing, _, model) = makeFixture(calendar: makeCalendar(id: 42, name: "Mine"))
         await model.fetch(force: true)
 
-        #expect(model.state == .empty)
-    }
-
-    @Test("hasEvents reflects batch events and batch-level dates")
-    func hasEventsOnDate() async throws {
-        let eventDay = day(2026, 6, 1)
-        let batch = EventBatchDataSource(
-            id: 7,
-            name: "Vacation",
-            colorName: "eventColorOption2",
-            events: [event("Trip", on: eventDay)]
+        await managing.publish(
+            .changed(makeCalendar(id: 7, name: "Theirs")),
+            onto: InMemoryCalendarPersisting(calendar: makeCalendar(id: 7, name: "Theirs"))
         )
-        let (_, _, model) = makeFixture(calendar: makeCalendar(eventBatches: [batch]))
-        await model.fetch(force: true)
+        // Long enough for a wrongly-delivered change to have arrived and re-fetched.
+        try? await Task.sleep(for: .milliseconds(300))
 
-        #expect(model.hasEvents(on: eventDay))
-        #expect(!model.hasEvents(on: day(2026, 6, 2)))
-
-        let dateBatch = EventBatchDataSource(id: 8, name: "Whole day", date: day(2026, 6, 3))
-        let (_, _, model2) = makeFixture(calendar: makeCalendar(id: 43, eventBatches: [dateBatch]))
-        await model2.fetch(force: true)
-
-        #expect(model2.hasEvents(on: day(2026, 6, 3)))
+        #expect(model.label == "Mine", "a change to another calendar must not rename this one")
     }
 
-    @Test("route returns nil without a selected day")
-    func routeNilWithoutSelection() {
-        let (_, _, model) = makeFixture(calendar: makeCalendar())
-
-        #expect(model.route(for: []) == nil)
-    }
-
-    @Test("route returns nil for an archived calendar")
-    func routeNilWhenArchived() async throws {
-        let (_, _, model) = makeFixture(calendar: makeCalendar(isArchived: true))
-        await model.fetch(force: true)
-
-        #expect(model.route(for: [day(2026, 6, 1)]) == nil)
-    }
-
-    @Test("route opens day batches when the selected day has events")
-    func routeToDayBatches() async throws {
-        let eventDay = day(2026, 6, 1)
-        let batch = EventBatchDataSource(id: 1, name: "Events", events: [event("A", on: eventDay)])
-        let (_, _, model) = makeFixture(calendar: makeCalendar(eventBatches: [batch]))
-        await model.fetch(force: true)
-
-        let route = model.route(for: [eventDay])
-
-        #expect(route == .dayBatches(eventDay))
-    }
-
-    @Test("route opens batch editor for a new day without events")
-    func routeToBatchEditor() async throws {
-        let (_, _, model) = makeFixture(calendar: makeCalendar())
-        await model.fetch(force: true)
-
-        let newDay = day(2026, 6, 1)
-        let route = model.route(for: [newDay])
-
-        #expect(route == .batchEditor(.newDay(newDay)))
-    }
-
-    @Test("route in multiple mode with a color toggles a tinted event and returns nil")
-    func routeMultipleModeTogglesEvent() async throws {
-        let someDay = day(2026, 6, 1)
-        let (_, _, model) = makeFixture(calendar: makeCalendar())
-        await model.fetch(force: true)
-
-        model.daySelectionManager.selectionMode = .multiple
-        model.selectedColor = .option1
-
-        #expect(model.route(for: [someDay]) == nil)
-        #expect(model.isColorPickerDisabled == true)
-        #expect(model.selectedEvents.isEmpty)
-
-        _ = model.route(for: [someDay])
-
-        #expect(model.isColorPickerDisabled == false)
-
-        model.cancelMultipleChanges()
-        #expect(model.isColorPickerDisabled == false)
-    }
-
-    @Test("color picker becomes disabled after adding an event in multiple mode")
-    func colorPickerDisabledInMultipleMode() async throws {
-        let someDay = day(2026, 6, 1)
-        let (_, _, model) = makeFixture(calendar: makeCalendar())
-        await model.fetch(force: true)
-
-        #expect(model.isColorPickerDisabled == false)
-
-        model.daySelectionManager.selectionMode = .multiple
-        model.selectedColor = .option1
-        _ = model.route(for: [someDay])
-
-        #expect(model.isColorPickerDisabled == true)
-
-        model.cancelMultipleChanges()
-        #expect(model.isColorPickerDisabled == false)
-    }
-
-    @Test("prepareAddEditEventBatchViewModel seeds the editor state")
-    func prepareAddEditEventBatchViewModelForDate() async throws {
-        let someDay = day(2026, 6, 1)
-        let (_, _, model) = makeFixture(calendar: makeCalendar())
-        await model.fetch(force: true)
-
-        model.prepareNewBatchEvents(on: someDay)
-        let batchModel = makeBatchEditor(for: model)
-        batchModel.load(nil, selectedDay: someDay)
-        #expect(batchModel.eventBatchId == 0)
-        #expect(batchModel.eventBatchName == "")
-        #expect(batchModel.selectedColor == .option1)
-        #expect(batchModel.date == someDay)
-        #expect(batchModel.eventsSelectionManager.events.count == 1)
-        #expect(batchModel.eventsSelectionManager.events.first?.date == someDay)
-    }
-
-    @Test("commitPendingBatch appends a brand-new batch")
-    func commitPendingBatchAppendsNew() async throws {
-        let someDay = day(2026, 6, 1)
-        let (_, _, model) = makeFixture(calendar: makeCalendar())
-        await model.fetch(force: true)
-        #expect(!model.hasEvents(on: someDay))
-
-        model.prepareNewBatchEvents(on: someDay)
-        let batchModel = makeBatchEditor(for: model)
-        batchModel.load(nil, selectedDay: someDay)
-        batchModel.eventBatchName = "Summer"
-        batchModel.selectedColor = .option1
-        batchModel.eventsSelectionManager.addEvent(event("A", on: someDay))
-        #expect(batchModel.save())
-
-        model.commitPendingBatch(batchModel.eventBatch)
-
-        #expect(model.hasEvents(on: someDay))
-    }
-
-    @Test("commitPendingBatch replaces an existing persisted batch")
-    func commitPendingBatchReplacesExisting() async throws {
-        let day1 = day(2026, 6, 1)
-        let day2 = day(2026, 6, 2)
-        let original = EventBatchDataSource(
-            id: 11,
-            name: "Old",
-            colorName: "eventColorOption2",
-            events: [event("A", on: day1)]
-        )
-        let (_, _, model) = makeFixture(calendar: makeCalendar(eventBatches: [original]))
-        await model.fetch(force: true)
-        #expect(model.hasEvents(on: day1))
-
-        let batchModel = makeBatchEditor(for: model)
-        batchModel.load(original)
-        batchModel.eventsSelectionManager.removeEvent(on: day1)
-        batchModel.eventsSelectionManager.addEvent(event("B", on: day2))
-        #expect(batchModel.save())
-
-        model.commitPendingBatch(batchModel.eventBatch)
-
-        #expect(!model.hasEvents(on: day1))
-        #expect(model.hasEvents(on: day2))
-    }
-
-    @Test("commitPendingBatch removes a persisted batch whose events were emptied")
-    func commitPendingBatchRemovesEmpty() async throws {
-        let someDay = day(2026, 6, 1)
-        let original = EventBatchDataSource(
-            id: 11,
-            name: "Old",
-            colorName: "eventColorOption2",
-            events: [event("A", on: someDay)]
-        )
-        let (_, _, model) = makeFixture(calendar: makeCalendar(eventBatches: [original]))
-        await model.fetch(force: true)
-        #expect(model.hasEvents(on: someDay))
-
-        let batchModel = makeBatchEditor(for: model)
-        batchModel.load(original)
-        batchModel.eventsSelectionManager.removeEvent(on: someDay)
-        #expect(batchModel.save())
-
-        model.commitPendingBatch(batchModel.eventBatch)
-
-        #expect(!model.hasEvents(on: someDay))
-    }
-
-    @Test("deleteBatches removes the given batches and persists")
-    func deleteBatchesRemoves() async throws {
-        let day1 = day(2026, 6, 1)
-        let day2 = day(2026, 6, 2)
-        let batch1 = EventBatchDataSource(id: 1, name: "One", events: [event("A", on: day1)])
-        let batch2 = EventBatchDataSource(id: 2, name: "Two", events: [event("B", on: day2)])
-        let (repository, _, model) = makeFixture(calendar: makeCalendar(eventBatches: [batch1, batch2]))
-        await model.fetch(force: true)
-
-        model.deleteBatches([batch1], for: 42)
-
-        #expect(!model.hasEvents(on: day1))
-        #expect(model.hasEvents(on: day2))
-
-        await waitUntil {
-            let calendar = try? await repository.getCalendar(id: 42)
-            return calendar?.eventBatches.allSatisfy { $0.id != 1 } == true
-        }
-
-        let persisted = try? await repository.getCalendar(id: 42)
-        #expect(persisted?.eventBatches.contains { $0.id == 2 } == true)
-        #expect(persisted?.eventBatches.allSatisfy { $0.id != 1 } == true)
-    }
-
-    @Test("reset clears loaded content")
-    func resetClearsContent() async throws {
-        let (_, _, model) = makeFixture(calendar: makeCalendar(name: "My Calendar"))
+    @Test("A removed calendar empties the panel rather than leaving a stale one")
+    func removedCalendarGoesEmpty() async {
+        let (persistence, managing, _, model) = makeFixture(calendar: makeCalendar(name: "Doomed"))
         await model.fetch(force: true)
         #expect(model.state == .content)
 
-        model.reset()
+        await managing.publish(.removed(makeCalendar(name: "Doomed")), onto: persistence)
 
+        await waitUntil { model.state == .empty }
         #expect(model.state == .empty)
-        #expect(model.label == "")
     }
 
-    @Test("cancelMultipleChanges reverts multi-selection edits")
-    func cancelMultipleChangesReverts() async throws {
-        let someDay = day(2026, 6, 1)
-        let (_, _, model) = makeFixture(calendar: makeCalendar())
+    @Test("fetch marks the state empty when the calendar is missing")
+    func fetchMissingCalendar() async {
+        // The model reads its metadata through `CalendarPersisting`, so the calendar has to
+        // be absent *there*. A fixture that seeded it would answer the read and leave the
+        // model legitimately `.content` — which is a different test.
+        let model = SingleCalendarModel(
+            calendarid: 99,
+            managing: InMemoryCalendarManaging(calendar: makeCalendar(id: 99)),
+            persistence: InMemoryCalendarPersisting(calendar: nil),
+            store: PCEventSelectionManager(
+                initialState: PCEventSelectionState(dataProvider: PCCalendarDataProvider()),
+                persistence: InMemoryCalendarPersisting(calendar: nil),
+                daySelectionManager: PCCalendarDaySelectionManager()
+            )
+        )
         await model.fetch(force: true)
 
-        model.daySelectionManager.selectionMode = .multiple
-        model.selectedColor = .option1
-        _ = model.route(for: [someDay])
-        #expect(model.isColorPickerDisabled)
+        #expect(model.state == .empty)
+    }
 
-        model.cancelMultipleChanges()
+    @Test("An archived calendar is reported as archived")
+    func reportsArchived() async {
+        let (_, _, _, model) = makeFixture(calendar: makeCalendar(archived: true))
+        await model.fetch(force: true)
+        #expect(model.isArchived)
+    }
 
-        #expect(model.daySelectionManager.selectionMode == .single)
+    @Test("fetch hands the store the calendar's batches")
+    func fetchSyncsTheStore() async {
+        let (_, _, store, model) = makeFixture(calendar: makeCalendar())
+        await model.fetch(force: true)
+
+        #expect(store.state.calendarID == 42, "the store now knows which calendar it is")
+    }
+
+    @Test("hasEvents reads the store's registry")
+    func hasEventsReadsTheStore() async {
+        let (_, _, store, model) = makeFixture(calendar: makeCalendar())
+        let day = Fixture.day(4)
+        #expect(!model.hasEvents(on: day))
+
+        store.send(.syncCalendar(calendarID: 42, batches: [Fixture.batch("Morning", on: 4, id: 1)]))
+
+        #expect(model.hasEvents(on: day))
+        #expect(!model.hasEvents(on: Fixture.day(5)))
+    }
+
+    // MARK: - Multi-select session, projected
+
+    @Test("The multi-select session is off until it is turned on")
+    func multiSelectDefaultsOff() async {
+        let (_, _, _, model) = makeFixture(calendar: makeCalendar())
+        await model.fetch(force: true)
+
+        #expect(!model.isMultiSelectMode)
         #expect(model.selectedColor == nil)
         #expect(!model.isColorPickerDisabled)
     }
 
-    @Test("save persists the current number of columns")
-    func savePersistsColumns() async throws {
-        let (repository, _, model) = makeFixture(calendar: makeCalendar(columns: 3))
+    @Test("Turning multi-select on and off is dispatched to the store")
+    func multiSelectDispatch() async {
+        let (_, _, store, model) = makeFixture(calendar: makeCalendar())
         await model.fetch(force: true)
 
-        model.yearModel.maximumNumberOfColumns = 6
-        model.yearModel.numberOfColumns = 4
-        model.save(for: 42)
+        model.setMultiSelectMode(true)
+        #expect(model.isMultiSelectMode)
+        #expect(store.state.multiSelectMode)
 
-        await waitUntil {
-            let calendar = try? await repository.getCalendar(id: 42)
-            return calendar?.numberOfColumns == 4
-        }
-
-        let persisted = try? await repository.getCalendar(id: 42)
-        #expect(persisted?.numberOfColumns == 4)
+        model.setMultiSelectMode(false)
+        #expect(!model.isMultiSelectMode)
+        #expect(!store.state.multiSelectMode)
     }
 
-    @Test("Switching year rebuilds the month matrix via the data provider")
-    func switchYearRebuildsMonthMatrix() {
-        var calendar = Calendar(identifier: .gregorian)
-        calendar.timeZone = .current
-        calendar.locale = .current
-        let provider = PCCalendarDataProvider(calendar: calendar)
-        let manager = PCEventsSelectionManager(dataProvider: provider)
-        manager.setupCalendar()
+    @Test("The colour binding dispatches into the store's session")
+    func multiSelectColorBinding() async {
+        let (_, _, store, model) = makeFixture(calendar: makeCalendar())
+        await model.fetch(force: true)
 
-        let oldFirstDay = manager.yearModel.months.first?.weeks.first?.days.first
-        let oldFirstDayDate = oldFirstDay?.date
+        model.multiSelectColorBinding.wrappedValue = .option3
 
-        manager.switchYear(to: 2027)
+        #expect(store.state.multiSelectColor == .option3)
+        #expect(model.selectedColor == .option3)
+    }
 
-        #expect(manager.yearModel.year == 2027)
-        #expect(manager.yearModel.months.count == 12)
+    @Test("The picker is disabled once days and a colour are chosen")
+    func pickerDisabledOnceSeeded() async {
+        let (_, _, _, model) = makeFixture(calendar: makeCalendar())
+        await model.fetch(force: true)
 
-        let newFirstDay = manager.yearModel.months.first?.weeks.first?.days.first
-        // Regeneration means brand-new day model instances for a different year.
-        #expect(newFirstDay !== oldFirstDay)
-        // And the matrix content actually corresponds to the new year.
-        #expect(newFirstDay?.date != oldFirstDayDate)
+        model.setMultiSelectMode(true)
+        #expect(!model.isColorPickerDisabled, "no days yet")
+
+        model.multiSelectColorBinding.wrappedValue = .option1
+        #expect(!model.isColorPickerDisabled, "still no days")
+
+        model.send(.dayTappedInCalendar(Fixture.day(4)))
+        #expect(model.isColorPickerDisabled)
+    }
+
+    @Test("Cancelling multi-select empties the session")
+    func cancelMultiSelect() async {
+        let (_, _, store, model) = makeFixture(calendar: makeCalendar())
+        await model.fetch(force: true)
+        model.setMultiSelectMode(true)
+        model.setMultiSelectColor(.option1)
+        model.send(.dayTappedInCalendar(Fixture.day(4)))
+
+        model.cancelMultiSelect()
+
+        #expect(!store.state.multiSelectMode)
+        #expect(store.state.multiSelectDays.isEmpty)
+        #expect(store.state.multiSelectColor == nil)
+    }
+
+    // MARK: - Year matrix
+
+    @Test("Switching year rebuilds the month matrix")
+    func switchYearRebuilds() async {
+        let (_, _, _, model) = makeFixture(calendar: makeCalendar(year: 2026))
+        await model.fetch(force: true)
+        #expect(model.yearModel.year == 2026)
+
+        model.switchYear(to: 2027)
+        #expect(model.yearModel.year == 2027)
+
+        model.switchYear(to: 2027)
+        #expect(model.yearModel.year == 2027, "switching to the same year is a no-op")
+    }
+
+    @Test("Changing the column count is dispatched, so the store persists it")
+    func columnCountDispatch() async {
+        let (_, _, store, model) = makeFixture(calendar: makeCalendar())
+        await model.fetch(force: true)
+
+        model.setNumberOfColumns(2)
+
+        #expect(store.state.numberOfColumns == 2)
+    }
+
+    @Test("Markers from the store appear on the main matrix")
+    func markersAreProjected() async {
+        let (_, _, store, model) = makeFixture(calendar: makeCalendar())
+        await model.fetch(force: true)
+
+        store.send(.syncCalendar(calendarID: 42, batches: [Fixture.batch("Morning", on: 4, color: "eventColorOption3")]))
+        model.send(.ensureAssemblyStarted) // any dispatch re-projects
+
+        let marked = model.yearModel.months
+            .flatMap(\.weeks)
+            .flatMap(\.days)
+            .filter { !$0.events.isEmpty }
+        #expect(marked.count == 1, "one day carries a marker")
+        #expect(marked.first?.events == ["eventColorOption3"])
+    }
+
+    @Test("reset clears loaded content")
+    func resetClearsContent() async {
+        let (_, _, _, model) = makeFixture(calendar: makeCalendar(name: "Original"))
+        await model.fetch(force: true)
+
+        model.reset()
+
+        #expect(model.state == .empty)
+        #expect(model.label.isEmpty)
     }
 }

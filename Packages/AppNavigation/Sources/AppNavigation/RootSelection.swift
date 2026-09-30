@@ -16,30 +16,18 @@ public enum SidebarCategory: Equatable, Hashable {
     case settings
 }
 
-/// What the batch editor screen should be opened with.
-public enum BatchEditorSource: Hashable {
-    case newDay(Date)
-    case existingBatch(Int64)
-}
-
-/// Lightweight event data for navigation routing.
-public struct EventEditorSource: Hashable {
-    public var id: Int64
-    public var name: String
-    public var date: Date
-    public var color: String
-    public var timestamp: UUID?
-
-    public init(id: Int64, name: String, date: Date, color: String, timestamp: UUID? = nil) {
-        self.id = id
-        self.name = name
-        self.date = date
-        self.color = color
-        self.timestamp = timestamp
-    }
-}
-
 /// Single global enum for all possible navigation routes in the app.
+///
+/// The three push cases carry no payload. They used to: `dayBatches(Date)`,
+/// `batchEditor(BatchEditorSource)` and `eventEditor(EventEditorSource)` shipped the day,
+/// the batch and the event across in the route. That data is in the batch-assembly store
+/// now, and a payload was a *snapshot* of it — push the editor, edit the batch, and the
+/// destination already held a stale copy of what the store said. Two copies of "which
+/// batch am I editing" is the second source of truth this package exists to avoid.
+///
+/// So a route says only *where*, and the destination reads *what* from the store. A
+/// screen cannot be handed a different event than the store says is open, because there
+/// is no longer a way to hand it one.
 public enum AppRoute: Hashable {
     // Sidebar category selection
     case sidebar(SidebarCategory)
@@ -48,9 +36,9 @@ public enum AppRoute: Hashable {
     case calendar(Int64, toRoot: Bool)
     
     // Navigation stack pushes
-    case dayBatches(Date)
-    case batchEditor(BatchEditorSource)
-    case eventEditor(EventEditorSource)
+    case dayBatches
+    case batchEditor
+    case eventEditor
     
     // Sheets
     case addCalendar

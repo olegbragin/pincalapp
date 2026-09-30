@@ -19,12 +19,6 @@ struct PinCalAppApp: App {
     /// change feed; injecting a second store would mean two independent subscriptions to
     /// the same actor.
     private let managing: any CalendarManaging
-    /// The batch-assembly store (Stage 6). Built here and injected, but nothing reads it
-    /// yet — the view models are rewired onto it in Stage 8, and the old
-    /// `PCEventsSelectionManager` stays live until then. Constructing it now is what
-    /// proves the composition root can actually satisfy it from the `CalendarPersisting`
-    /// port alone, without the feature layer naming `CorePersistence`.
-    private let eventSelection: PCEventSelectionManager
 
     init() {
         #if os(iOS)
@@ -49,25 +43,27 @@ struct PinCalAppApp: App {
         // here, because the reducer needs it and the state has to be `Equatable`. Handing
         // it the session's instance is what keeps the store and the session agreeing about
         // which day a timestamp names.
-        self.eventSelection = PCEventSelectionManager(
+        let eventSelection = PCEventSelectionManager(
             initialState: PCEventSelectionState(dataProvider: dataProvider),
             persistence: store,
-            columnCountResolver: columnCountResolver
-        )
-        let daySelectionManager = PCCalendarDaySelectionManager()
-        let eventsSelectionManager = PCEventsSelectionManager(
-            cache: cache,
-            dataProvider: dataProvider,
-            daySelectionManager: daySelectionManager,
+            // A fresh instance, *not* the main calendar's. The store writes
+            // `selectedDays` and installs a tap listener on this, so handing it the
+            // calendar's own would leak the editor's selection mode onto the screen
+            // behind the sheet. See `PCEventSelectionManager.daySelectionManager`.
+            daySelectionManager: PCCalendarDaySelectionManager(),
             columnCountResolver: columnCountResolver
         )
         _session = State(
             initialValue: PCCalendarSession(
                 persistence: store,
+                // The same object, under the wider port. One store means one cache and one
+                // change feed; injecting a second would mean two subscriptions to the same
+                // actor, and the two subscribers would not agree about anything.
+                managing: store,
+                eventSelection: eventSelection,
                 dataProvider: dataProvider,
                 columnCountResolver: columnCountResolver,
-                daySelectionManager: daySelectionManager,
-                eventsSelectionManager: eventsSelectionManager
+                daySelectionManager: PCCalendarDaySelectionManager()
             )
         )
     }
@@ -78,7 +74,7 @@ struct PinCalAppApp: App {
                 .environment(session)
                 .environment(\.calendarCache, cache)
                 .environment(\.calendarManaging, managing)
-                .environment(eventSelection)
+                .environment(session.eventSelection)
         }
     }
 }

@@ -1,186 +1,82 @@
+//
+//  AddEditEventListViewModelTests.swift
+//  SingleCalendarFeatureTests
+//
+//  Created by Oleg Bragin on 07.07.2026.
+//
+
 import Foundation
 import Testing
-import CorePersistence
+import CoreDomain
 import DSKit
 @testable import SingleCalendarFeature
 
 @MainActor
-@Suite("AddEditEventListViewModel Tests")
+@Suite("AddEditEventListViewModel")
 struct AddEditEventListViewModelTests {
 
-    private func day(_ year: Int, _ month: Int, _ dayOfMonth: Int) -> Date {
-        Calendar.autoupdatingCurrent.date(from: DateComponents(year: year, month: month, day: dayOfMonth))!
+    private func makeContext() -> (AddEditEventListViewModel, PCEventSelectionManager) {
+        let store = Fixture.makeStore(persistence: InMemoryCalendarPersisting())
+        return (AddEditEventListViewModel(store: store), store)
     }
 
-    private func event(
-        _ name: String = "Event",
-        day dayOfMonth: Int,
-        color: String = "eventColorOption1",
-        timestamp: UUID? = nil
-    ) -> EventDataSource {
-        .init(name: name, date: day(2026, 6, dayOfMonth), color: color, timestamp: timestamp)
-    }
-
-    // MARK: - init / state
-
-    @Test("init defaults to an empty list")
-    func initIsEmpty() {
-        let vm = AddEditEventListViewModel()
+    @Test("With no assembly the list is empty")
+    func emptyWithoutAssembly() {
+        let (vm, _) = makeContext()
         #expect(vm.events.isEmpty)
-        #expect(vm.selectedDay == nil)
     }
 
-    @Test("init keeps the provided events")
-    func initKeepsEvents() {
-        let vm = AddEditEventListViewModel(events: [event("A", day: 1)])
-        #expect(vm.events == [event("A", day: 1)])
+    /// §12.4: the list is empty, then reports the assembly's events after `toggleDay`. The
+    /// point is that reading it requires no priming and no callback — the old version read
+    /// a parallel array on the shared manager.
+    @Test("The list reports the assembly's events after a day toggle")
+    func reportsTheAssembly() {
+        let (vm, store) = makeContext()
+        #expect(vm.events.isEmpty)
+
+        store.send(.startNewBatch(on: Fixture.day(4)))
+        #expect(vm.events.count == 1)
+
+        store.send(.toggleDay(Fixture.day(5)))
+        #expect(vm.events.count == 2)
+
+        store.send(.toggleDay(Fixture.day(5)))
+        #expect(vm.events.count == 1, "and toggling the same day off removes it")
     }
 
-    // MARK: - prepare
+    @Test("Events are the assembly's own, in date order")
+    func eventsAreSorted() {
+        let (vm, store) = makeContext()
+        store.send(.startNewBatch(on: Fixture.day(5)))
+        store.send(.toggleDay(Fixture.day(2)))
+        store.send(.toggleDay(Fixture.day(9)))
 
-    @Test("prepare sorts events by date and stamps missing timestamps")
-    func prepareSortsAndStampsTimestamps() {
-        let later = event("Later", day: 2)
-        let earlier = event("Earlier", day: 1)
-        let vm = AddEditEventListViewModel(events: [later, earlier])
-
-        vm.prepare(with: [later, earlier])
-
-        #expect(vm.events.map(\.name) == ["Earlier", "Later"])
-        #expect(vm.events.allSatisfy { $0.timestamp != nil })
+        let dates = vm.events.map(\.date)
+        #expect(dates == dates.sorted(), "\(dates)")
     }
 
-    @Test("prepare preserves an existing timestamp")
-    func preparePreservesTimestamp() {
-        let ts = UUID()
-        let vm = AddEditEventListViewModel(events: [event(day: 1, timestamp: ts)])
+    @Test("remove dispatches removeEvent for that event's pending id")
+    func removeDispatches() {
+        let (vm, store) = makeContext()
+        store.send(.startNewBatch(on: Fixture.day(4)))
+        store.send(.toggleDay(Fixture.day(5)))
+        let target = vm.events[1]
 
-        vm.prepare(with: [event(day: 1, timestamp: ts)])
-
-        #expect(vm.events.first?.timestamp == ts)
-    }
-
-    // MARK: - apply
-
-    @Test("apply appends when nothing matches and notifies")
-    func applyAppendsAndNotifies() {
-        var changeCount = 0
-        let vm = AddEditEventListViewModel()
-        vm.onEventsChanged = { changeCount += 1 }
-        let newEvent = event("A", day: 1)
-
-        vm.apply(with: newEvent)
-
-        #expect(vm.events == [newEvent])
-        #expect(changeCount == 1)
-    }
-
-    @Test("apply replaces an event with a matching timestamp")
-    func applyReplacesByTimestamp() {
-        let ts = UUID()
-        let vm = AddEditEventListViewModel(events: [event("Old", day: 1, timestamp: ts)])
-        let updated = event("New", day: 2, color: "eventColorOption3", timestamp: ts)
-
-        vm.apply(with: updated)
+        vm.remove(target)
 
         #expect(vm.events.count == 1)
-        #expect(vm.events.first?.name == "New")
-        #expect(vm.events.first?.color == "eventColorOption3")
-        #expect(vm.events.first?.date == day(2026, 6, 2))
+        #expect(!vm.events.contains(target))
     }
 
-    @Test("apply replaces an event by id when timestamps differ")
-    func applyReplacesById() {
-        let stored = EventDataSource(id: 5, name: "Old", date: day(2026, 6, 1), color: "eventColorOption1", timestamp: UUID())
-        let vm = AddEditEventListViewModel(events: [stored])
-        let updated = EventDataSource(id: 5, name: "New", date: day(2026, 6, 2), color: "eventColorOption2", timestamp: UUID())
+    @Test("open dispatches openEvent and stages a draft")
+    func openDispatches() {
+        let (vm, store) = makeContext()
+        store.send(.startNewBatch(on: Fixture.day(4)))
+        let target = vm.events[0]
 
-        vm.apply(with: updated)
+        vm.open(target)
 
-        #expect(vm.events.count == 1)
-        #expect(vm.events.first?.name == "New")
-        #expect(vm.events.first?.date == day(2026, 6, 2))
-        #expect(vm.events.first?.color == "eventColorOption2")
-    }
-
-    // MARK: - addEvent / removal
-
-    @Test("addEvent appends with a timestamp and keeps sorting")
-    func addEventAppendsSorted() {
-        let vm = AddEditEventListViewModel(events: [event("Later", day: 2)])
-
-        vm.addEvent(event("Earlier", day: 1))
-
-        #expect(vm.events.map(\.name) == ["Earlier", "Later"])
-        #expect(vm.events[0].timestamp != nil)
-    }
-
-    @Test("removeEvent removes all events on the same day")
-    func removeEventOnDay() {
-        let vm = AddEditEventListViewModel(events: [event("A", day: 1), event("B", day: 2)])
-
-        vm.removeEvent(on: day(2026, 6, 1))
-
-        #expect(vm.events.map(\.name) == ["B"])
-    }
-
-    @Test("removeEvents removes by index and notifies")
-    func removeEventsByIndexSet() {
-        var changeCount = 0
-        let vm = AddEditEventListViewModel(events: [
-            event("A", day: 1),
-            event("B", day: 2),
-            event("C", day: 3)
-        ])
-        vm.onEventsChanged = { changeCount += 1 }
-
-        vm.removeEvents(at: IndexSet(integer: 1))
-
-        #expect(vm.events.map(\.name) == ["A", "C"])
-        #expect(changeCount == 1)
-    }
-
-    @Test("remove removes a single event by identity")
-    func removeSingleEvent() {
-        var changeCount = 0
-        let vm = AddEditEventListViewModel(events: [
-            event("A", day: 1),
-            event("B", day: 2)
-        ])
-        vm.onEventsChanged = { changeCount += 1 }
-
-        vm.remove(event("B", day: 2))
-
-        #expect(vm.events.map(\.name) == ["A"])
-        #expect(changeCount == 1)
-    }
-
-    // MARK: - queries / other
-
-    @Test("hasEvent reports presence on the same calendar day")
-    func hasEventOnDay() {
-        let vm = AddEditEventListViewModel(events: [event("A", day: 1)])
-
-        #expect(vm.hasEvent(on: day(2026, 6, 1)))
-        #expect(!vm.hasEvent(on: day(2026, 6, 2)))
-    }
-
-    @Test("recolorAll changes every event color")
-    func recolorAll() {
-        let vm = AddEditEventListViewModel(events: [event("A", day: 1)])
-
-        vm.recolorAll(to: "eventColorOption4")
-
-        #expect(vm.events.allSatisfy { $0.color == "eventColorOption4" })
-    }
-
-    @Test("reset clears events and selection")
-    func resetClears() {
-        let vm = AddEditEventListViewModel(events: [event("A", day: 1)])
-
-        vm.reset()
-
-        #expect(vm.events.isEmpty)
-        #expect(vm.selectedDay == nil)
+        #expect(store.state.eventDraft == target)
+        #expect(store.state.stage == .eventEditor(batchPendingID: store.state.assembly!.batch.pendingID, eventPendingID: target.pendingID))
     }
 }

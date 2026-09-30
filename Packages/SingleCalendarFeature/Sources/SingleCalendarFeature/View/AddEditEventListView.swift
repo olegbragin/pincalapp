@@ -1,53 +1,45 @@
 //
 //  AddEditEventListView.swift
-//  PinCalApp
+//  SingleCalendarFeature
 //
 //  Created by Oleg Bragin on 07.07.2026.
 //
 
 import SwiftUI
 import DSKit
-import AppNavigation
 
+/// The events inside the batch being edited.
+///
+/// Takes no parameters: the list *is* the assembly's events, read from the store.
 public struct AddEditEventListView: View {
-    @State private var viewModel: AddEditEventListViewModel
-    @Environment(RootNavigation.self) private var navigation
+    @Environment(PCEventSelectionManager.self) private var store
     @Environment(\.pcVibe) private var vibe
 
-    public init(manager: PCEventsSelectionManager) {
-        _viewModel = State(initialValue: AddEditEventListViewModel(eventsSelectionManager: manager))
-    }
-    
+    public init() {}
+
     public var body: some View {
+        let viewModel = AddEditEventListViewModel(store: store)
+
         List {
-            ForEach(viewModel.events, id: \.self) { event in
+            ForEach(viewModel.events) { event in
                 HStack(spacing: 12) {
                     PCCard {
-                        Button(
-                            action: {
-                                navigation.goTo(.eventEditor(EventEditorSource(
-                                    id: event.id,
-                                    name: event.name,
-                                    date: event.date,
-                                    color: event.color,
-                                    timestamp: event.timestamp
-                                )))
-                            },
-                            label: {
-                                HStack(spacing: 12) {
-                                    Text(.eventAt(event.name, event.date.formatted(date: .omitted, time: .shortened)))
-                                        .foregroundStyle(vibe.color(for: .foregroundOnEventCard))
-                                    
-                                    Spacer()
-                                    Image(systemName: "chevron.right")
-                                }
-                                .frame(minWidth: 0, maxWidth: .infinity)
+                        Button {
+                            viewModel.open(event)
+                        } label: {
+                            HStack(spacing: 12) {
+                                Text(.eventAt(event.name, event.date.formatted(date: .omitted, time: .shortened)))
+                                    .foregroundStyle(vibe.color(for: .foregroundOnEventCard))
+
+                                Spacer()
+                                Image(systemName: "chevron.right")
                             }
-                        )
+                            .frame(minWidth: 0, maxWidth: .infinity)
+                        }
                         .padding()
                         .background(
                             RoundedRectangle(cornerRadius: 16, style: .continuous)
-                                .fill(vibe.eventColor(named: event.color))
+                                .fill(vibe.eventColor(named: event.colorName))
                         )
                     }
 
@@ -73,8 +65,4 @@ public struct AddEditEventListView: View {
         .scrollDismissesKeyboard(.interactively)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
-}
-
-#Preview {
-    AddEditEventListView(manager: .init(events: [.init(name: "1", date: Date(), color: "eventColorOption1")]))
 }

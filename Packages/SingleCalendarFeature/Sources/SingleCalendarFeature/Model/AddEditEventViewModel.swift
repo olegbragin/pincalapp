@@ -1,75 +1,60 @@
 //
 //  AddEditEventViewModel.swift
-//  USkateAppV2
+//  SingleCalendarFeature
 //
 //  Created by Oleg Bragin on 15.03.2026.
 //
 
 import Foundation
-import CorePersistence
-import DSKit
 import CoreDomain
-import Observation
+import DSKit
+import SwiftUI
 
+/// A projection facade over the store for the single-event editor.
+///
+/// The event being edited is `state.eventDraft`, not a field. This used to be handed an
+/// `EventEditorSource` and keep its own mutable copy, so what the editor displayed and
+/// what the batch received were two different events.
 @MainActor
-@Observable
-public final class AddEditEventViewModel {
-    /// Shared batch-editing manager. Injected so the view model can apply the
-    /// edited event itself instead of leaving it to the view.
-    private let eventsSelectionManager: PCEventsSelectionManager
+public struct AddEditEventViewModel {
+    private let store: PCEventSelectionManager
 
-    /// The event being edited, the single source of truth. The view binds to the
-    /// computed accessors below instead of a parallel set of fields.
-    var event: EventDataSource
-
-    var selectedColor: PCColorOption? {
-        get { PCColorOption(event.color) }
-        set { event.color = newValue?.colorName ?? "" }
+    init(store: PCEventSelectionManager) {
+        self.store = store
     }
 
-    var eventName: String {
-        get { event.name }
-        set { event.name = newValue }
-    }
-
-    var selectedDate: Date {
-        get { event.date }
-        set { event.date = newValue }
-    }
-
-    var eventId: Int64 {
-        get { event.id }
-        set { event.id = newValue }
-    }
-
-    var timestamp: UUID? {
-        get { event.timestamp }
-        set { event = event.withTimestamp(newValue) }
-    }
-
-    init(
-        eventsSelectionManager: PCEventsSelectionManager = PCEventsSelectionManager(),
-        event: EventDataSource = .default
-    ) {
-        self.eventsSelectionManager = eventsSelectionManager
-        self.event = event
-    }
+    private var draft: CalendarEvent? { store.state.eventDraft }
 
     var canSave: Bool {
-        !event.name.isEmpty && selectedColor != nil
+        guard let draft, !draft.name.isEmpty else { return false }
+        return !draft.colorName.isEmpty
     }
 
-    func save() -> Bool {
-        guard canSave else { return false }
-        eventsSelectionManager.apply(event)
-        return true
+    /// Shown in the toolbar. Falls back to the assembly's anchor day so the title is
+    /// never empty mid-transition.
+    var displayedDate: Date {
+        draft?.date ?? store.state.day ?? store.state.dataProvider.startOfDay(for: Date())
     }
 
-    func update(from event: EventDataSource) {
-        self.event = event
+    var nameBinding: Binding<String> {
+        Binding(get: { draft?.name ?? "" }, set: { store.send(.setEventName($0)) })
     }
 
-    func reset() {
-        event = .default
+    var dateBinding: Binding<Date> {
+        Binding(get: { draft?.date ?? displayedDate }, set: { store.send(.setEventDate($0)) })
+    }
+
+    var colorBinding: Binding<PCColorOption?> {
+        Binding(
+            get: { draft.flatMap { PCColorOption($0.colorName) } },
+            set: { store.send(.setEventColor($0)) }
+        )
+    }
+
+    /// Commits the draft into the batch and asks for the pop. The reducer declines an
+    /// unnamed event, so the editor stays open with the draft intact rather than the edit
+    /// being silently dropped.
+    func save() {
+        store.send(.saveEventTapped)
     }
 }

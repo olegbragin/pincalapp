@@ -1,76 +1,36 @@
 //
 //  AddEditEventListViewModel.swift
-//  PinCalApp
+//  SingleCalendarFeature
 //
 //  Created by Oleg Bragin on 07.07.2026.
 //
 
 import Foundation
-import CorePersistence
-import DSKit
 import CoreDomain
-import Observation
+import DSKit
 
+/// A projection facade over the store for the list of events inside a batch.
+///
+/// The list *is* the assembly's events, not a list this object owns. The old version read
+/// a parallel `events` array on the shared manager, so toggling a day in the editor
+/// calendar and reading the list were two different views of one thing and could disagree.
 @MainActor
-@Observable
-public final class AddEditEventListViewModel {
-    /// Shared events store. `PCEventsSelectionManager` owns the data; this view
-    /// model is a thin adapter over it (kept for call sites that expect a list
-    /// view model).
-    let eventsSelectionManager: PCEventsSelectionManager
+public struct AddEditEventListViewModel {
+    private let store: PCEventSelectionManager
 
-    private(set) var selectedDay: Date?
-
-    var onEventsChanged: (() -> Void)? {
-        didSet { eventsSelectionManager.onEventsChanged = onEventsChanged }
+    init(store: PCEventSelectionManager) {
+        self.store = store
     }
 
-    var events: [EventDataSource] { eventsSelectionManager.events }
-
-    init(eventsSelectionManager: PCEventsSelectionManager) {
-        self.eventsSelectionManager = eventsSelectionManager
+    var events: [CalendarEvent] {
+        store.state.assembly?.batch.events ?? []
     }
 
-    convenience init(events: [EventDataSource] = []) {
-        self.init(eventsSelectionManager: PCEventsSelectionManager(events: events))
+    func open(_ event: CalendarEvent) {
+        store.send(.openEvent(pendingID: event.pendingID))
     }
 
-    func prepare(with events: [EventDataSource]) {
-        eventsSelectionManager.prepare(with: events)
-    }
-
-    func apply(with event: EventDataSource) {
-        eventsSelectionManager.apply(event)
-    }
-
-    func addEvent(_ event: EventDataSource) {
-        eventsSelectionManager.addEvent(event)
-    }
-
-    func removeEvent(on date: Date) {
-        eventsSelectionManager.removeEvent(on: date)
-    }
-
-    func removeEvents(at indexSet: IndexSet) {
-        eventsSelectionManager.removeEvents(at: indexSet)
-    }
-
-    /// Removes a single event from the list by identity.
-    func remove(_ event: EventDataSource) {
-        guard let index = events.firstIndex(of: event) else { return }
-        eventsSelectionManager.removeEvents(at: IndexSet(integer: index))
-    }
-
-    func hasEvent(on date: Date) -> Bool {
-        eventsSelectionManager.hasEvent(on: date)
-    }
-
-    func recolorAll(to colorName: String) {
-        eventsSelectionManager.setBatchColor(PCColorOption(colorName))
-    }
-
-    func reset() {
-        eventsSelectionManager.reset()
-        selectedDay = nil
+    func remove(_ event: CalendarEvent) {
+        store.send(.removeEvent(pendingID: event.pendingID))
     }
 }

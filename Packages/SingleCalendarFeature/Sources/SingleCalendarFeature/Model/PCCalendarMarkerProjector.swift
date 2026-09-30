@@ -33,15 +33,61 @@ enum PCCalendarMarkerProjector {
     /// the committed set alone cannot describe what the editor's calendar should show. If
     /// the assembly recolours or toggles a day, its colours are the ones the user is
     /// looking at, and the markers have to follow.
+    ///
+    /// ### The staged batch replaces its committed row; it does not join it
+    ///
+    /// Staging is not always *creating*. An assembly opened from the registry with
+    /// `existing(_:)` is that very row, still holding its committed `persistedID`, and a
+    /// marker is about what the batch holds *now* — which is the staged copy. Appending
+    /// the two, which is what this used to do, was wrong twice over:
+    ///
+    /// - an event deleted from the staged copy kept painting its marker, because the
+    ///   committed copy still listed it. Removing the last event of a day left that day
+    ///   marked forever, and no amount of re-projecting could clear it — the payload was
+    ///   wrong, not the projection.
+    /// - a day both copies held was counted twice, so a batch with one event on a day was
+    ///   labelled with two.
+    ///
+    /// So the staged row *replaces* the committed row that shares its `mergeKey`, and is
+    /// appended only when no such row exists — which is the genuinely-new case, where the
+    /// keys cannot match (§5.4.1).
+    ///
+    /// ### `multiSelect` — the one part of the payload that is not a batch yet
+    ///
+    /// A multi-select session is days and a colour with no row anywhere: it only becomes a
+    /// batch when the user confirms it. Without it in the payload, tapping a day in a
+    /// session produced *no visible change at all* — the day was recorded, the toolbar's
+    /// Save would act on it, and the calendar looked untouched. The only feedback a tap
+    /// gave was the colour picker greying out, which reads as the picker reacting rather
+    /// than the calendar responding, and that is exactly how the bug was reported.
+    ///
+    /// Projected last, on top, because the session is what the user is looking at and it
+    /// overrides nothing already committed.
     nonisolated static func colorsByDay(
         from batches: [CalendarEventBatch],
-        includingStaged staged: BatchAssembler?,
+        includingStaged staged: PCEventBatchAssembleUnitOfWork?,
+        multiSelect: (days: [Date], colorName: String)? = nil,
         using dataProvider: PCCalendarDataProvider
     ) -> [Date: [String]] {
+        let effective: [CalendarEventBatch]
+        if let staged {
+            let key = staged.mergeKey
+            effective = batches.contains { $0.mergeKey == key }
+                ? batches.map { $0.mergeKey == key ? staged.batch : $0 }
+                : batches + [staged.batch]
+        } else {
+            effective = batches
+        }
+
         var result: [Date: [String]] = [:]
-        for batch in batches + (staged.map { [$0.batch] } ?? []) {
+        for batch in effective {
             for event in batch.events {
                 result[dataProvider.startOfDay(for: event.date), default: []].append(event.colorName)
+            }
+        }
+        if let multiSelect {
+            for day in multiSelect.days {
+                result[dataProvider.startOfDay(for: day), default: []].append(multiSelect.colorName)
             }
         }
         return result

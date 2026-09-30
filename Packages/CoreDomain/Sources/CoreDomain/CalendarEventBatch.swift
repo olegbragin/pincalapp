@@ -98,7 +98,7 @@ public struct CalendarEventBatch: Identifiable, Hashable, Sendable {
     /// came back from a reload. Mirrors what
     /// `PCEventsSelectionManager.contentEquals` does, on domain types.
     ///
-    /// Days are compared, never instants, at both levels. `BatchAssembler` normalises every
+    /// Days are compared, never instants, at both levels. `PCEventBatchAssembleUnitOfWork` normalises every
     /// event it stages to the start of its day, while a row read back through the mapper
     /// carries whatever time component the DTO held — so comparing the two by instant
     /// equality would mean a staged batch and its own persisted row never match, and the
