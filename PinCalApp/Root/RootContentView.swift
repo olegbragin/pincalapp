@@ -18,7 +18,8 @@ struct RootContentView: View {
                 selectedCalendarID: selectedCalendarID,
                 onSelectCalendar: { id in
                     navigation.goTo(.calendar(id, toRoot: false))
-                }
+                },
+                undoWindowDuration: PCCalendarSession.makeUndoWindowDuration()
             )
         case .archived:
             CalendarListView(
@@ -26,7 +27,8 @@ struct RootContentView: View {
                 selectedCalendarID: selectedCalendarID,
                 onSelectCalendar: { id in
                     navigation.goTo(.calendar(id, toRoot: false))
-                }
+                },
+                undoWindowDuration: PCCalendarSession.makeUndoWindowDuration()
             )
         case .settings:
             SettingsView()

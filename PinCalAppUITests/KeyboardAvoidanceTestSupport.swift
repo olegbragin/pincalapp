@@ -66,6 +66,7 @@ enum KeyboardAvoidanceTestSupport {
     @MainActor
     static func openCalendarDetail(_ app: XCUIApplication, named name: String) {
         openCalendarsList(app)
+
         let calendarRow = app.staticTexts[name].firstMatch
         XCTAssertTrue(calendarRow.waitForExistence(timeout: 5), "Calendar '\(name)' should exist in the list")
 
@@ -85,24 +86,56 @@ enum KeyboardAvoidanceTestSupport {
             .matching(NSPredicate(format: "identifier BEGINSWITH %@", "day-"))
             .firstMatch
 
-        for attempt in 1...3 {
-            // `tap()` on an element that exists but is not hittable is silently a no-op, and
-            // the row is the first thing to go off-screen or under another column when the
-            // detail narrows. Wait for it to be hittable rather than trusting existence.
-            scrollElementIntoView(calendarRow, in: app)
-            if calendarRow.isHittable {
-                calendarRow.tap()
-            }
-            if grid.waitForExistence(timeout: 2) { return }
+        // One tap, then wait. No scrolling, no retrying.
+        //
+        // This loop was a well-meant "the row might not be hittable, let me scroll to it and
+        // try again" — and on the iPad it was actively harmful, because the row stops being
+        // hittable for the *opposite* reason: the calendar it opened is now covering it. The
+        // loop then swiped up to six times over a screen showing a calendar, which is either
+        // a no-op or a stray gesture into the grid, and it re-tapped a row that was behind
+        // the view it had just opened. The first pass had already succeeded — the grid came
+        // up inside its 2s wait — and this loop is what then took it away again, which is
+        // why `openCalendarDetail` returned and the very next line found `dayCells=0`.
+        //
+        // The grid can take a few seconds on a cold simulator, so the wait is generous rather
+        // than the tap being repeated: repeating a navigation is how a helper destroys the
+        // state it was asked to check.
+        calendarRow.tap()
+        if !grid.waitForExistence(timeout: 20) {
+            let dayCells = app.descendants(matching: .any)
+                .matching(NSPredicate(format: "identifier BEGINSWITH %@", "day-"))
+                .allElementsBoundByIndex.count
+            XCTFail("Tapped calendar '\(name)' but no day grid appeared. dayCells=\(dayCells)")
         }
-        XCTFail("Tapped calendar '\(name)' but the calendar detail never opened")
     }
 
     @MainActor
     static func tapDay(day: Int, in app: XCUIApplication) {
         let identifier = dayIdentifier(day: day)
         let query = app.descendants(matching: .any).matching(identifier: identifier)
-        XCTAssertTrue(query.firstMatch.waitForExistence(timeout: 5), "Day cell \(identifier) should exist")
+
+        if !query.firstMatch.waitForExistence(timeout: 5) {
+            // Say what *is* on screen.
+            //
+            // "Day cell day-09-2026-09-10 should exist" has been the entire message for
+            // every iPad failure in this area, and it does not distinguish the four
+            // things that can cause it: no calendar at all, a calendar showing a
+            // different month, a grid that never built, or a query that cannot match
+            // what is there. All four look identical from the test side, which is why
+            // the diagnosis took three wrong turns. An inventory ends that in one run.
+            let present = app.descendants(matching: .any)
+                .matching(NSPredicate(format: "identifier BEGINSWITH %@", "day-"))
+                .allElementsBoundByIndex
+                .map(\.identifier)
+            let sample = Array(Set(present)).sorted().prefix(8).joined(separator: ", ")
+            // Only day cells are counted. An earlier version of this message also counted
+            // `calendar-detail-1` and `root-content-column`, which is worse than useless:
+            // those identifiers were reverted in §18, so the counters always read 0 and
+            // look like findings.
+            XCTFail("Day cell \(identifier) should exist. Saw dayCells=\(present.count)."
+                + " Day cells present: \(sample.isEmpty ? "<none>" : sample)")
+            return
+        }
 
         // Several screens can expose the same day id (main calendar under a
         // pushed editor); tap the topmost hittable one.
@@ -361,6 +394,26 @@ enum KeyboardAvoidanceTestSupport {
         let settings = revealedSidebarRow("sidebar-settings", in: app)
         if settings.waitForExistence(timeout: 2), settings.isHittable {
             settings.tap()
+
+            // Back to Calendars **while the sidebar is still up**, then collapse.
+            //
+            // The order is the whole fix. `goTo(.sidebar)` only clears `detailCalendarID`
+            // for `.archived` and `.settings`, so a different category is needed to dismiss
+            // the calendar — but that leaves the app on the *Settings* screen, and
+            // collapsing the sidebar there strands it: the sidebar rows go away with it, so
+            // nothing can switch back to Calendars and the next `openCalendarDetail` has
+            // nothing to tap. Measured: after "Settings → collapse" the calendar list was
+            // absent entirely (`sidebar-calendars` unreachable, calendar row not in the
+            // hierarchy), which is why three iPad tests failed on "day cell should exist"
+            // while looking like a navigation bug.
+            //
+            // Selecting Calendars *after* the detail is cleared does not re-open anything:
+            // `detailCalendarID` is already nil, so it lands on the list with nothing
+            // selected — which is exactly the state the app is in when launched by hand.
+            let calendars = revealedSidebarRow("sidebar-calendars", in: app)
+            if calendars.waitForExistence(timeout: 2), calendars.isHittable {
+                calendars.tap()
+            }
             collapseSidebar(in: app)
             return
         }
@@ -385,14 +438,23 @@ enum KeyboardAvoidanceTestSupport {
     /// transition is still settling.
     @MainActor
     static func collapseSidebar(in app: XCUIApplication) {
-        let hide = app.buttons["Hide Sidebar"]
+        let hides = app.buttons.matching(identifier: "Hide Sidebar")
+
         let deadline = Date().addingTimeInterval(5)
         while Date() < deadline {
-            if hide.exists, hide.isHittable {
-                hide.tap()
+            // Every match, not the first. There are **two** "Hide Sidebar" controls in the
+            // hierarchy once the overlay is up — one belonging to the sidebar column and one
+            // to the overlay's own bar — and `app.buttons["Hide Sidebar"]` resolves to a
+            // single element, the first. In the measured case that first one reported
+            // `isHittable == false` while the second was `true`, so the helper below would
+            // have reported the sidebar un-collapsible while a tappable button was sitting
+            // right there. Same trap as `dayCell`: a bare subscript is a `firstMatch` query,
+            // and on a split view the first match is frequently not the one on screen.
+            if let target = hides.allElementsBoundByIndex.first(where: \.isHittable) {
+                target.tap()
                 return
             }
-            _ = hide.exists
+            _ = hides.firstMatch.exists
             Thread.sleep(forTimeInterval: 0.2)
         }
     }

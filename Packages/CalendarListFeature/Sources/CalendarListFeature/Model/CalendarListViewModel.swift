@@ -60,7 +60,15 @@ public final class CalendarListViewModel {
     var archiveToastMessage = ""
     var archiveToastProgress: Double { archiveCountdown.progress }
 
-    @ObservationIgnored private let archiveCountdown = PCTimeoutProgress(duration: 5)
+    /// How long the undo toast stays up.
+    ///
+    /// Injected rather than hard-coded because the window is untestable at a fixed length: a
+    /// 5-second toast is a coin flip for a UI test on a loaded simulator, and a test that
+    /// flakes is worse than no test, because it looks like coverage. A test passes a long
+    /// window and the toast is simply there; production passes the default.
+    let undoWindowDuration: TimeInterval
+
+    @ObservationIgnored private lazy var archiveCountdown = PCTimeoutProgress(duration: undoWindowDuration)
 
     var isAnyCardEditing: Bool {
         cardViewModels.values.contains { $0.isEditing }
@@ -78,9 +86,14 @@ public final class CalendarListViewModel {
         return "\(version) (\(build))"
     }
 
-    public init(mode: CalendarListMode = .active, managing: any CalendarManaging) {
+    public init(
+        mode: CalendarListMode = .active,
+        managing: any CalendarManaging,
+        undoWindowDuration: TimeInterval = 5
+    ) {
         self.mode = mode
         self.managing = managing
+        self.undoWindowDuration = undoWindowDuration
         archiveCountdown.onComplete = { [weak self] in
             self?.undoWindowElapsed()
         }

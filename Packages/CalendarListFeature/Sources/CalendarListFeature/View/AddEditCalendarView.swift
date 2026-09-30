@@ -17,9 +17,7 @@ public struct AddEditCalendarView: View {
         VStack {
             // Верхняя панель с кнопками
             HStack {
-                PCButton {
-                    dismiss()
-                } label: {
+                PCButton(action: { dismiss() }, identifier: "add-calendar-close-button") {
                     Text("Закрыть")
                 }
                 .foregroundColor(.red)
@@ -33,13 +31,16 @@ public struct AddEditCalendarView: View {
                 
                 Spacer()
                 
-                PCButton {
-                    Task {
-                        if viewModel.save() {
-                            dismiss()
+                PCButton(
+                    action: {
+                        Task {
+                            if viewModel.save() {
+                                dismiss()
+                            }
                         }
-                    }
-                } label: {
+                    },
+                    identifier: "add-calendar-save-button"
+                ) {
                     Text("Сохранить")
                 }
                 .foregroundColor(.blue)
@@ -61,6 +62,7 @@ public struct AddEditCalendarView: View {
                             .fontWeight(.medium)
                         
                         PCTextField(title: "Введите имя", text: $viewModel.label)
+                            .accessibilityIdentifier("add-calendar-name-field")
                     }
                 }
                 .padding()
@@ -69,6 +71,19 @@ public struct AddEditCalendarView: View {
         }
         .presentationDetents([.medium, .large])
         .presentationDragIndicator(.visible)
+        // Deliberately **no** identifier on this root.
+        //
+        // It was here while diagnosing "why is `add-calendar-save-button` unfindable", and it
+        // was the answer: an identifier on a container's root is pushed down onto its
+        // descendants and **overrides theirs**. Every control in the sheet was reporting
+        // `add-calendar-sheet` — dumped straight out of the tree as
+        // `Сохранить ~ add-calendar-sheet` — so a correctly-placed identifier on the button
+        // was being silently replaced by the parent's.
+        //
+        // This is also the more likely explanation for §18, where putting identifiers on the
+        // split view's column roots broke 30 tests: not that an identifier rewrites the tree,
+        // but that it shadows everything beneath it. A container identifier is not additive —
+        // it is destructive to its children.
     }
 }
 

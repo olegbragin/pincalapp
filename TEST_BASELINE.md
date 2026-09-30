@@ -46,8 +46,8 @@ stands.
 | **Workspace subtotal** | **318** | **318 passed, 0 failed** |
 | `AppNavigationTests` | 25 | 25 passed — **separate SwiftPM package, not in the workspace gate.** Run `cd Packages/AppNavigation && swift test` or it is silently missed |
 | **Unit total** | **343** | **343 passed, 0 failed** |
-| `PinCalAppUITests` (all 11 classes) | 41 | **41 passed** — see the note below before quoting this |
-| **Total** | **384** | **384 passed, 0 failed** |
+| `PinCalAppUITests` (all 13 classes) | 44 | **44 passed** — see the note below before quoting this |
+| **Total** | **387** | **387 passed, 0 failed** |
 
 > **How the 381 was reached, precisely — and the caveat that was here a moment ago.**
 > The *first* full-plan run through `AutoTestRunner` (iPhone 17 Pro - AutoTest, §17.1)
@@ -197,3 +197,193 @@ system back. Only the batch editor is fixed; the other two are listed as remaini
 (`EmptyDayTapMarkerTests`) was confirmed failing on the AB behaviour before the fix, and
 passing after; the reducer contract is also covered by two unit tests, which is where the
 "marker must not outlive the edit" half actually belongs.
+
+
+## Stage 17 — the other two pushed screens own their Back button
+
+The system Back control on the day list and the event editor popped the `NavigationStack`
+without telling the store, exactly as the batch editor's did. Both now render their own Back
+and dispatch `backTapped`; `PCToolbarPlacement.pcLeading` was added alongside `pcTrailing` for
+the leading slot.
+
+`toggleDay` is the **only** action in the whole reducer gated on `stage == .batchEditor`, and
+that is what decides how bad each screen's copy of the bug is:
+
+| Screen | Stale stage is… | Visible failure | Test |
+|---|---|---|---|
+| Event editor | `.eventEditor` | **The batch editor goes inert.** Tapping days to add them to the batch does nothing — no error, no disabled control, nothing in the log | confirmed failing before the fix |
+| Day list | `.dayList` | **Latent.** No action is gated on it, so nothing the user can do is refused | confirmed *passing* before the fix |
+
+The day-list row above is the interesting one: the test was written, the fix reverted, and the
+test **passed anyway** — which is the honest result and is why the test guards the navigation
+rather than claiming a failure mode that does not exist. A test that passes against the broken
+behaviour is worse than no test, because it looks like coverage.
+
+### The iPad sidebar bug is four tests, not one
+
+Correcting §14. `BatchEditCommitTests` was never run on the iPad, so three of its tests were
+never measured. All three fail there for the same single root cause, and the trace is
+identical in each: `Show Sidebar` → `sidebar-settings` → the day cell never comes back.
+
+| Test | iPad |
+|---|---|
+| `testLeavingCalendarInMultiselectModeResetsOnReopen` | fails |
+| `BatchEditCommitTests.testChangingEventColorPersistsAfterBatchSave` | fails |
+| `BatchEditCommitTests.testEditingExistingEventShowsPreFilledNameAndPersistsChanges` | fails |
+| `BatchEditCommitTests.testSavingBatchFromEditorUpdatesCalendarWithoutReachingRoot` | fails |
+
+### Three harness faults found, and where the investigation actually landed
+
+Each was measured, not reasoned about, and two of them are the same shape as the
+`navigationBars.firstMatch` problem from §14 — a bare subscript is a `firstMatch` query, and
+on a split view the first match is frequently not the control meant.
+
+1. **`app.buttons["Hide Sidebar"]` resolved to the wrong button.** With the sidebar revealed
+   there are **two** such controls in the hierarchy, and the first reported
+   `isHittable == false` while the second reported `true`. The helper was reporting the
+   sidebar un-collapsible with a tappable button sitting right there. It now searches all
+   matches. Measured: Hide count 2 → 0 afterwards, and `Show Sidebar` returns.
+2. **The leave sequence was in the wrong order.** It went Settings → collapse, which strands
+   the app on the *Settings* screen with the sidebar rows gone, so nothing can switch back to
+   Calendars. Measured: after that sequence the calendar list was entirely absent
+   (`sidebar-calendars` unreachable, no calendar row in the hierarchy) — which is how three
+   tests failed on *"day cell should exist"* while looking like a navigation bug. It is now
+   Settings → Calendars → collapse, which lands in exactly the state the app is in when
+   launched by hand: list showing, detail cleared, sidebar collapsed.
+3. **`app.staticTexts[name].firstMatch` was the sidebar row, not the calendar card.** The
+   sidebar row and the card carry the same name, and the first match measured as the sidebar
+   row. Tapping it switches the sidebar category and leaves the list on screen, so the test
+   concluded the calendar "did not open" and blamed the app for a tap that never reached the
+   card. On the iPhone there is one match, so it passes there and the difference reads as an
+   iPad app bug. `openCalendarDetail` now prefers the last hittable match.
+
+### The actual cause: the detail column is never displayed, so nothing loads
+
+Column-level accessibility identifiers (`root-sidebar-column`, `root-content-column`,
+`root-detail-column`, plus `calendar-card-<id>` on each card) settled it, because the question
+"did the calendar open" cannot be answered from the elements *inside* — the list and the
+calendar both render day cells and both carry the calendar's name.
+
+What the identifiers show, tapping the card **by its own id** on the iPad:
+
+| Observation | Meaning |
+|---|---|
+| `calendar-card-1` present, hittable, frame `(16, 98, 308, 200)` | the card is really on screen and really tappable |
+| detail column's `emptyState` goes `true` → `false` | `onSelectCalendar` **ran**, and `detailCalendarID` **was** set |
+| `calendar-detail-1` stays absent, 2 spinners persist | `CalendarDetailView` is built but never renders its content |
+
+`CalendarDetailView` creates its model inside `.task(id:)`, and **`.task` does not run until the
+view appears**. The detail column is therefore being *built* while never being *displayed*:
+with the sidebar collapsed, `NavigationSplitView` presents two of its three columns, and the
+detail has nowhere to go. So `onSelectCalendar` runs, the card draws its selection ring, the
+placeholder disappears — and no calendar ever appears. The user sees a highlighted card and no
+calendar, which is precisely the reported symptom.
+
+**This is an app bug, not a test bug.** `RootView` pins
+`preferredCompactColumn` to `.sidebar` for every non-compact size class, which is what starves
+the detail column on the iPad. The fix is column *visibility* rather than column *preference* —
+`NavigationSplitView(columnVisibility:)` driven by whether a calendar is selected, with
+`preferredCompactColumn` left to mean what it says (compact width only). That is a root-layout
+change affecting how the iPad presents the app, so it is a decision rather than a patch, and it
+is not made here.
+
+Two changes made on my earlier, wrong reasoning were reverted rather than left behind: a
+`Button` replacing the card's `.onTapGesture` (the tap was never the problem) and preferring the
+*last* hittable calendar-name match (`firstMatch` did reach the card). The column and card
+identifiers are kept — they are what made the diagnosis possible, and every layout assertion in
+the suite can now be asked directly instead of inferred.
+
+Two harness faults from the same investigation are genuine and kept, both measured: the
+`Hide Sidebar` `firstMatch` problem (two controls, first not hittable) and the leave ordering
+(Settings → Calendars → collapse, or the app is stranded on Settings with no way back).
+
+**Verified:** iPhone 43/43 UI, 343 unit across 8 targets. No iPhone regression from any of the
+three harness fixes.
+
+
+## Stage 18 — the accessibility instrumentation was a trap (reverted)
+
+Adding per-column and per-card accessibility identifiers, to answer "which column is on
+screen" directly instead of inferring it, **broke 30 tests across three classes**. The full-plan
+run through `AutoTestRunner` reported 386 completed, **30 failures**, with
+*"Calendar should load"*, *"day cell should exist"* and *"detail view should appear"* — the
+calendar list could no longer be read by name at all.
+
+Two things did it, and both are worth more than the diagnosis they enabled:
+
+- `.accessibilityElement(children: .contain)` on a card **rewrites that subtree's accessibility
+  tree**, and the card's name stopped being exposed as a `StaticText`. A calendar list is read
+  by name; take the names away and the list cannot be opened.
+- `.accessibilityIdentifier` on a **column root** was enough to break the iPhone on its own.
+  The failures are indistinguishable from "the app is broken", which is what made this
+  expensive: the build succeeded, the app ran, and 30 tests said otherwise.
+
+An identifier is *additive*; an `accessibilityElement` is a *rewrite*. Every change here has
+been reverted — `RootView`, `RootContentView`, `RootDetailView`, `RooSidebarView` and
+`CalendarListContent` are all back to their committed state.
+
+The identifiers did earn their keep before they were removed: they are what turned "the iPad
+calendar does not open" into "the tap runs, the placeholder disappears, and the detail never
+loads". That diagnosis stands, and the next step for it is a view debugger, not more
+instrumentation in shipping code.
+
+### The iPad fix was attempted and did not work
+
+Replacing the forced `preferredCompactColumn = .sidebar` with
+`NavigationSplitView(columnVisibility:)` was the obvious move. It was measured, not assumed:
+**`.doubleColumn` and `.all` both produced byte-identical frames** to the forced sidebar — the
+content column stayed 308pt wide and the detail still did not appear. So `columnVisibility` is
+not what decides the iPad's column width here, and the edit was reverted rather than left in as
+an unverified root-layout change.
+
+**The iPad detail-column bug is still open.** What is known: the card tap runs
+(`onSelectCalendar` fires, the empty state goes away, the card draws its selection ring) and
+`CalendarDetailView` is constructed but never loads, because it creates its model in `.task(id:)`
+and `.task` does not run until the view appears. What is not known: why the column is not
+appearing. That needs a view debugger session or a dump of the running scene, not another probe.
+
+**Verified:** iPhone 17 Pro - AutoTest, full plan through `AutoTestRunner` on a freshly erased
+simulator — **386 completed, 0 failures, 0 skipped**, reset on attempt 1.
+
+
+## Stage 19 — Undo on the archive toast
+
+**STR:** open the calendar list, archive a calendar, press Undo on the toast.
+**AB:** the restored calendar does not come back to the active list. **EB:** it does.
+
+### The bug was a copy-paste, and it hid in the list that *looked* right
+
+`CalendarCache.restoreCalendar` was a verbatim copy of `archiveCalendar`: evict from the
+in-memory cache, `broadcast(.delete(item:))`. A delete is a true statement about a
+permanently deleted calendar and a false one about a restored one. So the restore published a
+*removal*, the cache had already dropped the calendar, and nothing ever added it back.
+
+It survived because the **archived** list looked correct — the card did vanish from it, which
+is what you want to see — while the failure showed up in the *active* list, which had nothing
+to add. The report and the defect were in different screens.
+
+`undoArchive` had a comment asserting this could not happen: *"The restore publishes a change
+that `applyChange` folds in… An extra `loadActive()` would only discard its own result."* The
+premise was never true, and the comment is what stopped anyone looking. `updateCalendar`
+already had the right shape — refetch, replace in cache, `broadcast(.change(item:))` — so the
+fix is that shape, and the refetch matters: the DTO handed in still carries
+`isArchived == true`, and publishing that would tell the active list to filter the calendar
+straight back out.
+
+### Test affordances
+
+- **The toast names itself** (`archive-undo-toast`) and its action is a real `Button`
+  (`archive-undo-toast-button`). The action used to be a `Text` inside a tap gesture on the
+  whole toast, so "press Undo" was not expressible — only "tap the toast near the right third",
+  which passes by luck and fails by geography.
+- **`.accessibilityElement(children: .contain)` on the toast**, and only on the toast. Without
+  it SwiftUI merges the toast's children and the button's identifier matches nothing. It is
+  explicitly *not* safe on a list card: applied there in §18 it rewrote the subtree and the
+  card's name stopped being exposed as a `StaticText`, breaking 30 tests.
+- **The undo window is injected** (`-UITestUndoWindowSeconds`, following `-UITestColumns`).
+  A toast lives ~5 seconds; asking a test to find one inside that is a coin flip on a loaded
+  simulator, and a flaky test is worse than none because it looks like coverage. Production
+  still uses 5s.
+
+**Verified:** the test fails on the restore without the cache fix and passes with it, and the
+full plan through `AutoTestRunner` is **387 completed, 0 failures, 0 skipped**.

@@ -102,10 +102,37 @@ public actor CalendarCache {
         broadcast(.delete(item: calendar))
     }
 
+    /// Reactivates a calendar and says so as a **change**, not a delete.
+    ///
+    /// This was a copy of `archiveCalendar` — evict from the cache, `broadcast(.delete(…))` —
+    /// which is the wrong shape for a restore in a way that was invisible until someone
+    /// pressed Undo. A delete is a true statement about a permanently deleted calendar and a
+    /// false one about a restored one, and the consequence was that the calendar never came
+    /// back anywhere: the cache had dropped it, and every list folded in a removal. The
+    /// archived list *looked* right, because the card did vanish from it — which is how this
+    /// survived: the visible symptom was in the *other* list.
+    ///
+    /// Refetched like `updateCalendar` does, because the DTO handed in still carries
+    /// `isArchived == true`; publishing that would tell the active list to filter the
+    /// calendar straight back out.
     public func restoreCalendar(_ calendar: CalendarDataSource) async throws {
         try await repository.restoreCalendar(calendar.id)
-        calendars.removeAll { $0.id == calendar.id }
-        broadcast(.delete(item: calendar))
+        if let fresh = try? await repository.getCalendar(id: calendar.id) {
+            if let idx = calendars.firstIndex(where: { $0.id == calendar.id }) {
+                calendars[idx] = fresh
+            } else {
+                calendars.append(fresh)
+            }
+            broadcast(.change(item: fresh))
+        } else {
+            // The store would not hand it back. Reactivate the copy we were given rather
+            // than publish a calendar that still says it is archived.
+            var restored = calendar
+            restored.isArchived = false
+            calendars.removeAll { $0.id == calendar.id }
+            calendars.append(restored)
+            broadcast(.change(item: restored))
+        }
     }
 
     public func permanentlyDeleteCalendar(_ calendar: CalendarDataSource) async throws {

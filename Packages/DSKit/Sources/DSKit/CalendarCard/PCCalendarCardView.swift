@@ -130,6 +130,7 @@ public struct PCCalendarCardView: View {
                                 )
                         }
                         .buttonStyle(.plain)
+                        .accessibilityIdentifier("card-restore-\(viewModel.id)")
                         Button {
                             viewModel.onPermanentDelete?()
                         } label: {
@@ -143,6 +144,7 @@ public struct PCCalendarCardView: View {
                                 )
                         }
                         .buttonStyle(.plain)
+                        .accessibilityIdentifier("card-permanent-delete-\(viewModel.id)")
                     }
                     .transition(.opacity)
                 } else {
@@ -161,6 +163,7 @@ public struct PCCalendarCardView: View {
                                 )
                         }
                         .buttonStyle(.plain)
+                        .accessibilityIdentifier("card-archive-\(viewModel.id)")
                     }
                     .transition(.opacity)
                 }

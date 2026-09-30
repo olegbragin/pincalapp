@@ -83,7 +83,15 @@ public struct AddEditEventBatchListView: View {
         }
         .background(vibe.color(for: .backgroundMain))
         .toolbarBackground(vibe.color(for: .backgroundMain), for: .pcNavigationBar)
+        .navigationBarBackButtonHidden(true)
         .toolbar {
+            ToolbarItem(placement: .pcLeading) {
+                Button {
+                    store.send(.backTapped)
+                } label: {
+                    Label("Back", systemImage: "chevron.backward")
+                }
+            }
             ToolbarItem(placement: .pcTitle) {
                 Text(viewModel.selectedDay ?? Date(), style: .date)
             }

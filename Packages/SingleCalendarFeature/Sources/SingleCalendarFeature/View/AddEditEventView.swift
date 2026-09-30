@@ -55,7 +55,15 @@ public struct AddEditEventView: View {
         .keyboardAvoidable()
         .scrollDismissesKeyboard(.interactively)
         .toolbarTitleDisplayMode(.inline)
+        .navigationBarBackButtonHidden(true)
         .toolbar {
+            ToolbarItem(placement: .pcLeading) {
+                Button {
+                    store.send(.backTapped)
+                } label: {
+                    Label("Back", systemImage: "chevron.backward")
+                }
+            }
             ToolbarItem(placement: .pcTitle) {
                 Text(viewModel.displayedDate, style: .date)
             }

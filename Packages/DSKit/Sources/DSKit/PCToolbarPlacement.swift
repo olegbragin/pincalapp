@@ -22,6 +22,21 @@ public extension ToolbarPlacement {
 }
 
 public extension ToolbarItemPlacement {
+    /// A leading toolbar item that renders in the platform-appropriate place: the
+    /// navigation-bar leading position on iOS, the window toolbar on macOS.
+    ///
+    /// Added alongside `pcTrailing` for the editor screens' own Back button, which replaces
+    /// the system's — see `AddEditEventBatchScreen` for why the system's cannot be used.
+    static var pcLeading: ToolbarItemPlacement {
+        #if os(iOS)
+        return .topBarLeading
+        #elseif os(macOS)
+        return .automatic
+        #else
+        return .automatic
+        #endif
+    }
+
     /// A trailing toolbar item that renders in the platform-appropriate place:
     /// the navigation-bar trailing position on iOS, the window toolbar on macOS.
     static var pcTrailing: ToolbarItemPlacement {

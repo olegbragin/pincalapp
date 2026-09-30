@@ -10,14 +10,19 @@ public struct CalendarListView: View {
     public var onSelectCalendar: (Int64) -> Void = { _ in }
     let mode: CalendarListMode
 
+    /// How long the undo toast stays up. See `CalendarListViewModel.undoWindowDuration`.
+    let undoWindowDuration: TimeInterval
+
     public init(
         mode: CalendarListMode = .active,
         selectedCalendarID: Int64? = nil,
-        onSelectCalendar: @escaping (Int64) -> Void = { _ in }
+        onSelectCalendar: @escaping (Int64) -> Void = { _ in },
+        undoWindowDuration: TimeInterval = 5
     ) {
         self.mode = mode
         self.selectedCalendarID = selectedCalendarID
         self.onSelectCalendar = onSelectCalendar
+        self.undoWindowDuration = undoWindowDuration
     }
 
     public var body: some View {
@@ -31,7 +36,7 @@ public struct CalendarListView: View {
         .task {
             if viewModel == nil {
                 guard let managing else { return }
-                viewModel = CalendarListViewModel(mode: mode, managing: managing)
+                viewModel = CalendarListViewModel(mode: mode, managing: managing, undoWindowDuration: undoWindowDuration)
             }
             await viewModel?.fetch()
         }
@@ -85,6 +90,9 @@ public struct CalendarListView: View {
                 }
                 .pcGlass(cornerRadius: 28, tint: .black.opacity(0.22))
                 .clipShape(Circle())
+                // The route to "there are no calendars, so make one". It is a symbol with no
+                // text, so without an identifier there is nothing stable to find it by.
+                .accessibilityIdentifier("calendar-list-add-button")
                 .shadow(color: .black.opacity(0.3), radius: 10, y: 5)
                 .padding(.trailing, 20)
                 .padding(.bottom, 20)
@@ -122,7 +130,11 @@ public struct CalendarListView: View {
             actionTitle: "Undo",
             action: { viewModel.undoArchive() },
             backgroundColor: .black.opacity(0.85),
-            progress: viewModel.archiveToastProgress
+            progress: viewModel.archiveToastProgress,
+            // Named, so a test presses *Undo* rather than tapping the toast body and hoping
+            // it landed on the right third of it.
+            identifier: "archive-undo-toast",
+            actionIdentifier: "archive-undo-toast-button"
         )
     }
 }

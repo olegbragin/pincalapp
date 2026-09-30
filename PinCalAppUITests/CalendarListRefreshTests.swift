@@ -26,6 +26,10 @@ final class CalendarListRefreshTests: XCTestCase {
 
     private let seededNames = ["UI Test Calendar", "Second Calendar", "Third Calendar"]
 
+    /// Ids of `seededNames`, in the order `TestDataSeeder` creates them. Paired with the
+    /// names so an assertion can still talk about which calendar it means.
+    private let seededCalendarIDs: [Int64] = [1, 2, 3]
+
     override func setUp() {
         super.setUp()
         continueAfterFailure = false
@@ -78,16 +82,20 @@ final class CalendarListRefreshTests: XCTestCase {
         }
     }
 
-    /// The card's own archive button. Every card exposes one with the same identifier,
-    /// so it is picked by proximity to the calendar's name rather than by position, which
-    /// keeps the pairing correct if the list ever re-sorts.
-    private func trashButton(for name: String, in app: XCUIApplication) -> XCUIElement {
-        let targetMidY = calendar(named: name, in: app).frame.midY
-        let trashes = app.buttons.matching(identifier: "trash")
-        XCTAssertGreaterThanOrEqual(trashes.count, 1, "Cards should each expose a trash button")
-        return trashes.allElementsBoundByIndex.min {
-            abs($0.frame.midY - targetMidY) < abs($1.frame.midY - targetMidY)
-        } ?? trashes.firstMatch
+    /// The card's own archive button, found by the calendar's id.
+    ///
+    /// This picked the `"trash"` button nearest the calendar name's vertical midpoint. That
+    /// is a geometric guess, and a wrong one archives whatever card happened to sit closest
+    /// — which is invisible until the list re-sorts, the display gets denser, or two cards
+    /// share a row, at which point the test archives the wrong calendar and reports a
+    /// refresh bug. The button carries its calendar's id now, so there is nothing to guess.
+    private func archiveButton(for calendarID: Int64, in app: XCUIApplication) -> XCUIElement {
+        let button = app.buttons["card-archive-\(calendarID)"]
+        XCTAssertTrue(
+            button.waitForExistence(timeout: 5),
+            "Calendar \(calendarID) should expose an archive button"
+        )
+        return button
     }
 
     /// Performs a real pull on the grid.
@@ -110,8 +118,10 @@ final class CalendarListRefreshTests: XCTestCase {
         )
     }
 
-    private func archive(_ name: String, in app: XCUIApplication) {
-        trashButton(for: name, in: app).tap()
+    /// Archives the seeded calendar with the given id. Ids are 1-based in the order
+    /// `TestDataSeeder` creates them; see the constants below rather than guessing.
+    private func archive(_ calendarID: Int64, in app: XCUIApplication) {
+        archiveButton(for: calendarID, in: app).tap()
     }
 
     private func openArchivedList(_ app: XCUIApplication) {
@@ -154,7 +164,7 @@ final class CalendarListRefreshTests: XCTestCase {
     /// calendar rather than the active ones — the archived row would come back.
     func testRefreshDoesNotResurrectAnArchivedCalendar() async {
         let app = openSeededCalendarsList()
-        archive(seededNames[0], in: app)
+        archive(seededCalendarIDs[0], in: app)
 
         await waitUntil { self.copies(of: self.seededNames[0], in: app) == 0 }
         XCTAssertEqual(copies(of: seededNames[0], in: app), 0,
@@ -172,7 +182,7 @@ final class CalendarListRefreshTests: XCTestCase {
     /// `loadActive`. A refresh there must show the archived calendar and only it.
     func testRefreshInArchivedModeShowsOnlyArchivedCalendars() async {
         let app = openSeededCalendarsList()
-        archive(seededNames[0], in: app)
+        archive(seededCalendarIDs[0], in: app)
         await waitUntil { self.copies(of: self.seededNames[0], in: app) == 0 }
 
         openArchivedList(app)

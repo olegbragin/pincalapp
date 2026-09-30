@@ -81,6 +81,28 @@ final class PCCalendarSession {
         { requested in forcedColumnsForUITests ?? requested }
     }
 
+    /// Resolves the archive-undo toast's window. UI tests can lengthen it via
+    /// `-UITestUndoWindowSeconds <n>`; otherwise the production 5s window applies.
+    ///
+    /// Same reasoning as `-UITestColumns`, and for the same reason it matters more here: a
+    /// toast is transient, so a test that has to find it inside a 5-second window is a test
+    /// that will flake on a loaded simulator and then be ignored. A long window makes the
+    /// toast simply *there*, and production is untouched.
+    static func makeUndoWindowDuration() -> TimeInterval {
+        forcedUndoWindowForUITests ?? 5
+    }
+
+    private static var forcedUndoWindowForUITests: TimeInterval? {
+        let arguments = ProcessInfo.processInfo.arguments
+        guard
+            let flagIndex = arguments.firstIndex(of: "-UITestUndoWindowSeconds"),
+            arguments.indices.contains(flagIndex + 1),
+            let value = TimeInterval(arguments[flagIndex + 1]),
+            value > 0
+        else { return nil }
+        return value
+    }
+
     private static var forcedColumnsForUITests: Int? {
         let arguments = ProcessInfo.processInfo.arguments
         guard
