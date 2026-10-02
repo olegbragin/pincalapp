@@ -189,7 +189,6 @@ struct PCEventSelectionReducerTests {
         #expect(next.day == day(4))
         #expect(next.scrollAnchor == day(4))
         #expect(next.editorYear == nil)
-        #expect(next.isDirty)
         #expect(
             next.canSave,
             "a merely-tapped day arrives named and coloured, so it is savable without any editing"
@@ -247,7 +246,6 @@ struct PCEventSelectionReducerTests {
         #expect(next.stage == .batchEditor)
         #expect(next.day == day(9))
         #expect(next.scrollAnchor == day(9))
-        #expect(next.isDirty)
         #expect(next.navigationRequest?.target == .pushBatchEditor)
         #expect(effects.isEmpty)
     }
@@ -261,7 +259,6 @@ struct PCEventSelectionReducerTests {
         #expect(next.assembly?.batch.pendingID == target.pendingID)
         #expect(next.day == target.date)
         #expect(next.scrollAnchor == target.date)
-        #expect(next.isDirty)
         #expect(next.navigationRequest?.target == .pushBatchEditor)
     }
 
@@ -363,7 +360,6 @@ struct PCEventSelectionReducerTests {
         #expect(next.day == nil)
         #expect(next.assembly == nil)
         #expect(next.eventDraft == nil)
-        #expect(next.isDirty == false)
         #expect(next.navigationRequest?.target == .popToCalendarRoot)
         #expect(
             next.dayEventColors[provider.startOfDay(for: day(1))] == ["eventColorOption1"],
@@ -411,7 +407,6 @@ struct PCEventSelectionReducerTests {
         let (next, effects) = reduce(editing(session(), on: 1), .setBatchName("renamed"))
 
         #expect(next.assembly?.batch.name == "renamed")
-        #expect(next.isDirty)
         #expect(effects.isEmpty)
     }
 
@@ -428,7 +423,6 @@ struct PCEventSelectionReducerTests {
             next.dayEventColors[provider.startOfDay(for: day(3))] == ["eventColorOption3"],
             "markers follow the staged colour, for a day that is not in batches at all"
         )
-        #expect(next.isDirty)
         #expect(effects.isEmpty)
     }
 
@@ -438,7 +432,6 @@ struct PCEventSelectionReducerTests {
 
         #expect(next.assembly?.batch.events.count == 2)
         #expect(next.dayEventColors[provider.startOfDay(for: day(5))] != nil)
-        #expect(next.isDirty)
         #expect(effects.isEmpty)
     }
 
@@ -503,7 +496,6 @@ struct PCEventSelectionReducerTests {
             next.dayEventColors[provider.startOfDay(for: day(1))] == ["eventColorOption1"],
             "the committed batch on that day is untouched, so its marker remains"
         )
-        #expect(next.isDirty)
         #expect(effects.isEmpty)
     }
 
@@ -589,7 +581,6 @@ struct PCEventSelectionReducerTests {
 
         let colored = reduce(dated, .setEventColor(.option4)).next
         #expect(colored.eventDraft?.colorName == PCColorOption.option4.colorName)
-        #expect(colored.isDirty)
         let assembly = try! #require(base.assembly)
         let stagedEvent = try! #require(assembly.batch.events.first)
         #expect(
@@ -618,7 +609,6 @@ struct PCEventSelectionReducerTests {
         #expect(try! #require(next.assembly).batch.events.contains(where: { $0.name == "Edited" }))
         #expect(next.eventDraft == nil)
         #expect(next.stage == .batchEditor)
-        #expect(next.isDirty)
         #expect(next.navigationRequest?.target == .pop)
         #expect(effects.isEmpty, "an event save does not commit the batch")
     }
@@ -669,7 +659,6 @@ struct PCEventSelectionReducerTests {
 
         #expect(next.batches.contains { $0.pendingID == pendingID })
         #expect(next.batches.count == 2, "the committed row for that day was replaced, not duplicated")
-        #expect(next.isDirty)
         #expect(effects == [.writeCalendar(calendarID: 42, numberOfColumns: 3, batches: next.batches)])
     }
 
@@ -716,7 +705,6 @@ struct PCEventSelectionReducerTests {
             "the save returns to the day list for the day the batch is on, got \(dayList)"
         )
         #expect(next.didSave)
-        #expect(next.isDirty == false)
         #expect(next.batches.contains { $0.name == "edited" })
         #expect(next.navigationRequest?.target == .pop)
         #expect(effects == [.writeCalendar(calendarID: 42, numberOfColumns: 3, batches: next.batches)])
@@ -831,7 +819,6 @@ struct PCEventSelectionReducerTests {
         #expect(next.assembly == nil)
         #expect(next.stage == .dayList(day: day(1)))
         #expect(next.didSave)
-        #expect(next.isDirty == false)
         #expect(next.navigationRequest?.target == .pop)
         #expect(effects == [.writeCalendar(calendarID: 42, numberOfColumns: 3, batches: next.batches)])
     }
@@ -842,7 +829,6 @@ struct PCEventSelectionReducerTests {
         let (next, effects) = reduce(state, .deleteBatches(state.batches))
 
         #expect(next.batches.isEmpty)
-        #expect(next.isDirty)
         #expect(next.dayEventColors.isEmpty)
         #expect(next.navigationRequest?.target == .popToCalendarRoot)
         #expect(effects == [.writeCalendar(calendarID: 42, numberOfColumns: 3, batches: [])])
@@ -880,7 +866,6 @@ struct PCEventSelectionReducerTests {
 
         #expect(next.calendarID == 42)
         #expect(next.batches == incoming)
-        #expect(next.isDirty == false)
         #expect(effects.isEmpty, "loading is a read")
     }
 
@@ -959,7 +944,6 @@ struct PCEventSelectionReducerTests {
     @Test("resetSession returns a clean state that keeps the provider")
     func resetSession() {
         var state = editing(session(), on: 1)
-        state.isDirty = true
 
         let (next, effects) = reduce(state, .resetSession)
 
@@ -967,7 +951,6 @@ struct PCEventSelectionReducerTests {
         #expect(next.assembly == nil)
         #expect(next.batches.isEmpty)
         #expect(next.calendarID == 0)
-        #expect(next.isDirty == false)
         #expect(next.dataProvider == provider)
         #expect(effects.isEmpty)
     }
@@ -1040,7 +1023,6 @@ struct PCEventSelectionReducerTests {
         #expect(next.navigationRequest?.target == .pushBatchEditor)
         #expect(next.day == day(4), "the anchor is the earliest selected day")
         #expect(next.scrollAnchor == day(4))
-        #expect(next.isDirty)
         #expect(effects.isEmpty, "confirming stages the batch; the editor's save writes it")
     }
 
@@ -1094,7 +1076,6 @@ struct PCEventSelectionReducerTests {
         let (next, effects) = reduce(state, .setNumberOfColumns(5))
 
         #expect(next.numberOfColumns == 5)
-        #expect(next.isDirty)
         #expect(effects == [.writeCalendar(calendarID: 42, numberOfColumns: 5, batches: state.batches)])
         #expect(reduce(state, .setNumberOfColumns(3)).effects.isEmpty, "already 3")
     }

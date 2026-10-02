@@ -73,7 +73,6 @@ public func pcEventSelectionReducer(
             next.stage = .batchEditor
             next.scrollAnchor = day
             next.editorYear = nil
-            next.isDirty = true
             requesting(&next, .pushBatchEditor)
         }
 
@@ -82,7 +81,6 @@ public func pcEventSelectionReducer(
         next.assembly = PCEventBatchAssembleUnitOfWork.new(anchor: day, using: provider)
         next.stage = .batchEditor
         next.scrollAnchor = day
-        next.isDirty = true
         requesting(&next, .pushBatchEditor)
 
     case .openBatch(let id):
@@ -92,7 +90,6 @@ public func pcEventSelectionReducer(
         next.stage = .batchEditor
         next.scrollAnchor = batch.date
         next.editorYear = nil
-        next.isDirty = true
         // Every other action that stages an assembly re-projects the markers, and this one
         // was the exception. It happened to be invisible — opening a row projects the same
         // markers it already had — which is exactly why it survived: the invariant is
@@ -129,7 +126,6 @@ public func pcEventSelectionReducer(
         next.day = nil
         next.assembly = nil
         next.eventDraft = nil
-        next.isDirty = false
         // Back to the committed markers: whatever was staged is gone.
         requesting(&next, .popToCalendarRoot)
 
@@ -141,22 +137,18 @@ public func pcEventSelectionReducer(
     case .setBatchName(let name):
         guard let assembly = state.assembly else { break }
         next.assembly = assembly.renaming(name)
-        next.isDirty = true
 
     case .setBatchColor(let color):
         guard let assembly = state.assembly else { break }
         next.assembly = assembly.recoloring(color)
-        next.isDirty = true
 
     case .toggleDay(let day):
         guard state.stage == .batchEditor, let assembly = state.assembly else { break }
         next.assembly = assembly.toggling(day: day, using: provider)
-        next.isDirty = true
 
     case .removeEvent(let pendingID):
         guard let assembly = state.assembly else { break }
         next.assembly = assembly.removingEvent(pendingID: pendingID)
-        next.isDirty = true
 
     // MARK: Event editor
 
@@ -175,17 +167,14 @@ public func pcEventSelectionReducer(
     case .setEventName(let name):
         guard let draft = state.eventDraft else { break }
         next.eventDraft = draft.with(name: name)
-        next.isDirty = true
 
     case .setEventDate(let date):
         guard let draft = state.eventDraft else { break }
         next.eventDraft = draft.with(date: date)
-        next.isDirty = true
 
     case .setEventColor(let color):
         guard let draft = state.eventDraft else { break }
         next.eventDraft = draft.with(colorName: color?.colorName ?? "")
-        next.isDirty = true
 
     case .saveEventTapped:
         // An unnamed event is not a save, it is a dismissal — rejecting it leaves the
@@ -198,7 +187,6 @@ public func pcEventSelectionReducer(
         next.assembly = assembly.applying(draft, using: provider)
         next.eventDraft = nil
         next.stage = .batchEditor
-        next.isDirty = true
         requesting(&next, .pop)
 
     case .discardEventTapped:
@@ -211,7 +199,6 @@ public func pcEventSelectionReducer(
     case .commitTapped:
         guard let assembly = state.assembly, assembly.canSave, let row = assembly.resolved() else { break }
         next.batches = merging(row, into: state.batches)
-        next.isDirty = true
 
     case .saveTapped:
         switch state.stage {
@@ -244,7 +231,6 @@ public func pcEventSelectionReducer(
                 next.stage = next.day.map(PCEventSelectionStage.dayList) ?? .idle
                 next.scrollAnchor = nil
                 next.didSave = true
-                next.isDirty = false
                 // The row's events are the markers now, and the assembly that was
                 // projecting them is gone. Recomputing rather than leaving the staged
                 // payload behind is what keeps "the markers describe the batches plus
@@ -260,7 +246,6 @@ public func pcEventSelectionReducer(
                 next.assembly = nil
                 next.stage = .idle
                 next.didSave = true
-                next.isDirty = false
                 // The row is gone from the calendar, so its days have to stop being marked.
                 // While the batch was staged this was already true — the staged copy
                 // replaced its committed row in the projection — but the registry has just
@@ -281,7 +266,6 @@ public func pcEventSelectionReducer(
             next.assembly = nil
             next.stage = next.day.map(PCEventSelectionStage.dayList) ?? .idle
             next.didSave = true
-            next.isDirty = false
             requesting(&next, .pop)
 
         case .idle:
@@ -291,7 +275,6 @@ public func pcEventSelectionReducer(
     case .deleteBatches(let list):
         let keys = Set(list.map(\.mergeKey))
         next.batches = state.batches.filter { !keys.contains($0.mergeKey) }
-        next.isDirty = true
         // Nothing left on the day the user was looking at, so the day-list has nothing to
         // show and the stack unwinds to the calendar.
         if next.dayBatches.isEmpty {
@@ -305,7 +288,6 @@ public func pcEventSelectionReducer(
         guard calendarID == state.calendarID || state.calendarID == 0 else { break }
         next.calendarID = calendarID
         next.batches = incoming
-        next.isDirty = false
         // §6.5: a staged batch that came back from the store under a real id gets that id
         // adopted, so the next commit updates the row instead of appending a second one.
         // Resolved *before* the markers are projected, not after: adoption is what makes the
@@ -353,7 +335,6 @@ public func pcEventSelectionReducer(
         next.day = anchor
         next.stage = .batchEditor
         next.scrollAnchor = anchor
-        next.isDirty = true
         // The session has become a batch; leaving `multiSelectMode` on would keep the
         // calendar behind the editor presenting itself as mid-selection.
         next.multiSelectMode = false
@@ -373,7 +354,6 @@ public func pcEventSelectionReducer(
 
     case .setNumberOfColumns(let columns):
         next.numberOfColumns = columns
-        next.isDirty = true
 
     case .setEditorYear(let year):
         next.editorYear = year

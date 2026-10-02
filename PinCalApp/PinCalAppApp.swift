@@ -67,7 +67,7 @@ struct PinCalAppApp: App {
             )
         )
 
-        }
+    }
 
     var body: some Scene {
         WindowGroup {

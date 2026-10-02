@@ -184,7 +184,6 @@ struct PCEventSelectionManagerTests {
 
         #expect(store.state.stage == .batchEditor)
         #expect(store.state.assembly != nil)
-        #expect(store.state.isDirty)
         #expect(store.state.day == day(4))
     }
 

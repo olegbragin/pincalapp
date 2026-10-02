@@ -100,7 +100,14 @@ public struct PCEventSelectionState: Equatable {
 
     // MARK: Intent
 
-    public var isDirty = false
+    /// Whether the last write landed.
+    ///
+    /// `isDirty` used to sit next to this: written in 21 places by the reducer, read nowhere
+    /// in production. Only tests read it, so it asserted that a transition had happened rather
+    /// than that the app behaved correctly — the assertion could not fail on its own. "Has this
+    /// been saved" is answered by `PCEventSelectionManager.failedSave`, which is the only flag
+    /// anything acts on, and it is set from whether the write actually succeeded rather than
+    /// from whether something was attempted.
     public var didSave = false
     /// Pending navigation for the view layer. Cleared by `navigationRequestHandled`.
     public var navigationRequest: NavigationRequest?
