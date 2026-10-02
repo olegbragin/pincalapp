@@ -136,8 +136,8 @@ final class MultiselectAndDefaultsTests: XCTestCase {
     /// STR: open a calendar, tap a day with no events.
     ///
     /// AB: the editor shows an empty name and a grey picker, so Save is disabled. EB: the
-    /// batch arrives named "New Event" with the first colour already selected, and its
-    /// event arrives named "New Event Day" in the batch's colour.
+    /// batch arrives named "New event" with the first colour already selected, and its
+    /// event arrives named "New event day" in the batch's colour.
     @MainActor
     func testANewBatchArrivesNamedAndColoured() throws {
         let app = openSeededCalendar()
@@ -147,7 +147,7 @@ final class MultiselectAndDefaultsTests: XCTestCase {
         let nameField = app.textFields["batch-name-field"]
         XCTAssertTrue(nameField.waitForExistence(timeout: 5), "Batch editor should open for an empty day")
         XCTAssertEqual(
-            nameField.value as? String, "New Event",
+            nameField.value as? String, "New event",
             "A new batch should arrive with a default name rather than an empty field"
         )
 
@@ -172,7 +172,7 @@ final class MultiselectAndDefaultsTests: XCTestCase {
         let eventName = app.textFields["event-name-field"]
         XCTAssertTrue(eventName.waitForExistence(timeout: 5), "Event editor should open")
         XCTAssertEqual(
-            eventName.value as? String, "New Event Day",
+            eventName.value as? String, "New event day",
             "A new event should arrive with a default name rather than an empty field"
         )
         XCTAssertTrue(

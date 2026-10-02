@@ -59,23 +59,28 @@ public struct PCEventBatchAssembleUnitOfWork: Equatable, Sendable {
 
     /// Whether Save is a meaningful action on this batch.
     ///
-    /// A name and a colour are what a batch needs to be *written*, and the name check is
-    /// what stops a freshly-tapped day from being committed as a row of blank events.
+    /// A batch needs a **colour** to be written, and nothing else. The name is not required,
+    /// because the name is not what makes a batch a batch: a batch is a set of dated, coloured
+    /// events, and a user who taps a day and leaves the title alone has still made a real
+    /// batch that they expect to be there when they come back.
     ///
-    /// An empty batch is deliberately still savable, because removing every event is how a
-    /// user deletes a batch from the editor, and the reducer already implements that:
-    /// `saveTapped` finds `resolved()` is `nil`, drops the row, and returns to the calendar.
-    /// Requiring `!events.isEmpty` here did not make that any safer — it made it
-    /// unreachable. The editor's Save is disabled from exactly the state that would trigger
-    /// the delete, which stranded the user in an editor whose only remaining way out is
-    /// Back, and Back *discards* the deletion rather than committing it. The batch was
-    /// undeletable by the only route the screen offered.
+    /// Requiring a name used to mean that expectation was not met. The check was described as
+    /// preventing "a freshly-tapped day from being committed as a row of blank events", but
+    /// colour was already required, so the only batches it stopped were the ones a user
+    /// intended: named-by-default batches, renamed-to-empty ones. And because edits persist as
+    /// they are made, refusing to save did not leave the work staged and recoverable — it left
+    /// the store ahead of the database with nowhere to put it.
     ///
-    /// This says nothing about whether there is anything to write. `resolved()` still
-    /// returns `nil` for an empty batch, so it is `commitTapped`'s `let row =` guard, not
-    /// this flag, that keeps an eventless row from ever being persisted.
+    /// `resolved()` still returns `nil` for a batch with no events, so it is `commitTapped`'s
+    /// `let row =` guard, not this flag, that keeps an eventless row from being persisted.
+    /// That still matters for the delete path: removing every event is how a batch is deleted
+    /// from the editor, and the row goes with it. Requiring `!events.isEmpty` here instead
+    /// would make that unreachable — Save disabled from exactly the state that triggers the
+    /// delete, stranding the user in an editor whose only way out is Back, and Back *discards*
+    /// the deletion rather than committing it. The batch was undeletable by the only route the
+    /// screen offered.
     public var canSave: Bool {
-        !batch.name.isEmpty && !batch.colorName.isEmpty
+        !batch.colorName.isEmpty
     }
 
     private init(batch: CalendarEventBatch, origin: Origin) {
@@ -279,8 +284,8 @@ public struct PCEventBatchAssembleUnitOfWork: Equatable, Sendable {
     // constant becomes its English fallback.
 
     /// What a new batch is called before the user says otherwise.
-    public static let defaultBatchName = "New Event"
+    public static let defaultBatchName = "New event"
 
     /// What a new event inside a batch is called.
-    public static let defaultEventName = "New Event Day"
+    public static let defaultEventName = "New event day"
 }

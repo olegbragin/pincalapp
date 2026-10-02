@@ -154,12 +154,12 @@ struct PCEventBatchAssembleUnitOfWorkTests {
 
     // MARK: - canSave
 
-    @Test("canSave requires a name and a colour")
+    @Test("canSave requires a colour, and does not care about the name")
     func canSaveRequirements() {
         #expect(namedAssembler().canSave)
 
-        #expect(namedAssembler(name: "").canSave == false, "no name")
-        #expect(namedAssembler(color: nil).canSave == false, "no colour")
+        #expect(namedAssembler(name: "").canSave, "a nameless batch is still a batch")
+        #expect(namedAssembler(color: nil).canSave == false, "no colour is the only refusal")
     }
 
     /// An emptied batch stays savable, because that is how it gets deleted.

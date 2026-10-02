@@ -191,8 +191,8 @@ final class PinCalAppUITests: XCTestCase {
             KeyboardAvoidanceTestSupport.tapDay(day: day, in: app)
         }
 
-        // Replace, not append: a new batch arrives with "New Event" already in the field
-        // (§17.3), so `typeText` here would produce "New EventCycle" and every assertion
+        // Replace, not append: a new batch arrives with "New event" already in the field
+        // (§17.3), so `typeText` here would produce "New eventCycle" and every assertion
         // below would be looking for a name that was never typed.
         KeyboardAvoidanceTestSupport.replaceText(in: nameField, with: name)
         // The colour is already the first available one for a new batch, but selecting it

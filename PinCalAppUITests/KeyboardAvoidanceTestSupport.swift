@@ -396,9 +396,9 @@ enum KeyboardAvoidanceTestSupport {
 
     /// Replaces a field's whole contents with `text`.
     ///
-    /// **Not** `tap()` then `typeText`. A new batch arrives with "New Event" and a new event
-    /// with "New Event Day" already in the field, so typing *appends*: a test that wants the
-    /// name "Cycle" silently produces "New EventCycle", and then fails much later on a list
+    /// **Not** `tap()` then `typeText`. A new batch arrives with "New event" and a new event
+    /// with "New event day" already in the field, so typing *appends*: a test that wants the
+    /// name "Cycle" silently produces "New eventCycle", and then fails much later on a list
     /// lookup with a name that was never the one it typed.
     ///
     /// Triple-tap selects the line and the next keystroke replaces it. This is the same

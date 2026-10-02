@@ -193,12 +193,12 @@ struct PCEventSelectionManagerTests {
         let store = makeStore(persistence: persistence)
 
         let before = store.state
-        // A batch with no name cannot be committed, so the reducer must decline. The name
-        // is cleared explicitly: a new batch arrives named (§5.4), so "unnamed" is now a
-        // state the user reaches rather than the one they start in. What is under test is
-        // that a declined action is inert, and that has to be set up deliberately.
+        // A batch with no colour cannot be committed, so the reducer must decline. Colour is
+        // the one thing a batch cannot be written without — the name is optional and always
+        // has been since names stopped gating `canSave`, so clearing the name would no longer
+        // produce a refusal. It has to be cleared explicitly to reach a declined action at all.
         store.send(.startNewBatch(on: day(4)))
-        store.send(.setBatchName(""))
+        store.send(.setBatchColor(nil))
         let staged = store.state
         #expect(!staged.canSave, "precondition: the batch really is unsavable")
         store.send(.commitTapped)
@@ -206,6 +206,22 @@ struct PCEventSelectionManagerTests {
 
         #expect(afterCommit.batches == before.batches, "an unsavable batch writes nothing")
         #expect(afterCommit.stage == .batchEditor, "and it does not close either")
+    }
+
+    @Test("A nameless batch is committable — the name is not what makes a batch")
+    func namelessBatchCommits() {
+        let persistence = RecordingCalendarPersisting()
+        let store = makeStore(persistence: persistence)
+
+        store.send(.startNewBatch(on: day(4)))
+        store.send(.setBatchName(""))
+        let staged = store.state
+
+        #expect(staged.canSave, "colour alone is enough to write a batch")
+        store.send(.commitTapped)
+
+        #expect(store.state.batches.count == 1, "and it lands")
+        #expect(store.state.batches[0].name.isEmpty, "with the empty name the user chose")
     }
 
     // MARK: §12.3 — the reported duplicate-batch bug

@@ -49,21 +49,24 @@ struct AddEditEventBatchViewModelTests {
         #expect(vm.canSave, "a new batch arrives named and coloured, so it is savable at once")
     }
 
-    /// The name and the colour are what `canSave` reads, and clearing either one still
-    /// refuses the save. What changed is the *starting point*: a new batch arrives with
-    /// both already set (§5.4), so this walks the batch back down rather than up.
-    @Test("canSave refuses a batch whose name or colour has been cleared")
+    /// Colour is what `canSave` reads. The name deliberately is not: a batch is a set of
+    /// dated, coloured events, so clearing the title does not make it any less one, and
+    /// refusing to save it would leave the store ahead of the database with nowhere to put
+    /// the work.
+    @Test("canSave needs a colour, and does not care about the name")
     func canSaveRequirements() {
         let (vm, store, _) = makeContext()
         store.send(.startNewBatch(on: Fixture.day(4)))
 
         #expect(vm.canSave, "a new batch arrives ready to save")
         store.send(.setBatchName(""))
-        #expect(!vm.canSave, "no name")
+        #expect(vm.canSave, "a nameless batch is still a batch")
         store.send(.setBatchName("Morning"))
         #expect(vm.canSave)
         store.send(.setBatchColor(nil))
-        #expect(!vm.canSave, "no colour")
+        #expect(!vm.canSave, "no colour is the one thing that stops a write")
+        store.send(.setBatchColor(PCColorOption.firstAvailable))
+        #expect(vm.canSave)
     }
 
     @Test("A recolour to nil clears the colour and makes the batch unsavable again")
@@ -124,8 +127,9 @@ struct AddEditEventBatchViewModelTests {
     func saveIsGuarded() async {
         let (vm, store, persistence) = makeContext()
         store.send(.startNewBatch(on: Fixture.day(4)))
-        // The name is what has to go, since a new batch is otherwise already savable.
-        store.send(.setBatchName(""))
+        // Colour is what has to go — the name stopped being a precondition, so clearing it
+        // would no longer produce an unsavable batch to test the guard with.
+        store.send(.setBatchColor(nil))
         #expect(!vm.canSave, "precondition: the batch really is unsavable")
         let writesBefore = await persistence.writes.count
 
