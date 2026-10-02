@@ -66,7 +66,8 @@ struct PinCalAppApp: App {
                 daySelectionManager: PCCalendarDaySelectionManager()
             )
         )
-    }
+
+        }
 
     var body: some Scene {
         WindowGroup {

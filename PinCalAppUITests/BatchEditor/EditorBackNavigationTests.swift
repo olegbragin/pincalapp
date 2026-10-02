@@ -36,7 +36,9 @@ final class EditorBackNavigationTests: XCTestCase {
         continueAfterFailure = false
     }
 
-    private let anchorDay = 10
+    /// The seeded batch is on the **first day of the current month** (see
+    /// `TestDataSeeder`), so the anchor is day 1 — not a hard-coded 10.
+    private let anchorDay = 1
     private let emptyDay = 21
 
     @MainActor

@@ -132,7 +132,26 @@ struct AutoTestRunner {
             // quietly starting on a non-reset simulator. Three passes, and only then fatal.
             print("Resetting AutoTest simulators...")
             let targets = autoTestSimulators.compactMap { udids[$0.profile] }
-            for attempt in 1...3 {
+            for attempt in 1...4 {
+                // From the second pass on, shut *everything* down first.
+                //
+                // Per-device shutdown was not enough. `simctl erase` kept refusing with
+                // *"current state: Booted"* on devices that `simctl list` already reported as
+                // Shutdown — including on simulators created seconds earlier, so it is not
+                // leftover state on the device. Something else in CoreSimulator is holding a
+                // device up, and only a fleet-wide shutdown clears it.
+                //
+                // Deliberately a *fallback* rather than the first thing that happens: it shuts
+                // down every simulator on the machine, including any the developer has open,
+                // and that is not this tool's business unless the polite route has failed
+                // twice. Prints what it is about to do, because a runner that silently stops
+                // someone's other simulators is its own kind of surprising.
+                if attempt >= 3 {
+                    print("Attempt \(attempt): shutting down all simulators before erasing.")
+                    _ = run(["xcrun", "simctl", "shutdown", "all"], expectingSuccess: false)
+                    Thread.sleep(forTimeInterval: 15)
+                }
+
                 var pending: [String] = []
                 for target in targets {
                     if isBooted(target) {
@@ -154,7 +173,8 @@ struct AutoTestRunner {
                 if attempt == 3 {
                     fail(
                         """
-                        Could not erase \(pending.joined(separator: ", ")) after 3 attempts. \
+                        Could not erase \(pending.joined(separator: ", ")) after 4 attempts, \
+                        including a fleet-wide `simctl shutdown all`. \
                         Refusing to run: a "full reset" that did not happen is worse than no \
                         reset, because the run still looks clean.
                         """

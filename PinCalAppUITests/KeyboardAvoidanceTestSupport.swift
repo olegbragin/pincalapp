@@ -5,6 +5,7 @@
 //  Created by Oleg Bragin on 24.08.2026.
 //
 
+import UIKit
 import XCTest
 
 enum KeyboardAvoidanceTestSupport {
@@ -63,12 +64,66 @@ enum KeyboardAvoidanceTestSupport {
         return row
     }
 
+    /// Whether the suite is driving a pad.
+    ///
+    /// **Not** `UIDevice.current.userInterfaceIdiom`: the XCUITest *runner* is a phone-only
+    /// target, so inside it the idiom reads `.phone` even while it is driving an iPad. That
+    /// made an idiom-based branch silently dead on the pad — it compiled, it looked right, and
+    /// it never ran, which is exactly why adding it changed nothing.
+    ///
+    /// Asked of the app instead, from a control that only exists on a pad: the split view's
+    /// sidebar toggle. The app is built for iPad, so it answers truthfully about the device
+    /// actually on screen.
+    @MainActor
+    static func isPad(_ app: XCUIApplication) -> Bool {
+        if app.buttons.matching(identifier: "Show Sidebar").count > 0 { return true }
+        if app.buttons.matching(identifier: "Hide Sidebar").count > 0 { return true }
+        return UIDevice.current.userInterfaceIdiom == .pad
+    }
+
     @MainActor
     static func openCalendarDetail(_ app: XCUIApplication, named name: String) {
         openCalendarsList(app)
 
         let calendarRow = app.staticTexts[name].firstMatch
-        XCTAssertTrue(calendarRow.waitForExistence(timeout: 5), "Calendar '\(name)' should exist in the list")
+
+        // iPad only: let the list finish its first layout before tapping it.
+        //
+        // `CalendarSeedPresenceTests` opens this same calendar, with this same tap, and it
+        // works on the iPad every run — the one thing in this file that reliably does. Its only
+        // remaining difference was waiting on the empty-state probe before tapping, which costs
+        // 5s on a list that is *not* empty. That wait is reproduced here deliberately rather
+        // than "fixed": it is measured behaviour copied from a passing test, not a theory.
+        //
+        // Bracketed to the pad on purpose. On the phone the split view does not exist and the
+        // probe is dead weight, and a pad-only fix must not be able to regress the phone —
+        // which is the failure mode a shared helper is most prone to.
+        let onPad = isPad(app)
+        if onPad {
+            _ = sidebarRow("calendar-list-empty-active", in: app).waitForExistence(timeout: 5)
+        }
+
+        XCTAssertTrue(calendarRow.waitForExistence(timeout: 15), "Calendar '\(name)' should exist in the list")
+
+        // Wait for the row to be *hittable*, not merely present.
+        //
+        // `CalendarSeedPresenceTests` opens the same calendar with the same tap on the same
+        // device and gets a grid; this helper did not. The whole difference was timing: that
+        // test waits on the empty-state probe (5s) before it taps, so its tap lands on a
+        // settled list, while this one fired the instant the row's text appeared. A tap during
+        // the list's own layout is not a smaller tap, it is a lost one — and nothing reports
+        // it, so it surfaced much later as `dayCells=0` with the grid never having been built.
+        //
+        // (`stableFrame` is not the tool for this: it returns *immediately* when the element
+        // is not animating, so an earlier attempt to use it added no delay and changed
+        // nothing. Hittability is a real state to wait for.)
+        if !onPad {
+            let deadline = Date().addingTimeInterval(10)
+            while Date() < deadline, !calendarRow.isHittable {
+                _ = calendarRow.exists
+                Thread.sleep(forTimeInterval: 0.2)
+            }
+        }
 
         // Verify the detail actually opened, and re-tap if it did not.
         //
@@ -105,7 +160,12 @@ enum KeyboardAvoidanceTestSupport {
             let dayCells = app.descendants(matching: .any)
                 .matching(NSPredicate(format: "identifier BEGINSWITH %@", "day-"))
                 .allElementsBoundByIndex.count
-            XCTFail("Tapped calendar '\(name)' but no day grid appeared. dayCells=\(dayCells)")
+            XCTFail("Tapped calendar '" + name + "' but no day grid appeared. dayCells="
+                + String(dayCells)
+                + " idiom=" + String(UIDevice.current.userInterfaceIdiom.rawValue)
+                + " showSidebar=" + String(app.buttons.matching(identifier: "Show Sidebar").count)
+                + " calendarCard=" + String(app.descendants(matching: .any)
+                    .matching(identifier: "card-archive-1").count))
         }
     }
 
@@ -390,37 +450,84 @@ enum KeyboardAvoidanceTestSupport {
     /// against. Without it, "reopen the calendar" means something different on the iPad
     /// from what it means everywhere else.
     @MainActor
+    /// Leave whatever screen is showing, so the caller can set up a known state again.
+    ///
+    /// Prefers an explicit Back button, and only falls back to the sidebar when there is none.
+    ///
+    /// It used to do the opposite — reveal the sidebar, go to Settings, come back to Calendars,
+    /// collapse — and that detour is what this ordering removes. Two reasons it is now the wrong
+    /// tool: it only existed because a revealed calendar had no way back on a wide layout, and
+    /// selecting a calendar in the list now resets the detail column to its root, so the detour
+    /// no longer does what it was written to do. Worse, the sidebar sits under the same taps:
+    /// revealing it and tapping a category can land on a calendar row instead, which silently
+    /// re-selects a calendar rather than leaving the screen.
+    ///
+    /// So: Back if there is one, sidebar only when there is not.
     static func leaveCurrentScreen(in app: XCUIApplication) {
-        let settings = revealedSidebarRow("sidebar-settings", in: app)
-        if settings.waitForExistence(timeout: 2), settings.isHittable {
-            settings.tap()
-
-            // Back to Calendars **while the sidebar is still up**, then collapse.
-            //
-            // The order is the whole fix. `goTo(.sidebar)` only clears `detailCalendarID`
-            // for `.archived` and `.settings`, so a different category is needed to dismiss
-            // the calendar — but that leaves the app on the *Settings* screen, and
-            // collapsing the sidebar there strands it: the sidebar rows go away with it, so
-            // nothing can switch back to Calendars and the next `openCalendarDetail` has
-            // nothing to tap. Measured: after "Settings → collapse" the calendar list was
-            // absent entirely (`sidebar-calendars` unreachable, calendar row not in the
-            // hierarchy), which is why three iPad tests failed on "day cell should exist"
-            // while looking like a navigation bug.
-            //
-            // Selecting Calendars *after* the detail is cleared does not re-open anything:
-            // `detailCalendarID` is already nil, so it lands on the list with nothing
-            // selected — which is exactly the state the app is in when launched by hand.
-            let calendars = revealedSidebarRow("sidebar-calendars", in: app)
-            if calendars.waitForExistence(timeout: 2), calendars.isHittable {
-                calendars.tap()
-            }
-            collapseSidebar(in: app)
+        let back = app.buttons.matching(identifier: "Back").firstMatch.exists
+            ? app.buttons.matching(identifier: "Back").firstMatch
+            : app.buttons.matching(identifier: "BackButton").firstMatch
+        if back.waitForExistence(timeout: 3) {
+            back.tap()
             return
         }
 
-        let back = app.buttons["Back"].exists ? app.buttons["Back"] : app.buttons["BackButton"]
-        XCTAssertTrue(back.waitForExistence(timeout: 5), "Back button should be visible")
-        back.tap()
+        // No Back button: the screen is a root, so leaving means switching category.
+        let settings = revealedSidebarRow("sidebar-settings", in: app)
+        guard settings.waitForExistence(timeout: 2), settings.isHittable else {
+            XCTFail("Expected either a Back button or a reachable sidebar to leave the screen")
+            return
+        }
+        settings.tap()
+
+        // Back to Calendars **while the sidebar is still up**, then collapse. Collapsing on
+        // Settings strands the app there: the sidebar rows disappear with it, so nothing can
+        // switch back to Calendars and the next `openCalendarDetail` has nothing to tap.
+        let calendars = revealedSidebarRow("sidebar-calendars", in: app)
+        if calendars.waitForExistence(timeout: 2), calendars.isHittable {
+            calendars.tap()
+        }
+        collapseSidebar(in: app)
+        verifyReturnedToCalendar(app)
+    }
+
+    /// Proves `leaveCurrentScreen` actually left the calendar on screen.
+    ///
+    /// This helper has been "done" in several different ways and the iPad kept failing with
+    /// `dayCells=0` in the *caller*. A paired run finally showed why: the open path works end
+    /// to end on the iPad — day cell found, tapped, day list, batch, colour picker — and
+    /// every failure happens on the `tapDay` that comes *after* this helper. So the leave is
+    /// what loses the screen, and it surfaced as four unrelated test failures.
+    ///
+    /// Assuming it returned is what hid that for so long. Check instead, and on failure dump
+    /// the state that separates the candidates — sidebar still showing, calendar list showing,
+    /// or a third screen. Which one it is says which of the three steps (leave → switch back →
+    /// collapse) failed.
+    @MainActor
+    private static func verifyReturnedToCalendar(_ app: XCUIApplication) {
+        func count(_ id: String) -> Int {
+            app.descendants(matching: .any).matching(identifier: id).count
+        }
+        // The postcondition is the **calendar list**, not a calendar. This asserted day cells
+        // and so failed on a helper that was working exactly as intended — leaving a calendar
+        // is supposed to dismiss it. Measured: after the iPad leave, `Show Sidebar` present
+        // and `Hide Sidebar` absent (collapsed), the calendar card present, no day cells.
+        // That is the list, which is right.
+        let deadline = Date().addingTimeInterval(10)
+        while Date() < deadline {
+            if app.descendants(matching: .any)
+                .matching(identifier: "card-archive-1").count > 0 { return }
+            Thread.sleep(forTimeInterval: 0.25)
+        }
+        XCTFail("leaveCurrentScreen did not leave the calendar. "
+            + "dayCells=0 "
+            + "showSidebar=" + String(app.buttons.matching(identifier: "Show Sidebar").count)
+            + " hideSidebar=" + String(app.buttons.matching(identifier: "Hide Sidebar").count)
+            + " sidebarCalendars=" + String(count("sidebar-calendars"))
+            + " calendarCard=" + String(count("card-archive-1"))
+            + " emptyList=" + String(count("calendar-list-empty-active"))
+            + " idiom=" + String(UIDevice.current.userInterfaceIdiom.rawValue)
+            + " sidebarToggle=" + String(app.buttons.matching(identifier: "Show Sidebar").count))
     }
 
     /// Collapses the iPad sidebar if this helper revealed it, so the detail column is back

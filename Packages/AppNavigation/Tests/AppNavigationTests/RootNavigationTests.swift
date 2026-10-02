@@ -8,6 +8,7 @@ struct RootNavigationTests {
     // MARK: - Initial State Tests
     
     @Test("Initial state has calendarList selected and empty path")
+    @MainActor
     func initialState() {
         let nav = RootNavigation()
         
@@ -21,6 +22,7 @@ struct RootNavigationTests {
     // MARK: - Sidebar Navigation Tests
     
     @Test("goTo sidebar calendarList sets category")
+    @MainActor
     func goToSidebarCalendarList() {
         let nav = RootNavigation()
         nav.goTo(.sidebar(.calendarList))
@@ -29,7 +31,8 @@ struct RootNavigationTests {
         #expect(nav.detailCalendarID == nil)
     }
     
-    @Test("goTo sidebar archived sets category and clears detail")
+    @Test("goTo sidebar archived sets category and keeps the detail calendar")
+    @MainActor
     func goToSidebarArchived() {
         let nav = RootNavigation()
         // First set a detail calendar
@@ -40,12 +43,79 @@ struct RootNavigationTests {
         nav.goTo(.sidebar(.archived))
         
         #expect(nav.selectedSidebarCategory == .archived)
-        #expect(nav.detailCalendarID == nil)
+        // The detail column is a peer of the content column, not a child: browsing the archive
+        // must not tear down what the detail column is showing.
+        #expect(nav.detailCalendarID == 42)
+    }
+    
+    @Test("switchCalendar consults the guard, and a refusal does not switch")
+    @MainActor
+    func switchCalendarConsultsGuard() async {
+        let nav = RootNavigation()
+        nav.goTo(.calendar(1, toRoot: false))
+
+        var asked = 0
+        nav.canLeaveCurrentCalendar = {
+            asked += 1
+            return false
+        }
+
+        await nav.switchCalendar(to: 2)
+
+        #expect(asked == 1, "the guard is what decides, so it must be consulted")
+        #expect(nav.detailCalendarID == 1, "a refused switch leaves the calendar alone")
+    }
+
+    @Test("switchCalendar switches when the guard allows it, and resets the stack")
+    @MainActor
+    func switchCalendarProceedsWhenAllowed() async {
+        let nav = RootNavigation()
+        nav.goTo(.calendar(1, toRoot: false))
+        nav.goTo(.dayBatches)
+
+        nav.canLeaveCurrentCalendar = { true }
+
+        await nav.switchCalendar(to: 2)
+
+        #expect(nav.detailCalendarID == 2)
+        #expect(nav.path.isEmpty, "selecting from the list resets the detail to its root")
+    }
+
+    @Test("No guard means the switch is allowed — nothing to protect")
+    @MainActor
+    func switchCalendarWithoutAGuard() async {
+        let nav = RootNavigation()
+        nav.goTo(.calendar(1, toRoot: false))
+
+        await nav.switchCalendar(to: 2)
+
+        #expect(nav.detailCalendarID == 2)
+    }
+
+    @Test("detailCalendarID stays nil until a calendar has been selected")
+    @MainActor
+    func detailCalendarIDNilUntilFirstSelection() {
+        let nav = RootNavigation()
+        
+        // Every sidebar category, before any calendar is ever opened.
+        for category in [AppNavigation.SidebarCategory.calendarList, .archived, .settings] {
+            nav.goTo(.sidebar(category))
+            #expect(nav.detailCalendarID == nil)
+        }
+        
+        // Once one is selected it survives leaving, for good.
+        nav.goTo(.calendar(7, toRoot: false))
+        #expect(nav.detailCalendarID == 7)
+        for category in [AppNavigation.SidebarCategory.calendarList, .archived, .settings] {
+            nav.goTo(.sidebar(category))
+            #expect(nav.detailCalendarID == 7)
+        }
     }
     
     // MARK: - Calendar Detail Tests
     
     @Test("goTo calendar sets detailCalendarID and preferredCompactColumn")
+    @MainActor
     func goToCalendar() {
         let nav = RootNavigation()
         nav.goTo(.calendar(123, toRoot: false))
@@ -56,6 +126,7 @@ struct RootNavigationTests {
     }
     
     @Test("goTo calendar clears presented sheet")
+    @MainActor
     func goToCalendarClearsSheet() {
         let nav = RootNavigation()
         nav.goTo(.addCalendar)
@@ -70,6 +141,7 @@ struct RootNavigationTests {
     // MARK: - Push Navigation Tests
     
     @Test("goTo dayBatches appends to path")
+    @MainActor
     func goToDayBatches() {
         let nav = RootNavigation()
 
@@ -79,6 +151,7 @@ struct RootNavigationTests {
     }
     
     @Test("goTo batchEditor appends to path")
+    @MainActor
     func goToBatchEditor() {
         let nav = RootNavigation()
 
@@ -88,6 +161,7 @@ struct RootNavigationTests {
     }
 
     @Test("goTo eventEditor appends to path")
+    @MainActor
     func goToEventEditor() {
         let nav = RootNavigation()
 
@@ -97,6 +171,7 @@ struct RootNavigationTests {
     }
     
     @Test("Multiple push routes accumulate in path")
+    @MainActor
     func multiplePushRoutes() {
         let nav = RootNavigation()
         
@@ -109,6 +184,7 @@ struct RootNavigationTests {
     // MARK: - Sheet Presentation Tests
     
     @Test("goTo addCalendar sets presentedSheet")
+    @MainActor
     func goToAddCalendar() {
         let nav = RootNavigation()
         
@@ -118,6 +194,7 @@ struct RootNavigationTests {
     }
     
     @Test("dismissSheet clears presentedSheet")
+    @MainActor
     func dismissSheet() {
         let nav = RootNavigation()
         nav.goTo(.addCalendar)
@@ -130,6 +207,7 @@ struct RootNavigationTests {
     // MARK: - Path Management Tests
     
     @Test("calendar(toRoot: true) clears the navigation path")
+    @MainActor
     func calendarToRootClearsPath() {
         let nav = RootNavigation()
         
@@ -146,12 +224,14 @@ struct RootNavigationTests {
     }
     
     @Test("isAtRoot is true initially")
+    @MainActor
     func isAtRootInitially() {
         let nav = RootNavigation()
         #expect(nav.isAtRoot == true)
     }
     
     @Test("isAtRoot is false after push")
+    @MainActor
     func isAtRootAfterPush() {
         let nav = RootNavigation()
         nav.goTo(.dayBatches)
@@ -159,6 +239,7 @@ struct RootNavigationTests {
     }
     
     @Test("isAtRoot is true after going to root via calendar(toRoot: true)")
+    @MainActor
     func isAtRootAfterCalendarToRoot() {
         let nav = RootNavigation()
         nav.goTo(.dayBatches)
@@ -169,6 +250,7 @@ struct RootNavigationTests {
     // MARK: - pop()
 
     @Test("pop removes only the top of the stack")
+    @MainActor
     func popRemovesOneLevel() {
         let nav = RootNavigation()
         nav.goTo(.dayBatches)
@@ -182,6 +264,7 @@ struct RootNavigationTests {
     }
 
     @Test("pop on an empty stack does nothing rather than trapping")
+    @MainActor
     func popOnEmptyStackIsSafe() {
         let nav = RootNavigation()
         #expect(nav.isAtRoot == true)
@@ -191,6 +274,7 @@ struct RootNavigationTests {
     }
 
     @Test("pop leaves the detail column alone")
+    @MainActor
     func popDoesNotTouchTheDetailColumn() {
         let nav = RootNavigation()
         nav.goTo(.calendar(42, toRoot: true))
@@ -208,32 +292,38 @@ struct RootNavigationTests {
     // MARK: - AppRoute NavigationStyle Tests
     
     @Test("AppRoute sidebar has open style")
+    @MainActor
     func sidebarStyle() {
         #expect(AppRoute.sidebar(.calendarList).navigationStyle == .open)
         #expect(AppRoute.sidebar(.archived).navigationStyle == .open)
     }
     
     @Test("AppRoute calendar has open style")
+    @MainActor
     func calendarStyle() {
         #expect(AppRoute.calendar(1, toRoot: false).navigationStyle == .open)
     }
     
     @Test("AppRoute dayBatches has push style")
+    @MainActor
     func dayBatchesStyle() {
         #expect(AppRoute.dayBatches.navigationStyle == .push)
     }
     
     @Test("AppRoute batchEditor has push style")
+    @MainActor
     func batchEditorStyle() {
         #expect(AppRoute.batchEditor.navigationStyle == .push)
     }
 
     @Test("AppRoute eventEditor has push style")
+    @MainActor
     func eventEditorStyle() {
         #expect(AppRoute.eventEditor.navigationStyle == .push)
     }
     
     @Test("AppRoute addCalendar has present style")
+    @MainActor
     func addCalendarStyle() {
         #expect(AppRoute.addCalendar.navigationStyle == .present)
     }
@@ -241,6 +331,7 @@ struct RootNavigationTests {
     // MARK: - AppRoute Hashable Tests
     
     @Test("AppRoute cases are hashable and comparable")
+    @MainActor
     func appRouteHashable() {
         let route1 = AppRoute.calendar(1, toRoot: false)
         let route2 = AppRoute.calendar(1, toRoot: false)

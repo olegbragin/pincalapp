@@ -22,7 +22,7 @@ final class BatchEditCommitTests: XCTestCase {
         KeyboardAvoidanceTestSupport.openCalendarDetail(app, named: "UI Test Calendar")
 
         // Day with an existing batch -> batch list -> batch editor.
-        KeyboardAvoidanceTestSupport.tapDay(day: 10, in: app)
+        KeyboardAvoidanceTestSupport.tapDay(day: 1, in: app)
 
         let batchRow = app.staticTexts["Women Cycle"]
         XCTAssertTrue(batchRow.waitForExistence(timeout: 5), "Batch list should show the seeded batch")
@@ -42,6 +42,10 @@ final class BatchEditCommitTests: XCTestCase {
             "Editor should be dismissed after Save"
         )
         KeyboardAvoidanceTestSupport.leaveCurrentScreen(in: app)
+        // Leaving dismisses the calendar, so re-open it before tapping a day. On the iPhone
+        // the calendar stayed selected and this was unnecessary, which is why it went
+        // unnoticed; on the iPad the leave returns to the *list*, where there is no day cell.
+        KeyboardAvoidanceTestSupport.openCalendarDetail(app, named: "UI Test Calendar")
 
         // The edited day now has events: tapping it must open the BATCH LIST,
         // not a new-batch editor. Before the fix this opened the editor because
@@ -61,8 +65,8 @@ final class BatchEditCommitTests: XCTestCase {
         let app = KeyboardAvoidanceTestSupport.launchSeededApp()
         KeyboardAvoidanceTestSupport.openCalendarDetail(app, named: "UI Test Calendar")
 
-        // Day 10 has an existing batch with "Event1".
-        KeyboardAvoidanceTestSupport.tapDay(day: 10, in: app)
+        // Day 1 of the current month has an existing batch with "Event1".
+        KeyboardAvoidanceTestSupport.tapDay(day: 1, in: app)
 
         let batchRow = app.staticTexts["Women Cycle"]
         XCTAssertTrue(batchRow.waitForExistence(timeout: 5), "Batch list should show the seeded batch")
@@ -96,8 +100,13 @@ final class BatchEditCommitTests: XCTestCase {
         // Dismiss back to the calendar.
         KeyboardAvoidanceTestSupport.leaveCurrentScreen(in: app)
 
-        // Re-open the same batch: tap day 10 again.
-        KeyboardAvoidanceTestSupport.tapDay(day: 10, in: app)
+        // Re-open the same batch: tap day 1 again.
+// Leaving dismisses the calendar, so re-open it before tapping a day.
+// On the iPhone the calendar stayed selected and this was not needed, which is
+// why it went unnoticed; on the iPad the leave returns to the *list* and there is
+// no day cell to tap.
+        KeyboardAvoidanceTestSupport.openCalendarDetail(app, named: "UI Test Calendar")
+        KeyboardAvoidanceTestSupport.tapDay(day: 1, in: app)
         XCTAssertTrue(batchRow.waitForExistence(timeout: 5), "Batch list should appear again")
         batchRow.tap()
 
@@ -127,8 +136,8 @@ final class BatchEditCommitTests: XCTestCase {
         let app = KeyboardAvoidanceTestSupport.launchSeededApp()
         KeyboardAvoidanceTestSupport.openCalendarDetail(app, named: "UI Test Calendar")
 
-        // Day 10 -> batch list -> batch editor
-        KeyboardAvoidanceTestSupport.tapDay(day: 10, in: app)
+        // Day 1 -> batch list -> batch editor
+        KeyboardAvoidanceTestSupport.tapDay(day: 1, in: app)
         let batchRow = app.staticTexts["Women Cycle"]
         XCTAssertTrue(batchRow.waitForExistence(timeout: 5), "Batch list should show seeded batch")
         batchRow.tap()
@@ -304,7 +313,7 @@ final class BatchEditCommitTests: XCTestCase {
         let app = KeyboardAvoidanceTestSupport.launchSeededApp()
         KeyboardAvoidanceTestSupport.openCalendarDetail(app, named: "UI Test Calendar")
 
-        KeyboardAvoidanceTestSupport.tapDay(day: 10, in: app)
+        KeyboardAvoidanceTestSupport.tapDay(day: 1, in: app)
         let batchRow = app.staticTexts["Women Cycle"]
         XCTAssertTrue(batchRow.waitForExistence(timeout: 5))
         batchRow.tap()
@@ -322,8 +331,11 @@ final class BatchEditCommitTests: XCTestCase {
         batchSaveButton.tap()
 
         KeyboardAvoidanceTestSupport.leaveCurrentScreen(in: app)
-
-        KeyboardAvoidanceTestSupport.tapDay(day: 10, in: app)
+        // Leaving dismisses the calendar, so re-open it before tapping a day. On the iPhone
+        // the calendar stayed selected and this was unnecessary, which is why it went
+        // unnoticed; on the iPad the leave returns to the *list*, where there is no day cell.
+        KeyboardAvoidanceTestSupport.openCalendarDetail(app, named: "UI Test Calendar")
+        KeyboardAvoidanceTestSupport.tapDay(day: 1, in: app)
         XCTAssertTrue(batchRow.waitForExistence(timeout: 5))
         batchRow.tap()
 
@@ -342,7 +354,7 @@ final class BatchEditCommitTests: XCTestCase {
         let app = KeyboardAvoidanceTestSupport.launchSeededApp()
         KeyboardAvoidanceTestSupport.openCalendarDetail(app, named: "UI Test Calendar")
 
-        KeyboardAvoidanceTestSupport.tapDay(day: 10, in: app)
+        KeyboardAvoidanceTestSupport.tapDay(day: 1, in: app)
         let batchRow = app.staticTexts["Women Cycle"]
         XCTAssertTrue(batchRow.waitForExistence(timeout: 5))
         batchRow.tap()
@@ -376,7 +388,7 @@ final class BatchEditCommitTests: XCTestCase {
         let app = KeyboardAvoidanceTestSupport.launchSeededApp()
         KeyboardAvoidanceTestSupport.openCalendarDetail(app, named: "UI Test Calendar")
 
-        KeyboardAvoidanceTestSupport.tapDay(day: 10, in: app)
+        KeyboardAvoidanceTestSupport.tapDay(day: 1, in: app)
         let batchRow = app.staticTexts["Women Cycle"]
         XCTAssertTrue(batchRow.waitForExistence(timeout: 5))
         batchRow.tap()
@@ -385,32 +397,32 @@ final class BatchEditCommitTests: XCTestCase {
         XCTAssertTrue(saveButton.waitForExistence(timeout: 5), "Batch editor should open")
 
         // The batch editor's calendar marks days that have events.
-        let day10ID = KeyboardAvoidanceTestSupport.dayIdentifier(day: 10)
-        let day12ID = KeyboardAvoidanceTestSupport.dayIdentifier(day: 12)
-        let day10Query = app.descendants(matching: .any).matching(identifier: day10ID)
-        let day12Query = app.descendants(matching: .any).matching(identifier: day12ID)
-        XCTAssertTrue(day10Query.firstMatch.waitForExistence(timeout: 5))
-        XCTAssertTrue(day12Query.firstMatch.waitForExistence(timeout: 5))
-        XCTAssertTrue(day10Query.firstMatch.label.lowercased().contains("events"), "Day 10 should be marked")
-        XCTAssertTrue(day12Query.firstMatch.label.lowercased().contains("events"), "Day 12 should be marked")
+        let day1ID = KeyboardAvoidanceTestSupport.dayIdentifier(day: 1)
+        let day2ID = KeyboardAvoidanceTestSupport.dayIdentifier(day: 2)
+        let day1Query = app.descendants(matching: .any).matching(identifier: day1ID)
+        let day2Query = app.descendants(matching: .any).matching(identifier: day2ID)
+        XCTAssertTrue(day1Query.firstMatch.waitForExistence(timeout: 5))
+        XCTAssertTrue(day2Query.firstMatch.waitForExistence(timeout: 5))
+        XCTAssertTrue(day1Query.firstMatch.label.lowercased().contains("events"), "Day 1 should be marked")
+        XCTAssertTrue(day2Query.firstMatch.label.lowercased().contains("events"), "Day 2 should be marked")
 
-        // Delete the first event row (on day 10, first in the date-sorted list).
+        // Delete the first event row (day 1, first in the date-sorted list).
         let deleteEvent = app.buttons["Delete event"].firstMatch
         XCTAssertTrue(deleteEvent.waitForExistence(timeout: 5), "Event delete button should exist")
         deleteEvent.tap()
 
-        // Day 10 must now be unmarked in the calendar.
+        // Day 1 must now be unmarked in the calendar.
         let deadline = Date().addingTimeInterval(5)
-        var day10Marked = true
+        var day1Marked = true
         while Date() < deadline {
-            if day10Query.firstMatch.exists,
-               !day10Query.firstMatch.label.lowercased().contains("events") {
-                day10Marked = false
+            if day1Query.firstMatch.exists,
+               !day1Query.firstMatch.label.lowercased().contains("events") {
+                day1Marked = false
                 break
             }
             Thread.sleep(forTimeInterval: 0.2)
         }
-        XCTAssertFalse(day10Marked,
-                       "Day 10 should be unmarked after its event was deleted")
+        XCTAssertFalse(day1Marked,
+                       "Day 1 should be unmarked after its event was deleted")
     }
 }

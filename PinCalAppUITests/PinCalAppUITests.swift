@@ -210,7 +210,7 @@ final class PinCalAppUITests: XCTestCase {
         KeyboardAvoidanceTestSupport.openCalendarDetail(app, named: "UI Test Calendar")
 
         // Tap a day with events: the batch list appears.
-        KeyboardAvoidanceTestSupport.tapDay(day: 10, in: app)
+        KeyboardAvoidanceTestSupport.tapDay(day: 1, in: app)
         let womenCycle = app.staticTexts["Women Cycle"]
         XCTAssertTrue(womenCycle.waitForExistence(timeout: 5), "Batch list should show the existing batch")
 
@@ -219,9 +219,12 @@ final class PinCalAppUITests: XCTestCase {
         let editorSave = KeyboardAvoidanceTestSupport.toolbarAction("Save", in: app)
         XCTAssertTrue(editorSave.waitForExistence(timeout: 5), "Batch editor should open")
 
-        // Toggle off both event days inside the editor's year calendar.
-        KeyboardAvoidanceTestSupport.tapDay(day: 10, in: app)
-        KeyboardAvoidanceTestSupport.tapDay(day: 12, in: app)
+        // Toggle off both seeded event days inside the editor's year calendar.
+        // **1 and 2** — the seed's days (`TestDataSeeder`). This said 1 and 12, which left
+        // day 2's event in place, so the batch was never empty, was never deleted, and the
+        // day list reopened: "Removed events must not reopen the batch list".
+        KeyboardAvoidanceTestSupport.tapDay(day: 1, in: app)
+        KeyboardAvoidanceTestSupport.tapDay(day: 2, in: app)
 
         // Save the edited batch. It is now empty, so it is deleted and the app
         // returns straight to the single calendar view.
@@ -234,7 +237,7 @@ final class PinCalAppUITests: XCTestCase {
                        "Removed events must not reopen the batch list")
 
         // Back on the single calendar, tapping the day must NOT show the batch list again.
-        KeyboardAvoidanceTestSupport.tapDay(day: 10, in: app)
+        KeyboardAvoidanceTestSupport.tapDay(day: 1, in: app)
         XCTAssertTrue(KeyboardAvoidanceTestSupport.waitForToolbarAction("Save", in: app, timeout: 5),
                       "Tapping an empty day should open the batch editor directly")
         XCTAssertFalse(app.staticTexts["Women Cycle"].waitForExistence(timeout: 2),
@@ -295,6 +298,8 @@ final class PinCalAppUITests: XCTestCase {
         let app = KeyboardAvoidanceTestSupport.launchSeededApp()
         KeyboardAvoidanceTestSupport.openCalendarDetail(app, named: "UI Test Calendar")
 
+        // Days well clear of the seeded ones (1 and 2), so these tests' own
+        // additions cannot collide with the fixture.
         let anchorDay = KeyboardAvoidanceTestSupport.dayIdentifier(day: 11)
         let addDay1 = KeyboardAvoidanceTestSupport.dayIdentifier(day: 12)
 
@@ -331,10 +336,10 @@ final class PinCalAppUITests: XCTestCase {
                        "Anchor day must NOT be marked after removing its event; label = \(dayAfter.label)")
 
         // Days that still have events must remain marked.
-        let day12 = app.descendants(matching: .any).matching(identifier: addDay1).firstMatch
-        XCTAssertTrue(day12.waitForExistence(timeout: 5))
-        XCTAssertTrue(day12.label.lowercased().contains("event"),
-                      "Day 12 should remain marked; label = \(day12.label)")
+        let day2 = app.descendants(matching: .any).matching(identifier: addDay1).firstMatch
+        XCTAssertTrue(day2.waitForExistence(timeout: 5))
+        XCTAssertTrue(day2.label.lowercased().contains("event"),
+                      "Day 2 should remain marked; label = \(day2.label)")
     }
 
     @MainActor
@@ -377,26 +382,26 @@ final class PinCalAppUITests: XCTestCase {
         let app = KeyboardAvoidanceTestSupport.launchSeededApp()
         KeyboardAvoidanceTestSupport.openCalendarDetail(app, named: "UI Test Calendar")
 
-        let day10 = KeyboardAvoidanceTestSupport.dayIdentifier(day: 10)
+        let day1 = KeyboardAvoidanceTestSupport.dayIdentifier(day: 1)
 
-        // Open the seeded "Women Cycle" batch (day 10 -> batch list -> batch).
-        KeyboardAvoidanceTestSupport.tapDay(day: 10, in: app)
+        // Open the seeded "Women Cycle" batch (day 1 -> batch list -> batch).
+        KeyboardAvoidanceTestSupport.tapDay(day: 1, in: app)
         let womenCycle = app.staticTexts["Women Cycle"]
         XCTAssertTrue(womenCycle.waitForExistence(timeout: 5), "Batch list should show Women Cycle")
         womenCycle.tap()
         let saveButton = app.buttons["batch-save-button"]
         XCTAssertTrue(saveButton.waitForExistence(timeout: 5), "Batch editor should open")
 
-        // Remove both events (days 10 & 12) so the batch becomes empty.
-        KeyboardAvoidanceTestSupport.tapDay(day: 10, in: app)
-        KeyboardAvoidanceTestSupport.tapDay(day: 12, in: app)
+        // Remove both seeded events (days 1 & 2) so the batch becomes empty.
+        KeyboardAvoidanceTestSupport.tapDay(day: 1, in: app)
+        KeyboardAvoidanceTestSupport.tapDay(day: 2, in: app)
         saveButton.tap()
 
-        // Back on the single calendar view: the batch is deleted and day 10 unmarked.
-        let dayAfter = app.descendants(matching: .any).matching(identifier: day10).firstMatch
+        // Back on the single calendar view: the batch is deleted and day 1 unmarked.
+        let dayAfter = app.descendants(matching: .any).matching(identifier: day1).firstMatch
         XCTAssertTrue(dayAfter.waitForExistence(timeout: 5), "Should be back on the single calendar view")
         XCTAssertFalse(dayAfter.label.lowercased().contains("event"),
-                       "Batch should be deleted and day 10 unmarked; label = \(dayAfter.label)")
+                       "Batch should be deleted and day 1 unmarked; label = \(dayAfter.label)")
     }
 
     @MainActor
@@ -404,10 +409,10 @@ final class PinCalAppUITests: XCTestCase {
         let app = KeyboardAvoidanceTestSupport.launchSeededApp()
         KeyboardAvoidanceTestSupport.openCalendarDetail(app, named: "UI Test Calendar")
 
-        let day10 = KeyboardAvoidanceTestSupport.dayIdentifier(day: 10)
+        let day1 = KeyboardAvoidanceTestSupport.dayIdentifier(day: 1)
 
-        // Open the seeded "Women Cycle" batch (day 10 -> batch list -> batch).
-        KeyboardAvoidanceTestSupport.tapDay(day: 10, in: app)
+        // Open the seeded "Women Cycle" batch (day 1 -> batch list -> batch).
+        KeyboardAvoidanceTestSupport.tapDay(day: 1, in: app)
         let womenCycle = app.staticTexts["Women Cycle"]
         XCTAssertTrue(womenCycle.waitForExistence(timeout: 5), "Batch list should show Women Cycle")
         womenCycle.tap()
@@ -423,7 +428,7 @@ final class PinCalAppUITests: XCTestCase {
         }
 
         // Removing every event empties the batch; Save deletes it and returns
-        // to the single calendar view with day 10 unmarked.
+        // to the single calendar view with day 1 unmarked.
         //
         // The editor's Save is enabled because the seeded batch is named and coloured and
         // an *emptied* batch is still savable — that is what makes emptying a batch a way
@@ -436,10 +441,10 @@ final class PinCalAppUITests: XCTestCase {
         XCTAssertTrue(saveButton.waitForNonExistence(timeout: 3),
                       "Saving an emptied batch deletes it and dismisses the editor")
 
-        let dayAfter = app.descendants(matching: .any).matching(identifier: day10).firstMatch
+        let dayAfter = app.descendants(matching: .any).matching(identifier: day1).firstMatch
         XCTAssertTrue(dayAfter.waitForExistence(timeout: 5), "Should be back on the single calendar view")
         XCTAssertFalse(dayAfter.label.lowercased().contains("event"),
-                       "Batch deleted via the events list should leave day 10 unmarked; label = \(dayAfter.label)")
+                       "Batch deleted via the events list should leave day 1 unmarked; label = \(dayAfter.label)")
     }
 
     // MARK: - Leaving the calendar in multiselect mode resets on reopen
@@ -553,6 +558,11 @@ final class PinCalAppUITests: XCTestCase {
         batchSave.tap()
 
         KeyboardAvoidanceTestSupport.leaveCurrentScreen(in: app)
+// Leaving dismisses the calendar, so re-open it before tapping a day.
+// On the iPhone the calendar stayed selected and this was not needed, which is
+// why it went unnoticed; on the iPad the leave returns to the *list* and there is
+// no day cell to tap.
+        KeyboardAvoidanceTestSupport.openCalendarDetail(app, named: "UI Test Calendar")
         KeyboardAvoidanceTestSupport.tapDay(day: 18, in: app)
         let sameCard = app.staticTexts[batchName]
         XCTAssertTrue(sameCard.waitForExistence(timeout: 5),
@@ -632,8 +642,8 @@ final class PinCalAppUITests: XCTestCase {
         openCalendarsList(app)
         app.staticTexts["UI Test Calendar"].firstMatch.tap()
 
-        let day10 = dayIdentifier(day: 10)
-        app.descendants(matching: .any).matching(identifier: day10).firstMatch.tap()
+        let day1 = dayIdentifier(day: 1)
+        app.descendants(matching: .any).matching(identifier: day1).firstMatch.tap()
         let womenCycle = app.staticTexts["Women Cycle"]
         XCTAssertTrue(womenCycle.waitForExistence(timeout: 5), "Batch list should show Women Cycle")
         womenCycle.tap()

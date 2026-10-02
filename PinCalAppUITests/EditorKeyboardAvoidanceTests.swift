@@ -37,7 +37,7 @@ final class EditorKeyboardAvoidanceTests: XCTestCase {
         KeyboardAvoidanceTestSupport.openCalendarDetail(app, named: "UI Test Calendar")
 
         // A day with events opens the batch list first.
-        KeyboardAvoidanceTestSupport.tapDay(day: 10, in: app)
+        KeyboardAvoidanceTestSupport.tapDay(day: 1, in: app)
 
         let batchRow = app.staticTexts["Women Cycle"]
         XCTAssertTrue(batchRow.waitForExistence(timeout: 5), "Batch list should show the seeded batch")

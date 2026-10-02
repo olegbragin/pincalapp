@@ -84,6 +84,43 @@ extension RecordingCalendarPersisting {
     }
 }
 
+/// Fails every write once armed, and records the payloads it was asked to persist.
+actor FailingCalendarPersisting: CalendarPersisting {
+    private(set) var attempts: [(columns: Int, calendarID: Int64)] = []
+    private var shouldFail = false
+
+    func failFromNowOn() { shouldFail = true }
+    func succeedFromNowOn() { shouldFail = false }
+
+    func save(numberOfColumns: Int, eventBatches: [CalendarEventBatch], forCalendar id: Int64) async throws {
+        attempts.append((numberOfColumns, id))
+        if shouldFail {
+            throw PersistenceStubError.diskFull
+        }
+    }
+
+    func calendar(id: Int64) async throws -> PinCalendar? { nil }
+    func eventBatches(calendarID: Int64) async throws -> [CalendarEventBatch] { [] }
+
+    func attemptCount() -> Int { attempts.count }
+}
+
+enum PersistenceStubError: Error {
+    case diskFull
+}
+
+@MainActor
+extension FailingCalendarPersisting {
+    /// Waits for at least `expected` attempts, so a test is not racing the chain.
+    func waitForAttempts(_ expected: Int, timeout: Duration = .seconds(5)) async {
+        let deadline = ContinuousClock.now + timeout
+        while ContinuousClock.now < deadline {
+            if await attemptCount() >= expected { return }
+            try? await Task.sleep(for: .milliseconds(10))
+        }
+    }
+}
+
 @MainActor
 @Suite("PCEventSelectionManager")
 struct PCEventSelectionManagerTests {
@@ -249,6 +286,70 @@ struct PCEventSelectionManagerTests {
 
         #expect(recorded.isEmpty, "there is no calendar 0 to write to")
         #expect(store.state.numberOfColumns == 2, "but the state still moved")
+    }
+
+    // MARK: Failed writes
+
+    @Test("A failed save is recorded instead of swallowed, and blocks the calendar switch")
+    func failedSaveIsRecordedAndBlocksSwitch() async {
+        let persistence = FailingCalendarPersisting()
+        let store = makeStore(calendarID: 42, persistence: persistence)
+
+        await persistence.failFromNowOn()
+        store.send(.setNumberOfColumns(6))
+        await persistence.waitForAttempts(1)
+
+        // Polled rather than slept: the chain runs on the scheduler, so a fixed wait would be
+        // a flake that reads as "the failure was lost" instead of "the test gave up".
+        var deadline = ContinuousClock.now + .seconds(5)
+        while store.failedSave == nil, ContinuousClock.now < deadline {
+            try? await Task.sleep(for: .milliseconds(10))
+        }
+
+        let failure = try! #require(store.failedSave)
+        #expect(failure.calendarID == 42)
+        #expect(failure.numberOfColumns == 6, "the payload that failed is what gets retried")
+        #expect(!store.canSwitchCalendar, "an unsaved write must not be switchable-away-from")
+    }
+
+    @Test("Retrying replays the failed write and unblocks the switch once it lands")
+    func retryReplaysTheFailedWrite() async {
+        let persistence = FailingCalendarPersisting()
+        let store = makeStore(calendarID: 42, persistence: persistence)
+
+        await persistence.failFromNowOn()
+        store.send(.setNumberOfColumns(6))
+        await persistence.waitForAttempts(1)
+
+        var deadline = ContinuousClock.now + .seconds(5)
+        while store.failedSave == nil, ContinuousClock.now < deadline {
+            try? await Task.sleep(for: .milliseconds(10))
+        }
+        #expect(store.failedSave != nil)
+
+        await persistence.succeedFromNowOn()
+        store.retryFailedSave()
+        await persistence.waitForAttempts(2)
+
+        deadline = ContinuousClock.now + .seconds(5)
+        while store.failedSave != nil, ContinuousClock.now < deadline {
+            try? await Task.sleep(for: .milliseconds(10))
+        }
+
+        #expect(store.failedSave == nil, "a landed retry clears the block")
+        #expect(store.canSwitchCalendar)
+    }
+
+    @Test("In-flight writes do not block the calendar switch")
+    func inFlightWritesDoNotBlockSwitch() async {
+        let persistence = RecordingCalendarPersisting()
+        let store = makeStore(calendarID: 42, persistence: persistence)
+
+        store.send(.setNumberOfColumns(4))
+
+        // Deliberately *not* awaited: the point is that a pending write is not a reason to
+        // block. The switch flushes it; only a failure is a blocker.
+        #expect(store.canSwitchCalendar, "blocking on every autosave would make the calendar sticky")
     }
 
     // MARK: Projection

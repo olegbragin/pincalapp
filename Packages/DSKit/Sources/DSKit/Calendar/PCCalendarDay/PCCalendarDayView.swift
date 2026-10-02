@@ -46,6 +46,23 @@ public struct PCCalendarDayView: View {
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(model.accessibilityLabel)
         .accessibilityIdentifier(model.accessibilityID)
+        // Days from the neighbouring months are taken out of the accessibility tree.
+        //
+        // Two reasons, and the second is the one that mattered. A year grid renders the same
+        // day number in every month — day 10 exists twelve times — so a screen reader walking
+        // the grid hears twelve "10"s with nothing to say which is real, and the UI suite could
+        // not ask for "day 10" without also guessing the month from the wall clock. That guess
+        // is what broke these tests at 00:0x on 1 October: the helper built
+        // `day-10-2026-10-10` from `Calendar.current` and the grid was showing September, so
+        // the test failed on a cell that was plainly on screen.
+        //
+        // It is also simply more truthful. These days are already greyed out by
+        // `textColorRole`, so exposing them as ordinary days told VoiceOver users something
+        // the screen was not showing them.
+        //
+        // Still tappable — `accessibilityHidden` removes it from the tree, it does not
+        // disable the view, so tapping a neighbouring month's day still navigates there.
+        .accessibilityHidden(!model.isInCurrentMonth)
     }
 }
 

@@ -28,6 +28,68 @@ public final class PCEventSelectionManager {
     /// The whole of the feature's state. Written only by `send`.
     public private(set) var state: PCEventSelectionState
 
+    /// A calendar save that failed and has not been retried successfully, if any.
+    ///
+    /// `nil` means every write has landed. Its presence means the store's view of the calendar
+    /// is **ahead of the database**, so the difference is real, unrecoverable user work — a
+    /// save whose name or colour lives only in memory.
+    ///
+    /// This cannot be a log line. `saveCalendar` is read-modify-write with a destructive
+    /// delete-then-insert, so a failed write does not merely fail to apply: the next successful
+    /// write for the same calendar is computed from the store's state and overwrites the row,
+    /// and anything the failed write was carrying is lost. Swallowing the error (`try?`) made
+    /// that invisible, which is why this exists.
+    public private(set) var failedSave: PCFailedSave?
+
+    /// Re-attempts `failedSave`, keeping the store blocked until it succeeds.
+    ///
+    /// Retries the *failed payload*, not the current state: the point is to land the write that
+    /// did not land. If the user has since typed more, that newer work is enqueued behind this
+    /// one and will write afterwards.
+    public func retryFailedSave() {
+        guard let failure = failedSave else { return }
+        enqueueWrite(
+            calendarID: failure.calendarID,
+            columns: failure.numberOfColumns,
+            batches: failure.eventBatches
+        )
+    }
+
+    /// Whether the calendar may be switched away right now.
+    ///
+    /// False only while a save has failed. In-flight writes are *not* a reason to block — the
+    /// switch flushes them, and blocking on every keystroke-save would make the calendar feel
+    /// sticky for no benefit.
+    public var canSwitchCalendar: Bool { failedSave == nil }
+
+    /// Settles in-flight work, then reports whether the calendar may be left.
+    ///
+    /// Two jobs, in this order, and the order is the point:
+    ///
+    /// 1. **Flush.** Awaits the chain so nothing is abandoned mid-switch. The session — and
+    ///    with it this store — is torn down on switching calendars, so a write still in the
+    ///    chain would simply stop existing, leaving the store's state ahead of the database.
+    /// 2. **Refuse on failure.** Returns false if a write did not land, which cancels the
+    ///    switch. The failure is already on screen with a Retry, and switching away would
+    ///    destroy the store holding the payload needed to retry it.
+    ///
+    /// Returns true when there was nothing to do, so a calendar with no unsaved work switches
+    /// as fast as it ever did.
+    @discardableResult
+    public func flushBeforeLeavingCalendar() async -> Bool {
+        await writeChain?.value
+
+        // Nothing written, nothing lost: the common case, and it stays fast.
+        if failedSave == nil { return true }
+
+        // A write landed *after* the failure, for this same calendar. That write was computed
+        // from the store's current state, which already includes everything the failed write
+        // carried — so the failure is stale and there is nothing to retry. `enqueueWrite`
+        // clears `failedSave` on exactly this case, so reaching here means the newest work
+        // still did not land.
+        return false
+    }
+
     /// The batch editor's calendar. A *render target*, projected from `state` — not part of
     /// it. The day-model instances inside are the ones the views bind to, so this is
     /// mutated in place and rebuilt only when the year or the column count changes; see
@@ -185,14 +247,38 @@ public final class PCEventSelectionManager {
             id != 0
         else { return }
 
+        enqueueWrite(calendarID: id, columns: columns, batches: batches)
+    }
+
+    /// Appends one write to the chain, recording it if it fails.
+    ///
+    /// The chain is what makes "two concurrent writers" unrepresentable: each write awaits its
+    /// predecessor, so a slow write cannot land after a fast one. What it does not do is
+    /// report failure — so the failure is captured here, against the payload that failed,
+    /// which is what `retryFailedSave` needs and what makes the loss recoverable.
+    private func enqueueWrite(calendarID: Int64, columns: Int, batches: [CalendarEventBatch]) {
         let previous = writeChain
         writeChain = Task { [persistence] in
             await previous?.value
-            try? await persistence.save(
-                numberOfColumns: columns,
-                eventBatches: batches,
-                forCalendar: id
-            )
+            do {
+                try await persistence.save(
+                    numberOfColumns: columns,
+                    eventBatches: batches,
+                    forCalendar: calendarID
+                )
+                // Cleared only on success, and only for a failure this write supersedes. A
+                // newer failure must not be erased by an older write landing afterwards.
+                if failedSave?.calendarID == calendarID {
+                    failedSave = nil
+                }
+            } catch {
+                failedSave = PCFailedSave(
+                    calendarID: calendarID,
+                    numberOfColumns: columns,
+                    eventBatches: batches,
+                    message: (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+                )
+            }
         }
     }
 }

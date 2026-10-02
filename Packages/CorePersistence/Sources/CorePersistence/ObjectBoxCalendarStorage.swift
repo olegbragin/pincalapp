@@ -26,92 +26,114 @@ public class ObjectBoxCalendarStorage: CalendarRepository, @unchecked Sendable {
     @discardableResult
     public func saveCalendar(_ calendar: CalendarDataSource) async throws -> Int64 {
         do {
-            let calendarid = try calendarEntityBox.put(
-                .init(
-                    id: UInt64(calendar.id),
-                    name: calendar.name,
-                    year: calendar.year,
-                    numberOfColumns: calendar.numberOfColumns,
-                    isArchived: calendar.isArchived
-                )
-            )
-            guard let ppcalendar = try calendarEntityBox.get(calendarid) else { return -1 }
+            // One transaction for the whole save.
+            //
+            // This is read-modify-write with a destructive step in the middle: it reads the
+            // existing batches, **deletes** every batch absent from `calendar.eventBatches`
+            // (cascading to that batch's events), then re-inserts everything. Outside a
+            // transaction those phases are three separate commits, so a throw from any of them
+            // leaves the calendar half-deleted and permanently lossy — and because the delete
+            // runs first, it is the *earlier* phases that destroy data when a later one fails.
+            //
+            // That is not hypothetical: the relation-ordering comment below records a past
+            // incident where `applyToDb()` threw and "silently emptied every event from the
+            // batch". A transaction turns that class of failure into no change at all.
+            //
+            // `runInTransaction` rethrows, so the `catch` below still reports it.
+            return try store.runInTransaction {
+                        let calendarid = try calendarEntityBox.put(
+                        .init(
+                            id: UInt64(calendar.id),
+                            name: calendar.name,
+                            year: calendar.year,
+                            numberOfColumns: calendar.numberOfColumns,
+                            isArchived: calendar.isArchived
+                        )
+                    )
+                    guard let ppcalendar = try calendarEntityBox.get(calendarid) else { return -1 }
 
-            let batchEntityBox = store.box(for: PPEventBatch.self)
+                    let batchEntityBox = store.box(for: PPEventBatch.self)
 
-            let desiredBatchIDs = Set(calendar.eventBatches.map(\.id))
-            let orphanedBatches = ppcalendar.eventBatches.filter { !desiredBatchIDs.contains(Int64($0.id)) }
-            for oldBatch in orphanedBatches {
-                let eventIDsToRemove = oldBatch.events.map(\.id)
-                try batchEntityBox.remove(oldBatch)
-                try eventEntityBox.remove(eventIDsToRemove)
-            }
-
-            for batch in calendar.eventBatches {
-                let ppBatch: PPEventBatch
-                if batch.id != 0, let existing = try? batchEntityBox.get(UInt64(batch.id)) {
-                    ppBatch = existing
-                } else {
-                    ppBatch = PPEventBatch()
-                }
-                ppBatch.title = batch.name
-                ppBatch.color = batch.colorName
-                ppBatch.date = batch.date
-                try batchEntityBox.put(ppBatch)
-
-                let oldEventIDs = Set(ppBatch.events.map(\.id))
-
-                let ppevents = batch.events.map { event in
-                    PPEvent(id: UInt64(event.id), name: event.name, color: event.color, date: event.date)
-                }
-                // Persist the events first and keep the ids the store assigned,
-                // so the relation is wired to real rows.
-                for event in ppevents {
-                    event.id = try eventEntityBox.put(event)
+                    let desiredBatchIDs = Set(calendar.eventBatches.map(\.id))
+                    let orphanedBatches = ppcalendar.eventBatches.filter { !desiredBatchIDs.contains(Int64($0.id)) }
+                    for oldBatch in orphanedBatches {
+                        let eventIDsToRemove = oldBatch.events.map(\.id)
+                        try batchEntityBox.remove(oldBatch)
+                        try eventEntityBox.remove(eventIDsToRemove)
                 }
 
-                // Wire the relation to the persisted rows BEFORE deleting events
-                // that are no longer referenced. Deleting the entity first leaves
-                // a dangling relation row and `applyToDb()` then fails with
-                // "Could not remove relation data", which silently emptied every
-                // event from the batch.
-                ppBatch.events.replace(ppevents)
-                try ppBatch.events.applyToDb()
+                for batch in calendar.eventBatches {
+                    let ppBatch: PPEventBatch
+                    if batch.id != 0, let existing = try? batchEntityBox.get(UInt64(batch.id)) {
+                        ppBatch = existing
+                    } else {
+                        ppBatch = PPEventBatch()
+                    }
+                    ppBatch.title = batch.name
+                    ppBatch.color = batch.colorName
+                    ppBatch.date = batch.date
+                    try batchEntityBox.put(ppBatch)
 
-                let newEventIDs = Set(ppevents.map(\.id))
-                for removedID in oldEventIDs.subtracting(newEventIDs) {
-                    try eventEntityBox.remove(removedID)
+                    let oldEventIDs = Set(ppBatch.events.map(\.id))
+
+                    let ppevents = batch.events.map { event in
+                        PPEvent(id: UInt64(event.id), name: event.name, color: event.color, date: event.date)
+                    }
+                    // Persist the events first and keep the ids the store assigned,
+                    // so the relation is wired to real rows.
+                    for event in ppevents {
+                        event.id = try eventEntityBox.put(event)
+                    }
+
+                    // Wire the relation to the persisted rows BEFORE deleting events
+                    // that are no longer referenced. Deleting the entity first leaves
+                    // a dangling relation row and `applyToDb()` then fails with
+                    // "Could not remove relation data", which silently emptied every
+                    // event from the batch.
+                    ppBatch.events.replace(ppevents)
+                    try ppBatch.events.applyToDb()
+
+                    let newEventIDs = Set(ppevents.map(\.id))
+                    for removedID in oldEventIDs.subtracting(newEventIDs) {
+                        try eventEntityBox.remove(removedID)
+                    }
+
+                    if !ppcalendar.eventBatches.contains(where: { $0.id == ppBatch.id }) {
+                        ppcalendar.eventBatches.append(ppBatch)
+                    }
                 }
 
-                if !ppcalendar.eventBatches.contains(where: { $0.id == ppBatch.id }) {
-                    ppcalendar.eventBatches.append(ppBatch)
+                    ppcalendar.events.removeAll()
+                    try ppcalendar.eventBatches.applyToDb()
+                    try ppcalendar.events.applyToDb()
+                    return Int64(ppcalendar.id)
                 }
-            }
-
-            ppcalendar.events.removeAll()
-            try ppcalendar.eventBatches.applyToDb()
-            try ppcalendar.events.applyToDb()
-            return Int64(ppcalendar.id)
-        } catch {
-            print(error)
-            throw error
+            } catch {
+                print(error)
+                throw error
         }
     }
 
     public func removeEvents(_ eventIds: [Int64], calendarId: Int64) async throws {
-        guard let calendar = try calendarEntityBox.get(calendarId) else { return }
-        for batch in calendar.eventBatches {
-            batch.events.removeAll(where: {
+        // Same reason as `saveCalendar`: rewrites relations across several boxes, so a partial
+        // failure would leave batch relations and event rows disagreeing. One transaction makes
+        // it all-or-nothing. No `do`/`catch` here to re-indent around — the throws propagate
+        // straight out of `runInTransaction` to the caller.
+        try store.runInTransaction {
+            guard let calendar = try calendarEntityBox.get(calendarId) else { return }
+            for batch in calendar.eventBatches {
+                batch.events.removeAll(where: {
+                    eventIds.contains(Int64($0.id))
+                })
+                try batch.events.applyToDb()
+            }
+            calendar.events.removeAll(where: {
                 eventIds.contains(Int64($0.id))
             })
-            try batch.events.applyToDb()
-        }
-        calendar.events.removeAll(where: {
-            eventIds.contains(Int64($0.id))
-        })
-        try calendar.events.applyToDb()
-        try eventIds.forEach {
-            try eventEntityBox.remove($0)
+            try calendar.events.applyToDb()
+            try eventIds.forEach {
+                try eventEntityBox.remove($0)
+            }
         }
     }
 

@@ -24,9 +24,23 @@ struct TestDataSeeder {
         let batch1 = PPEventBatch(title: "Women Cycle", color: "eventColorOption1")
         _ = try? batchBox.put(batch1)
 
+        // The seeded batch lands on the **first two days of the current month**, read from the
+        // clock — not on fixed day numbers.
+        //
+        // Fixed days (this used to be 10 and 12) are a hidden dependency on the date the
+        // suite happens to run on. Everything else keys on the month the app is showing, so a
+        // hard-coded day is the one thing that can disagree with the grid: the app was
+        // launched at 23:59, the assertion ran at 00:01, the grid was rendering September and
+        // the test was asking about October — "day cell should exist" for a cell that was on
+        // screen the whole time.
+        //
+        // Day 1 is the anchor because it is the one day number that is unambiguously *in* the
+        // month: a year grid renders day 10 twelve times, once per month, and only the first
+        // day of a month cannot also be the last day of the one before it. So the seeder and
+        // the suite agree on the clock and need agree on nothing else.
         let events1 = [
-            PPEvent(name: "Event1", color: "eventColorOption1", date: date(year: year, month: month, day: 10)),
-            PPEvent(name: "Event1", color: "eventColorOption1", date: date(year: year, month: month, day: 12))
+            PPEvent(name: "Event1", color: "eventColorOption1", date: date(year: year, month: month, day: 1)),
+            PPEvent(name: "Event1", color: "eventColorOption1", date: date(year: year, month: month, day: 2))
         ]
         try? eventBox.put(events1)
         batch1.events.replace(events1)

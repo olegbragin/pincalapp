@@ -15,7 +15,7 @@ final class PerfScrollTests: XCTestCase {
         KeyboardAvoidanceTestSupport.openCalendarDetail(app, named: "UI Test Calendar")
 
         // Interact with the batch editor first while the current month is guaranteed on screen.
-        KeyboardAvoidanceTestSupport.tapDay(day: 10, in: app)
+        KeyboardAvoidanceTestSupport.tapDay(day: 1, in: app)
 
         let womenCycle = app.staticTexts["Women Cycle"]
         XCTAssertTrue(womenCycle.waitForExistence(timeout: 5), "Batch list should show the existing batch")
@@ -37,7 +37,7 @@ final class PerfScrollTests: XCTestCase {
 
         KeyboardAvoidanceTestSupport.tapDay(day: 12, in: app)
         RunLoop.current.run(until: Date().addingTimeInterval(0.5))
-        KeyboardAvoidanceTestSupport.tapDay(day: 10, in: app)
+        KeyboardAvoidanceTestSupport.tapDay(day: 1, in: app)
         RunLoop.current.run(until: Date().addingTimeInterval(0.5))
         editorSave.tap()
 

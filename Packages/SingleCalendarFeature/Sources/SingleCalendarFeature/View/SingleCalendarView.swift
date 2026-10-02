@@ -18,6 +18,12 @@ public struct SingleCalendarView: View {
     @Environment(RootNavigation.self) var navigation
     @Environment(PCEventSelectionManager.self) private var store
     @Environment(\.pcVibe) private var vibe
+
+    /// Local so dismissing the toast does not touch the store: the failure is the store's
+    /// to hold until it is retried, and clearing it here would unblock the calendar switch
+    /// for a save that still has not landed. The store clears `failedSave` itself when a
+    /// write succeeds, and this follows it down.
+    @State private var isSaveFailedToastPresented = false
     
     public var body: some View {
         ZStack {
@@ -115,6 +121,34 @@ public struct SingleCalendarView: View {
                 in: store
             )
         }
+        .onChange(of: store.failedSave) { _, failure in
+            // Raised by the store when a write did not land. The toast is the only way the
+            // user learns their work is not saved, and Retry is the only way out — which is
+            // why there is no timeout here: a failed save must not fade away unattended,
+            // unlike the transient toasts that need no answer.
+            isSaveFailedToastPresented = failure != nil
+        }
+        .pcToast(
+            isPresented: $isSaveFailedToastPresented,
+            position: .bottom,
+            message: saveFailureMessage,
+            actionTitle: "Retry",
+            action: { store.retryFailedSave() },
+            backgroundColor: .black.opacity(0.85),
+            progress: 1,
+            identifier: "save-failed-toast",
+            actionIdentifier: "save-failed-toast-button"
+        )
+    }
+
+    /// User-facing text for a failed save.
+    ///
+    /// The store's `message` is the raw thrown error, which is not something to put in front
+    /// of someone — ObjectBox surfaces internal failures there. So the specifics stay in the
+    /// store for diagnosis and the user gets the actionable half: the work is not saved, and
+    /// Retry is right there on the toast.
+    private var saveFailureMessage: String {
+        store.failedSave == nil ? "" : "Couldn't save changes. Retry to keep them."
     }
     
     @ToolbarContentBuilder
