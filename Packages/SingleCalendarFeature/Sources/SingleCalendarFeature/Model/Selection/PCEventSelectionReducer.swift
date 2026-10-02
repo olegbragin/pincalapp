@@ -60,17 +60,17 @@ public func pcEventSelectionReducer(
             // One assembly for the whole session, so the batch has one identity and each tap
             // updates it rather than adding another. Created on the first day, then toggled —
             // `toggling` preserves `pendingID`, which is what keeps the merge key stable.
+            // No colour chosen yet, so no batch. Choosing the colour is the gesture that says
+            // "start a batch"; defaulting one made days tappable before that, and wrote rows
+            // the user never asked for.
+            guard let color = state.multiSelectColor ?? next.multiSelectColor else { break }
             let assembly: PCEventBatchAssembleUnitOfWork
             if let existing = next.multiSelectAssembly {
                 assembly = existing.toggling(day: target, using: provider)
             } else {
                 assembly = PCEventBatchAssembleUnitOfWork.new(
                     anchor: next.multiSelectDays.min() ?? target,
-                    // Defaults to the first colour when none is picked yet, exactly as a
-                    // tapped day does — the session's chosen colour arrives later and
-                    // recolours the batch in place, which the stable key now allows.
-                    colorName: (state.multiSelectColor ?? next.multiSelectColor)?.colorName
-                        ?? PCColorOption.firstAvailable.colorName,
+                    colorName: color.colorName,
                     using: provider
                 )
             }

@@ -1070,6 +1070,45 @@ struct PCEventSelectionReducerTests {
         #expect(grown.batch.events.count == 3, "and it grew to three days")
     }
 
+    /// The reported symptom, end to end in the reducer: tapping 17, 18 and 19 produced three
+    /// batches, the first holding three events, the second two, the third one. Cumulative,
+    /// which is the signature of a batch being *rebuilt* per tap — each rebuild gets a new
+    /// `pendingID`, a different `mergeKey`, and lands beside the last instead of replacing it.
+    @Test("Tapping three days in a session leaves exactly one batch with three events")
+    func threeTappedDaysProduceOneBatch() throws {
+        var state = multiSelecting(session(batches: []), days: [], color: .option2)
+
+        for day in [day(17), day(18), day(19)] {
+            state = reduce(state, .dayTappedInCalendar(day)).next
+        }
+
+        #expect(
+            state.batches.count == 1,
+            "three taps, one batch — got \(state.batches.count)"
+        )
+        let batch = try #require(state.batches.first)
+        #expect(
+            batch.events.map(\.date) == [day(17), day(18), day(19)].map(provider.startOfDay(for:)),
+            "holding all three days, not a growing pile"
+        )
+        #expect(batch.colorName == "eventColorOption2", "in the chosen colour")
+    }
+
+    /// Days must not be tappable before a colour is chosen.
+    ///
+    /// The first version defaulted to the first colour, which made an uncoloured session
+    /// behave like a coloured one and quietly wrote batches the user never chose a colour for.
+    /// Choosing the colour is the gesture that says "start a batch".
+    @Test("A day tap before a colour is chosen does not create a batch")
+    func dayTapWithoutAColourDoesNothing() {
+        var state = multiSelecting(session(batches: []), days: [], color: nil)
+
+        state = reduce(state, .dayTappedInCalendar(day(17))).next
+
+        #expect(state.batches.isEmpty, "no batch without a chosen colour")
+        #expect(state.multiSelectAssembly == nil, "and nothing staged to become one")
+    }
+
     @Test("confirmMultiSelectTapped ends the session without opening the editor")
     func confirmMultiSelectEndsTheSession() throws {
         let state = multiSelecting(session(), days: [day(6), day(4)], color: .option2)
