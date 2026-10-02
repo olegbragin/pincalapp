@@ -94,6 +94,20 @@ public struct PCEventSelectionState: Equatable {
     /// becomes `Equatable` and a state carrying one can still be compared with `==`.
     public var multiSelectColor: PCColorOption?
 
+    /// The batch the multi-select session is building, created on the first tapped day and
+    /// then *reused* for every tap after it.
+    ///
+    /// Identity is the whole point. A batch merges into the registry by `mergeKey`, which is
+    /// `persistedID ?? pending(pendingID)` — so a batch rebuilt from scratch on each tap gets
+    /// a fresh `pendingID`, a different key, and lands beside the previous one instead of
+    /// replacing it. Tapping two days produced two batches, both covering day 17. Holding one
+    /// assembly for the session keeps its key stable, so each tap updates the batch the last
+    /// tap wrote.
+    ///
+    /// Kept separate from `assembly` because that one belongs to the batch editor, and a
+    /// session that is selecting days is not editing a batch.
+    public var multiSelectAssembly: PCEventBatchAssembleUnitOfWork?
+
     // MARK: Environment the reducer needs (§5.1)
 
     public var dataProvider: PCCalendarDataProvider

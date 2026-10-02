@@ -515,21 +515,17 @@ final class PinCalAppUITests: XCTestCase {
         XCTAssertTrue(confirm.waitForExistence(timeout: 5), "Toolbar should offer Save during a session")
         confirm.tap()
 
-        // The session becomes a staged batch and the editor opens on it.
-        let batchSave = app.buttons["batch-save-button"]
-        XCTAssertTrue(batchSave.waitForExistence(timeout: 5),
-                      "Confirming a session should open the batch editor")
+        // Confirming ends the session rather than opening the editor: the days were written as
+        // they were tapped, so there is nothing staged left to review or commit.
+        XCTAssertFalse(
+            app.buttons["batch-save-button"].exists,
+            "Confirming a session should not open the batch editor"
+        )
 
-        // The batch needs a name. `PCEventBatchAssembleUnitOfWork.new(all:color:)` builds one with an empty
-        // name, and `canSave` requires a name — so the editor's Save is disabled until this
-        // step, exactly as it is for a batch started by tapping a single day.
-        let batchName = "Fortnight"
-        let nameField = app.textFields["batch-name-field"]
-        XCTAssertTrue(nameField.waitForExistence(timeout: 3), "Batch editor should offer a name field")
-        KeyboardAvoidanceTestSupport.replaceText(in: nameField, with: batchName)
-        XCTAssertTrue(batchSave.isEnabled, "A named, coloured batch must be savable")
-        batchSave.tap()
-        XCTAssertTrue(batchSave.waitForNonExistence(timeout: 3), "Batch editor should dismiss after Save")
+        // The batch carries its default name, since no editor ever opened to rename it. Hard
+        // coded rather than the constant: this target is not linked against
+        // SingleCalendarFeature, so referencing it fails to link.
+        let batchName = "New event"
 
         // Back on the calendar: both days are marked.
         for day in [17, 18] {
@@ -552,6 +548,7 @@ final class PinCalAppUITests: XCTestCase {
         card.tap()
 
         // The authoritative check on the shape: one batch, two events.
+        let batchSave = app.buttons["batch-save-button"]
         XCTAssertTrue(batchSave.waitForExistence(timeout: 5), "The batch should open for editing")
         let rows = app.collectionViews.buttons.containing(NSPredicate(format: "label CONTAINS %@", "at"))
         XCTAssertEqual(rows.count, 2, "The batch must hold both days, as two event rows")

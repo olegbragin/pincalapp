@@ -57,6 +57,29 @@ public func pcEventSelectionReducer(
             } else {
                 next.multiSelectDays.append(target)
             }
+            // One assembly for the whole session, so the batch has one identity and each tap
+            // updates it rather than adding another. Created on the first day, then toggled —
+            // `toggling` preserves `pendingID`, which is what keeps the merge key stable.
+            let assembly: PCEventBatchAssembleUnitOfWork
+            if let existing = next.multiSelectAssembly {
+                assembly = existing.toggling(day: target, using: provider)
+            } else {
+                assembly = PCEventBatchAssembleUnitOfWork.new(
+                    anchor: next.multiSelectDays.min() ?? target,
+                    // Defaults to the first colour when none is picked yet, exactly as a
+                    // tapped day does — the session's chosen colour arrives later and
+                    // recolours the batch in place, which the stable key now allows.
+                    colorName: (state.multiSelectColor ?? next.multiSelectColor)?.colorName
+                        ?? PCColorOption.firstAvailable.colorName,
+                    using: provider
+                )
+            }
+            next.multiSelectAssembly = assembly
+            // Written as it changes, so Save has nothing left to commit — it only ends the
+            // session.
+            if let row = assembly.resolved() {
+                next.batches = merging(row, into: state.batches)
+            }
         } else if state.batches.contains(where: { $0.occurs(on: day, using: provider) }) {
             next.day = day
             next.stage = .dayList(day: day)
@@ -339,12 +362,25 @@ public func pcEventSelectionReducer(
         if !on {
             next.multiSelectDays = []
             next.multiSelectColor = nil
+            // The scratchpad goes; the batch it wrote does not. Leaving the session is not
+            // undoing the selection.
+            next.multiSelectAssembly = nil
             // Leaving the session un-paints the days it had marked. Without this the days
             // stay marked until something else happens to rebuild the payload.
         }
 
     case .setMultiSelectColor(let color):
         next.multiSelectColor = color
+        // Repaints a session that already has days. Without this the days stay in the
+        // previous colour until the next tap — the marker and the batch would disagree, and
+        // only one of them is what the user sees.
+        if let assembly = next.multiSelectAssembly, color != nil {
+            let recoloured = assembly.recoloring(color)
+            next.multiSelectAssembly = recoloured
+            if let row = recoloured.resolved() {
+                next.batches = merging(row, into: state.batches)
+            }
+        }
         // Days chosen before the colour still have to be painted in it, or the calendar
         // would sit there unmarked until the next tap.
 
@@ -352,19 +388,18 @@ public func pcEventSelectionReducer(
         // An assembly cannot be built without a colour to build it with, and there is
         // nothing to confirm without days. Either way the session is left exactly as it
         // was — a rejected action never half-builds a batch.
-        guard state.multiSelectMode, !state.multiSelectDays.isEmpty, let color = state.multiSelectColor
-        else { break }
-        let anchor = state.multiSelectDays.min() ?? state.day
-        next.assembly = PCEventBatchAssembleUnitOfWork.new(all: state.multiSelectDays, color: color, using: provider)
+        guard state.multiSelectMode else { break }
+        // The days were written as they were tapped, so Save has nothing to commit. It ends
+        // the session and leaves the calendar in single-select. It does not open the batch
+        // editor: that was a review step over staged data, and there is no staged data left.
+        let anchor = state.multiSelectAssembly.flatMap(\.batch.date) ?? state.day
+        next.assembly = next.multiSelectAssembly
+        next.multiSelectAssembly = nil
         next.day = anchor
-        next.stage = .batchEditor
         next.scrollAnchor = anchor
-        // The session has become a batch; leaving `multiSelectMode` on would keep the
-        // calendar behind the editor presenting itself as mid-selection.
         next.multiSelectMode = false
         next.multiSelectDays = []
         next.multiSelectColor = nil
-        requesting(&next, .pushBatchEditor)
 
     case .cancelMultiSelectTapped:
         // Exits the session, not just empties it. §6.3 listed only the days and the
@@ -375,6 +410,7 @@ public func pcEventSelectionReducer(
         next.multiSelectMode = false
         next.multiSelectDays = []
         next.multiSelectColor = nil
+        next.multiSelectAssembly = nil
 
     case .setNumberOfColumns(let columns):
         next.numberOfColumns = columns

@@ -110,14 +110,18 @@ final class MultiselectAndDefaultsTests: XCTestCase {
         XCTAssertTrue(confirm.waitForExistence(timeout: 5), "Toolbar should offer Save during a session")
         confirm.tap()
 
-        let nameField = app.textFields["batch-name-field"]
-        XCTAssertTrue(nameField.waitForExistence(timeout: 5), "Confirming should open the batch editor")
-        KeyboardAvoidanceTestSupport.replaceText(in: nameField, with: "Pair")
-
-        let batchSave = app.buttons["batch-save-button"]
-        XCTAssertTrue(batchSave.isEnabled, "A coloured, named batch must be savable")
-        batchSave.tap()
-        XCTAssertTrue(batchSave.waitForNonExistence(timeout: 3), "Batch editor should dismiss after Save")
+        // Confirming ends the session; it does not open the batch editor. The days were
+        // written as they were tapped, so there is nothing left for an editor to commit. It
+        // used to open one as a review step over staged data, which no longer describes what
+        // happens.
+        XCTAssertFalse(
+            app.textFields["batch-name-field"].exists,
+            "Confirming should not open the batch editor"
+        )
+        XCTAssertTrue(
+            KeyboardAvoidanceTestSupport.waitForToolbarAction("Multiselect", in: app),
+            "and should leave the calendar in single-select mode"
+        )
 
         let dayID = KeyboardAvoidanceTestSupport.dayIdentifier(day: day)
         let cell = app.descendants(matching: .any).matching(identifier: dayID).firstMatch

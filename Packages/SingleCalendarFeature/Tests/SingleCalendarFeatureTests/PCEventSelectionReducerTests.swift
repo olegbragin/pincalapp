@@ -144,10 +144,33 @@ struct PCEventSelectionReducerTests {
         return next
     }
 
-    private func multiSelecting(_ state: PCEventSelectionState, days: [Date]) -> PCEventSelectionState {
+    /// A state mid-multi-select, with the session's batch built the way the reducer builds it.
+    ///
+    /// The assembly is derived rather than omitted because it is now load-bearing: it holds
+    /// the batch's identity, and a fixture that set only `multiSelectDays` would describe a
+    /// session the reducer cannot produce — the same trap as hand-writing `dayEventColors`.
+    private func multiSelecting(
+        _ state: PCEventSelectionState,
+        days: [Date],
+        color: PCColorOption? = .option1
+    ) -> PCEventSelectionState {
         var next = state
         next.multiSelectMode = true
         next.multiSelectDays = days
+        next.multiSelectColor = color
+        if let color, !days.isEmpty {
+            var assembly = PCEventBatchAssembleUnitOfWork.new(
+                anchor: days.min()!,
+                colorName: color.colorName,
+                using: provider
+            )
+            // One assembly for the session, built by toggling in the remaining days — the
+            // same path the reducer takes, so the identity matches rather than being faked.
+            for day in days.dropFirst() {
+                assembly = assembly.toggling(day: day, using: provider)
+            }
+            next.multiSelectAssembly = assembly
+        }
         next.dayEventColors = next.derivedDayEventColors
         return next
     }
@@ -1002,7 +1025,11 @@ struct PCEventSelectionReducerTests {
         #expect(next.multiSelectColor == .option3)
         #expect(next.multiSelectDays == state.multiSelectDays, "picking a colour selects nothing")
         #expect(next.multiSelectMode)
-        #expect(effects.isEmpty, "a colour choice is not a write")
+        // Was "a colour choice is not a write", which was true while the session's days were
+        // staged and nothing existed on disk. Now the batch was written when the days were
+        // tapped, so recolouring it *is* a write — it repaints the days the user already
+        // picked, and the marker would disagree with the row if it did not.
+        #expect(effects.count == 1, "recolouring a session with days writes the batch")
     }
 
     @Test("Leaving multi-select clears the days *and* the colour")
@@ -1020,23 +1047,44 @@ struct PCEventSelectionReducerTests {
         )
     }
 
-    @Test("confirmMultiSelectTapped builds one batch spanning every selected day")
-    func confirmMultiSelectBuildsTheBatch() throws {
-        var state = multiSelecting(session(), days: [day(6), day(4)])
-        state.multiSelectColor = .option2
+    @Test("Tapping days in a session builds one batch, updated in place")
+    func multiSelectBuildsOneBatch() throws {
+        var state = multiSelecting(session(), days: [day(4)], color: .option2)
+
+        // First day: a batch is created.
+        let first = reduce(state, .dayTappedInCalendar(day(6))).next
+        let afterFirst = try #require(first.multiSelectAssembly)
+        #expect(afterFirst.batch.events.count == 2, "both selected days are in it")
+
+        // Second day: the *same* batch, because the assembly keeps its identity. This is the
+        // bug worth naming — rebuilding it per tap gives a fresh `pendingID`, a different
+        // `mergeKey`, and a second batch covering the same day.
+        state = first
+        let second = reduce(state, .dayTappedInCalendar(day(9))).next
+        #expect(
+            second.multiSelectAssembly?.batch.pendingID == afterFirst.batch.pendingID,
+            "the session reuses one batch"
+        )
+        #expect(second.batches.count == 2, "one committed + this one, not three")
+        let grown = try #require(second.multiSelectAssembly)
+        #expect(grown.batch.events.count == 3, "and it grew to three days")
+    }
+
+    @Test("confirmMultiSelectTapped ends the session without opening the editor")
+    func confirmMultiSelectEndsTheSession() throws {
+        let state = multiSelecting(session(), days: [day(6), day(4)], color: .option2)
         let (next, effects) = reduce(state, .confirmMultiSelectTapped)
 
-        let assembly = try #require(next.assembly)
-        #expect(assembly.batch.colorName == "eventColorOption2", "the session's colour is the batch's colour")
-        #expect(
-            assembly.batch.events.map(\.date) == [day(4), day(6)].map(provider.startOfDay(for:)),
-            "one placeholder per selected day, in date order and normalised"
-        )
-        #expect(next.stage == .batchEditor)
-        #expect(next.navigationRequest?.target == .pushBatchEditor)
-        #expect(next.day == day(4), "the anchor is the earliest selected day")
-        #expect(next.scrollAnchor == day(4))
-        #expect(effects.isEmpty, "confirming stages the batch; the editor's save writes it")
+        // The days were written as they were tapped, so Save has nothing to commit. It ends
+        // the session and leaves the calendar in single-select. It does not open the editor:
+        // that was a review step over staged data, and there is no staged data left.
+        #expect(!next.multiSelectMode, "single-select after Save")
+        #expect(next.multiSelectDays.isEmpty)
+        #expect(next.multiSelectColor == nil)
+        #expect(next.multiSelectAssembly == nil, "the scratchpad is released")
+        #expect(next.stage == .idle, "no push into the batch editor")
+        #expect(next.navigationRequest == nil, "Save is not a navigation")
+        #expect(effects.isEmpty, "the batch was already written; there is nothing to write")
     }
 
     @Test("Confirming ends the session, so the calendar behind the editor is not left mid-selection")
@@ -1061,25 +1109,34 @@ struct PCEventSelectionReducerTests {
         )
     }
 
-    @Test("confirmMultiSelectTapped is rejected without a colour, without days, and outside the session")
+    /// Save with nothing selected still ends the session — it just writes nothing.
+    ///
+    /// It used to be rejected outright, because it used to build a batch and open an editor
+    /// for it. Now it cannot build anything, and a checkmark that does nothing when tapped is
+    /// a worse affordance than one that simply closes the session.
+    @Test("confirmMultiSelectTapped with nothing to save ends the session and writes nothing")
     func confirmMultiSelectIsRejected() throws {
         let committed = session()
 
-        let uncoloured = multiSelecting(committed, days: [day(4)])
-        #expect(reduce(uncoloured, .confirmMultiSelectTapped).next == uncoloured, "no colour, no batch")
+        let uncoloured = multiSelecting(committed, days: [day(4)], color: nil)
+        let afterUncoloured = reduce(uncoloured, .confirmMultiSelectTapped).next
+        #expect(!afterUncoloured.multiSelectMode, "the session ended")
+        #expect(afterUncoloured.batches == committed.batches, "and no batch was invented")
 
-        var colouless = multiSelecting(committed, days: [])
-        colouless.multiSelectColor = .option1
-        #expect(reduce(colouless, .confirmMultiSelectTapped).next == colouless, "no days, nothing to confirm")
+        var empty = multiSelecting(committed, days: [], color: .option1)
+        empty.multiSelectAssembly = nil
+        let afterEmpty = reduce(empty, .confirmMultiSelectTapped).next
+        #expect(!afterEmpty.multiSelectMode, "the session ended")
+        #expect(afterEmpty.batches == committed.batches, "and nothing was written")
 
-        // Days and colour but *not* in a session: only the mode guard can reject this, so
-        // it is the case that pins that guard down.
+        // Not in a session at all: only the mode guard can reject this, and rejecting means
+        // leaving the state untouched.
         var notSelecting = committed
         notSelecting.multiSelectDays = [day(4)]
         notSelecting.multiSelectColor = .option1
         #expect(
             reduce(notSelecting, .confirmMultiSelectTapped).next == notSelecting,
-            "the toolbar only offers this in a session"
+            "outside a session, Save is inert"
         )
     }
 

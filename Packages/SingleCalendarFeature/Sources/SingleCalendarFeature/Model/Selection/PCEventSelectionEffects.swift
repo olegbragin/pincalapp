@@ -65,7 +65,8 @@ public func pcEventSelectionEffects(
 
     case .setBatchName, .setBatchColor, .toggleDay, .removeEvent,
          .setEventName, .setEventDate, .setEventColor,
-         .startNewBatch, .dayTappedInCalendar:
+         .startNewBatch, .dayTappedInCalendar, .confirmMultiSelectTapped,
+         .setMultiSelectColor:
         // These merge into `batches` as they are made, so the write is already implied by
         // the state changing. The shared test is the same one every other writing action
         // uses: did the merge actually move anything. That is also what keeps an edit that
@@ -76,8 +77,11 @@ public func pcEventSelectionEffects(
     case .saveEventTapped, .openEvent, .discardEventTapped, .openBatch,
          .backTapped, .closeTapped, .cancelTapped,
          .ensureAssemblyStarted, .navigationRequestHandled, .resetSession,
-         .setMultiSelectMode, .setMultiSelectColor, .confirmMultiSelectTapped,
-         .cancelMultiSelectTapped, .setEditorYear, .setScrollAnchor:
+         .setMultiSelectMode, .cancelMultiSelectTapped,
+         .setEditorYear, .setScrollAnchor:
+        // Staging, navigation, or view-only, with one exception moved up: `setMultiSelectColor`
+        // follows the writing branch below because recolouring a session that already has
+        // days does change the batch.
         // Staging, navigation, or view-only. `openEvent` copies a row into a draft without
         // changing it; `discardEventTapped` drops that draft; the rest move between stages.
         // None of them alter a batch, so none of them have anything to write.
