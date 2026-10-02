@@ -42,7 +42,7 @@ final class PinCalAppUITests: XCTestCase {
     @MainActor
     func testNavigationToCalendarAndBack() throws {
         let app = XCUIApplication()
-        app.launchArguments = ["-UITestSeedData", "-UITestColumns", "1"]
+        app.launchArguments = ["-UITestSeedData", "-UITestColumns", "1", "-UITestNameAutosaveSeconds", "0"]
         app.launch()
 
         // Navigate to the calendar list via sidebar.
@@ -72,7 +72,7 @@ final class PinCalAppUITests: XCTestCase {
     @MainActor
     func testiPadSidebarSelectsDetailCalendar() throws {
         let app = XCUIApplication()
-        app.launchArguments = ["-UITestSeedData", "-UITestColumns", "1"]
+        app.launchArguments = ["-UITestSeedData", "-UITestColumns", "1", "-UITestNameAutosaveSeconds", "0"]
         app.launch()
 
         // Navigate to the calendar list via sidebar (iPad shows sidebar; iPhone skips to content).
@@ -121,7 +121,7 @@ final class PinCalAppUITests: XCTestCase {
     @MainActor
     func testCalendarNameEditingKeyboardScroll() throws {
         let app = XCUIApplication()
-        app.launchArguments = ["-UITestSeedData", "-UITestColumns", "1"]
+        app.launchArguments = ["-UITestSeedData", "-UITestColumns", "1", "-UITestNameAutosaveSeconds", "0"]
         app.launch()
 
         // Navigate to the calendar list via sidebar.
@@ -574,7 +574,7 @@ final class PinCalAppUITests: XCTestCase {
     @MainActor
     func testEditingEventInBatchPersists() throws {
         let app = XCUIApplication()
-        app.launchArguments = ["-UITestSeedData"]
+        app.launchArguments = ["-UITestSeedData", "-UITestNameAutosaveSeconds", "0"]
         app.launch()
 
         openCalendarsList(app)
@@ -636,7 +636,7 @@ final class PinCalAppUITests: XCTestCase {
     @MainActor
     func testTappingExistingEventOpensEditor() throws {
         let app = XCUIApplication()
-        app.launchArguments = ["-UITestSeedData"]
+        app.launchArguments = ["-UITestSeedData", "-UITestNameAutosaveSeconds", "0"]
         app.launch()
 
         openCalendarsList(app)

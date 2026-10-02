@@ -70,6 +70,15 @@ public func pcEventSelectionReducer(
             // also meant the editor opened with Save disabled, and the only way out of an
             // accidental tap was to type a name and pick a colour before backing out.
             next.assembly = PCEventBatchAssembleUnitOfWork.new(anchor: day, using: provider)
+            // Written on creation, not on Save. Tapping a day is a decision to add a batch,
+            // and it is a decision that already has everything needed to write one: a day
+            // and the default colour. Making the user confirm it again meant the batch could
+            // be abandoned by navigating away, which is the save-or-discard question this
+            // feature no longer has.
+            next.batches = merging(
+                next.assembly!.resolved()!,
+                into: state.batches
+            )
             next.stage = .batchEditor
             next.scrollAnchor = day
             next.editorYear = nil
@@ -79,6 +88,12 @@ public func pcEventSelectionReducer(
     case .startNewBatch(on: let day):
         next.day = day
         next.assembly = PCEventBatchAssembleUnitOfWork.new(anchor: day, using: provider)
+        // Same as a tapped day: the plus button already carries the day the batch list is
+        // scoped to, so the batch is fully determined and is written immediately.
+        next.batches = merging(
+            next.assembly!.resolved()!,
+            into: state.batches
+        )
         next.stage = .batchEditor
         next.scrollAnchor = day
         requesting(&next, .pushBatchEditor)
@@ -97,6 +112,7 @@ public func pcEventSelectionReducer(
         // place is cheaper than reasoning about which actions happen to satisfy it.
         requesting(&next, .pushBatchEditor)
 
+
     // MARK: Stage transitions
 
     case .backTapped:
@@ -106,9 +122,11 @@ public func pcEventSelectionReducer(
             next.stage = .batchEditor
             requesting(&next, .pop)
         case .batchEditor:
-            // Backing out of the editor discards the staged edit — that is the difference
-            // between this and `saveTapped`. The committed batches for the day are still
-            // there to come back to.
+            // Leaving the editor closes it. It does not undo: every edit merged into
+            // `batches` as it was made, so the batch is already on the day and Back simply
+            // reveals it. There is nothing staged here to discard — the assembly is the same
+            // row, not a pending alternative to it — which is why this comment used to talk
+            // about discarding a staged edit and no longer has anything to refer to.
             next.assembly = nil
             next.stage = next.day.map(PCEventSelectionStage.dayList) ?? .idle
             requesting(&next, .pop)
@@ -135,20 +153,20 @@ public func pcEventSelectionReducer(
     // MARK: Batch editor
 
     case .setBatchName(let name):
-        guard let assembly = state.assembly else { break }
-        next.assembly = assembly.renaming(name)
+        // Staged in the assembly, merged into `batches`, but marked not-persisted: the store
+        // holds the actual write back so consecutive keystrokes coalesce into one. See
+        // `PCEventSelectionState.persistsAsTyped`.
+        editing(state, &next, persistsAsTyped: true) { $0.renaming(name) }
 
     case .setBatchColor(let color):
-        guard let assembly = state.assembly else { break }
-        next.assembly = assembly.recoloring(color)
+        editing(state, &next) { $0.recoloring(color) }
 
     case .toggleDay(let day):
-        guard state.stage == .batchEditor, let assembly = state.assembly else { break }
-        next.assembly = assembly.toggling(day: day, using: provider)
+        guard state.stage == .batchEditor else { break }
+        editing(state, &next) { $0.toggling(day: day, using: provider) }
 
     case .removeEvent(let pendingID):
-        guard let assembly = state.assembly else { break }
-        next.assembly = assembly.removingEvent(pendingID: pendingID)
+        editing(state, &next) { $0.removingEvent(pendingID: pendingID) }
 
     // MARK: Event editor
 
@@ -167,14 +185,20 @@ public func pcEventSelectionReducer(
     case .setEventName(let name):
         guard let draft = state.eventDraft else { break }
         next.eventDraft = draft.with(name: name)
+        // Debounced for the same reason as `setBatchName`: typing is one edit, not five
+        // writes.
+        persistEventDraft(state, &next, draft.with(name: name), persistsAsTyped: true)
 
     case .setEventDate(let date):
         guard let draft = state.eventDraft else { break }
         next.eventDraft = draft.with(date: date)
+        persistEventDraft(state, &next, draft.with(date: date))
 
     case .setEventColor(let color):
         guard let draft = state.eventDraft else { break }
-        next.eventDraft = draft.with(colorName: color?.colorName ?? "")
+        let edited = draft.with(colorName: color?.colorName ?? "")
+        next.eventDraft = edited
+        persistEventDraft(state, &next, edited)
 
     case .saveEventTapped:
         // An unnamed event is not a save, it is a dismissal — rejecting it leaves the
@@ -432,6 +456,57 @@ extension PCEventSelectionState {
 }
 
 /// Inserts `row`, replacing the entry with the same `mergeKey` if there is one.
+// MARK: - Persisting as you go
+
+/// Applies an edit to the staged assembly and writes the result through immediately.
+///
+/// The assembly is no longer where a change waits for Save — it is the scratchpad the edit
+/// is expressed in, and the row it resolves to is merged into `batches` straight away. That
+/// is the whole of "persist as you type": an edit is durable by the time the user has made
+/// it, so there is never a Save-or-discard question to answer when they navigate away.
+///
+/// Merging keeps a single representation of the batch: `batches` is what the calendar
+/// renders, and `assembly` is the same batch while it is being edited. Keeping them in step
+/// here — rather than at Save — is what stops a half-built batch from living in only one of
+/// them.
+///
+/// Returns without merging when the batch is not yet writable (no colour) or resolves to
+/// nothing (no events). The first is not a save yet; the second is the delete path, where
+/// `resolved()` is `nil` and the row should go rather than be written.
+private func editing(
+    _ state: PCEventSelectionState,
+    _ next: inout PCEventSelectionState,
+    persistsAsTyped: Bool = false,
+    _ edit: (PCEventBatchAssembleUnitOfWork) -> PCEventBatchAssembleUnitOfWork
+) {
+    guard let assembly = state.assembly else { return }
+    let edited = edit(assembly)
+    next.assembly = edited
+    guard edited.canSave, let row = edited.resolved() else { return }
+    next.batches = merging(row, into: state.batches)
+    next.persistsAsTyped = persistsAsTyped
+}
+
+/// Folds an edited event draft back into its batch and writes the batch through.
+///
+/// Separate from `editing` because the event editor's work lives in `eventDraft` rather than
+/// in the assembly — the draft is a copy, and the batch only learns about it here. Without
+/// this the event's name, date and colour would keep the Save/discard shape while its parent
+/// batch's had lost it.
+private func persistEventDraft(
+    _ state: PCEventSelectionState,
+    _ next: inout PCEventSelectionState,
+    _ draft: CalendarEvent,
+    persistsAsTyped: Bool = false
+) {
+    guard let assembly = state.assembly else { return }
+    let updated = assembly.applying(draft, using: state.dataProvider)
+    next.assembly = updated
+    guard updated.canSave, let row = updated.resolved() else { return }
+    next.batches = merging(row, into: state.batches)
+    next.persistsAsTyped = persistsAsTyped
+}
+
 private func merging(
     _ row: CalendarEventBatch,
     into registry: [CalendarEventBatch]

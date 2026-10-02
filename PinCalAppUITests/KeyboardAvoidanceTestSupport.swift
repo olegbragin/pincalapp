@@ -13,7 +13,7 @@ enum KeyboardAvoidanceTestSupport {
     @MainActor
     static func launchSeededApp() -> XCUIApplication {
         let app = XCUIApplication()
-        app.launchArguments = ["-UITestSeedData", "-UITestColumns", "1"]
+        app.launchArguments = ["-UITestSeedData", "-UITestColumns", "1", "-UITestNameAutosaveSeconds", "0"]
         app.launch()
         return app
     }

@@ -81,6 +81,29 @@ final class PCCalendarSession {
         { requested in forcedColumnsForUITests ?? requested }
     }
 
+    /// Resolves how long a typed name waits before it is written.
+    ///
+    /// UI tests pass `-UITestNameAutosaveSeconds 0` so a name lands on the next scheduler
+    /// pass rather than a quarter of a second later. The delay is real in production and is
+    /// not something to hide in the test suite by moving the debounce into the view layer:
+    /// durability belongs to the store, which outlives the editor, and a view-owned timer dies
+    /// with the view. Making the interval injectable keeps that honest and still lets a test
+    /// be deterministic.
+    static func makeNameAutosaveDelay() -> Duration {
+        forcedNameAutosaveForUITests ?? PCNameAutosave.defaultDelay
+    }
+
+    private static var forcedNameAutosaveForUITests: Duration? {
+        let arguments = ProcessInfo.processInfo.arguments
+        guard
+            let flagIndex = arguments.firstIndex(of: "-UITestNameAutosaveSeconds"),
+            arguments.indices.contains(flagIndex + 1),
+            let seconds = Double(arguments[flagIndex + 1]),
+            seconds >= 0
+        else { return nil }
+        return .seconds(seconds)
+    }
+
     /// Resolves the archive-undo toast's window. UI tests can lengthen it via
     /// `-UITestUndoWindowSeconds <n>`; otherwise the production 5s window applies.
     ///

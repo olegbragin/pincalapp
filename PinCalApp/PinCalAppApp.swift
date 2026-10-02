@@ -51,7 +51,8 @@ struct PinCalAppApp: App {
             // calendar's own would leak the editor's selection mode onto the screen
             // behind the sheet. See `PCEventSelectionManager.daySelectionManager`.
             daySelectionManager: PCCalendarDaySelectionManager(),
-            columnCountResolver: columnCountResolver
+            columnCountResolver: columnCountResolver,
+            nameAutosaveDelay: PCCalendarSession.makeNameAutosaveDelay()
         )
         _session = State(
             initialValue: PCCalendarSession(

@@ -112,10 +112,15 @@ struct SingleCalendarModelObjectBoxIntegrationTests {
         let context = makeContext()
         commitNewBatch(context, on: day(1), name: "Swim")
 
-        let writes = await context.persistence.waitForWrites(1)
+        // Writing the name is debounced: a rename coalesces into one write once typing
+        // settles, rather than one per keystroke. The suite runs on a real clock, so the wait
+        // is for the debounce to elapse rather than for a fixed count — `waitForWrites`
+        // already polls, so it returns as soon as the writes it wants have landed.
+        let writes = await context.persistence.waitForWrites(2)
         let rows = await context.persistence.storedBatches(calendarID: 42)
-        #expect(writes == 1)
+        #expect(writes >= 2, "creation and colouring write at once; the name follows the debounce")
         #expect(rows.count == 1)
+        #expect(rows[0].name == "Swim", "the debounced write still landed the name")
         #expect(rows[0].name == "Swim")
         #expect(rows[0].persistedID != nil, "the store assigns ids on write")
     }

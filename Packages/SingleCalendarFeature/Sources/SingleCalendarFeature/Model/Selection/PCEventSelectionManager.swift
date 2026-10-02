@@ -77,6 +77,11 @@ public final class PCEventSelectionManager {
     /// as fast as it ever did.
     @discardableResult
     public func flushBeforeLeavingCalendar() async -> Bool {
+        // Before the chain, because the chain is not the only thing that might hold a write:
+        // a name typed in the last quarter-second is still waiting on the debounce and is not
+        // in the chain at all. Flushing the chain alone would leave exactly the most recent
+        // keystroke unsaved.
+        nameAutosave.flush()
         await writeChain?.value
 
         // Nothing written, nothing lost: the common case, and it stays fast.
@@ -113,6 +118,13 @@ public final class PCEventSelectionManager {
     /// rather than merely unlikely.
     private var writeChain: Task<Void, Never>?
 
+    /// Coalesces name edits. Typing is one edit, not one write per keystroke.
+    ///
+    /// Everything else — colours, days, creation — writes immediately, because those are
+    /// discrete taps where there is nothing to coalesce and a user who taps and switches
+    /// calendars expects the tap to be saved.
+    private var nameAutosave: PCNameAutosave
+
     /// Presentational day selection for `yearModel`. Injected, not created here.
     ///
     /// `PCCalendarModelBuilder` needs a `PCCalendarDaySelectionManager` to wire the day
@@ -137,12 +149,18 @@ public final class PCEventSelectionManager {
         initialState: PCEventSelectionState = PCEventSelectionState(),
         persistence: any CalendarPersisting,
         daySelectionManager: PCCalendarDaySelectionManager,
-        columnCountResolver: @escaping (Int) -> Int = { $0 }
+        columnCountResolver: @escaping (Int) -> Int = { $0 },
+        nameAutosaveDelay: Duration = PCNameAutosave.defaultDelay
     ) {
+        // After every stored property is set: writing to `nameAutosave` first would touch
+        // `self` before it is fully initialised.
         self.state = initialState
         self.columnCountResolver = columnCountResolver
         self.persistence = persistence
         self.daySelectionManager = daySelectionManager
+        // Built with the caller's delay rather than assigned then adjusted: touching a
+        // property before `yearModel` is set is using `self` before it is initialised.
+        self.nameAutosave = PCNameAutosave(delay: nameAutosaveDelay)
         self.yearModel = PCCalendarModelBuilder.makeYearModel(
             from: initialState.dataProvider,
             year: initialState.editorYear,
@@ -169,8 +187,12 @@ public final class PCEventSelectionManager {
 
         projectCalendar()
 
+        // Captured before the flag is cleared below, and only when the transition actually
+        // took: a rejected action must not cancel or schedule anything.
+        let nameEdit = next != previous && next.persistsAsTyped
+
         for effect in pcEventSelectionEffects(action, previous, next) {
-            perform(effect)
+            perform(effect, isNameEdit: nameEdit)
         }
     }
 
@@ -241,11 +263,28 @@ public final class PCEventSelectionManager {
     /// write against that would either fail or land on an arbitrary row. The reducer can
     /// emit such an effect for a session that has not been given a calendar yet, so the
     /// guard belongs here, next to the call that would do the damage.
-    private func perform(_ effect: PCEventSelectionEffect) {
+    private func perform(_ effect: PCEventSelectionEffect, isNameEdit: Bool = false) {
         guard
             case .writeCalendar(let id, let columns, let batches) = effect,
             id != 0
         else { return }
+
+        // The reducer marks name edits rather than writing them, because debouncing is a
+        // function of time and the reducer is pure. Here — where effects run — the timing
+        // finally applies: the write is scheduled instead of issued, and the flag is cleared
+        // so a later edit schedules a fresh one rather than being swallowed by this one.
+        if isNameEdit {
+            nameAutosave.change { [weak self] in
+                guard let self else { return }
+                self.enqueueWrite(calendarID: id, columns: columns, batches: batches)
+            }
+            return
+        }
+
+        // A colour, day or creation write supersedes any pending name write for the same
+        // calendar: it carries the same batches with the name already folded in, so waiting
+        // for the debounce would write a row that is known to be stale.
+        nameAutosave.cancel()
 
         enqueueWrite(calendarID: id, columns: columns, batches: batches)
     }

@@ -123,20 +123,31 @@ struct AddEditEventBatchViewModelTests {
         #expect(!vm.canSave, "and an uncoloured batch is not savable")
     }
 
-    @Test("Saving an unsavable batch writes nothing")
+    /// An uncoloured batch cannot be written, and Save must not pretend otherwise.
+    ///
+    /// The batch is already in the store — `startNewBatch` writes it — so this cannot assert
+    /// an empty registry any more. What it can still pin is that Save on an uncoloured batch
+    /// writes no *further* row and does not leave the editor, which is the guard that matters:
+    /// a batch with no colour has no row to save.
+    @Test("Saving an uncoloured batch writes nothing further")
     func saveIsGuarded() async {
         let (vm, store, persistence) = makeContext()
         store.send(.startNewBatch(on: Fixture.day(4)))
         // Colour is what has to go — the name stopped being a precondition, so clearing it
         // would no longer produce an unsavable batch to test the guard with.
+        // Settle the writes from creating the batch before counting, or the count races the
+        // chain rather than measuring the save.
+        _ = await persistence.waitForWrites(2)
+        let writesBefore = await persistence.writes.count
+
         store.send(.setBatchColor(nil))
         #expect(!vm.canSave, "precondition: the batch really is unsavable")
-        let writesBefore = await persistence.writes.count
 
         vm.save()
 
-        #expect(store.state.batches.isEmpty, "nothing was committed")
-        #expect(await persistence.writes.count == writesBefore, "and nothing was written")
+        #expect(await persistence.writes.count == writesBefore,
+                "an uncoloured batch resolves to no row, so there is nothing further to write")
+        #expect(store.state.stage == .batchEditor, "and the editor stays open")
     }
 
     @Test("Saving a valid batch commits it to the registry")

@@ -194,7 +194,10 @@ struct PCEventSelectionReducerTests {
             "a merely-tapped day arrives named and coloured, so it is savable without any editing"
         )
         #expect(next.navigationRequest?.target == .pushBatchEditor)
-        #expect(effects.isEmpty, "staging is not a write")
+        // Was "staging is not a write". Tapping a day now writes the batch immediately, so
+        // there is a row on disk before the editor has been touched — tapping a day is the
+        // decision to add a batch, and it has everything needed to make one.
+        #expect(effects.count == 1, "tapping an empty day writes the new batch at once")
     }
 
     @Test("Tapping a day that has batches opens the day list instead")
@@ -247,7 +250,7 @@ struct PCEventSelectionReducerTests {
         #expect(next.day == day(9))
         #expect(next.scrollAnchor == day(9))
         #expect(next.navigationRequest?.target == .pushBatchEditor)
-        #expect(effects.isEmpty)
+        #expect(effects.count == 1, "the plus button writes its new batch at once too")
     }
 
     @Test("openBatch stages the batch it found and asks for a push")
@@ -407,7 +410,9 @@ struct PCEventSelectionReducerTests {
         let (next, effects) = reduce(editing(session(), on: 1), .setBatchName("renamed"))
 
         #expect(next.assembly?.batch.name == "renamed")
-        #expect(effects.isEmpty)
+        // Edits persist as they are made, so a rename is a write. This assertion used to be
+        // `effects.isEmpty`, which was the old contract: a rename staged and nothing landed.
+        #expect(effects.count == 1, "renaming writes through, with no Save in between")
     }
 
     @Test("setBatchColor recolours the assembly and moves the markers with it")
@@ -423,7 +428,7 @@ struct PCEventSelectionReducerTests {
             next.dayEventColors[provider.startOfDay(for: day(3))] == ["eventColorOption3"],
             "markers follow the staged colour, for a day that is not in batches at all"
         )
-        #expect(effects.isEmpty)
+        #expect(effects.count == 1, "recolouring writes through — it rewrites every event")
     }
 
     @Test("toggleDay adds a day to the assembly and to the markers")
@@ -432,7 +437,7 @@ struct PCEventSelectionReducerTests {
 
         #expect(next.assembly?.batch.events.count == 2)
         #expect(next.dayEventColors[provider.startOfDay(for: day(5))] != nil)
-        #expect(effects.isEmpty)
+        #expect(effects.count == 1, "adding a day writes the batch at once")
     }
 
     @Test("toggleDay is refused outside the batch editor")
@@ -460,14 +465,17 @@ struct PCEventSelectionReducerTests {
         )
 
         let back = reduce(tapped, .backTapped).next
-        #expect(back.assembly == nil, "back discards the staged edit")
+        #expect(back.assembly == nil, "back closes the editor")
+        // The marker used to be expected to vanish here, because tapping a day staged a
+        // batch that Back threw away. Tapping a day now writes the batch, so the marker is
+        // the truth: the event exists, and leaving the editor does not unmake it.
         #expect(
-            back.dayEventColors[provider.startOfDay(for: day(9))] == nil,
-            "the marker must not outlive the edit it belonged to"
+            back.dayEventColors[provider.startOfDay(for: day(9))] != nil,
+            "the batch was written when the day was tapped, so the marker is real"
         )
     }
 
-    @Test("Starting a new batch from the add button marks the day, and cancel takes it away")
+    @Test("Starting a new batch from the add button marks the day, and cancel leaves it written")
     func startNewBatchThenCancelClearsMarker() {
         let empty = session(batches: [])
 
@@ -478,11 +486,16 @@ struct PCEventSelectionReducerTests {
             "the staged event must be marked in the editor's calendar"
         )
 
+        // Cancel now only closes the editor. The test name said "cancel takes it away" and
+        // the marker did go — but the batch behind it had been written when the plus button
+        // was tapped, so what vanished was the marker for a row that was still on the day.
+        // Closing an editor is not undoing the edit that led to it.
         let cancelled = reduce(started, .cancelTapped).next
         #expect(
-            cancelled.dayEventColors[provider.startOfDay(for: day(9))] == nil,
-            "cancelling must clear the staged marker"
+            cancelled.dayEventColors[provider.startOfDay(for: day(9))] != nil,
+            "the batch was written on creation, so the marker outlives the editor"
         )
+        #expect(cancelled.assembly == nil, "but the editor is closed")
     }
 
     @Test("removeEvent drops the event and its marker")

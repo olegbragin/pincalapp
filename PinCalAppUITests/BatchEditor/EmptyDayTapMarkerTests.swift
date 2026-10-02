@@ -8,8 +8,11 @@
 //      back then leaves a marker on that day, so the day looks like it holds an event that
 //      was never saved — marked in memory, absent from the store.
 //
-//  EB: the tapped day is marked in the batch editor's calendar, and pressing back takes the
-//      marker away with the discarded edit.
+//  EB: the tapped day is marked in the batch editor's calendar.
+//
+//  The second half of the report no longer describes a bug. Tapping a day now writes its
+//  batch immediately, so a marker left behind after Back is not a phantom — the event really
+//  is on that day. Back closes the editor; it does not unmake the batch.
 //
 //  Two independent faults, and they are not the same bug. The editor showing nothing is a
 //  projection that was never recomputed when the assembly was staged; the marker surviving
@@ -49,10 +52,10 @@ final class EmptyDayTapMarkerTests: XCTestCase {
         throw XCTSkip("no empty day available")
     }
 
-    /// A tapped empty day is marked while the editor is open, and unmarked once the edit is
-    /// abandoned.
+    /// A tapped empty day is marked while the editor is open, and stays marked after leaving
+    /// the editor — because tapping it wrote the batch.
     @MainActor
-    func testTappingEmptyDayMarksItInBatchEditorAndBackClearsTheMarker() throws {
+    func testTappingEmptyDayMarksItInBatchEditorAndTheMarkerSurvivesBack() throws {
         let app = openSeededCalendar()
         let day = try firstEmptyDay(in: app, from: [20, 21, 22, 23, 24])
 
@@ -81,9 +84,13 @@ final class EmptyDayTapMarkerTests: XCTestCase {
             """
         )
 
-        // Backing out discards the staged edit, so the marker has to go with it. If it
-        // survives, the calendar is telling the user a day holds an event that was never
-        // written.
+        // Backing out closes the editor. It used to also have to take the marker away, because
+        // the marker was the only trace of a staged edit that was about to be thrown out.
+        //
+        // The assertion below is therefore inverted from the original rather than deleted: it
+        // pins the opposite, so a regression back to staged-only writes fails here instead of
+        // passing quietly. What this used to protect against — a marker for work that was
+        // never written — is now unrepresentable.
         KeyboardAvoidanceTestSupport.leaveCurrentScreen(in: app)
 
         // Wait for the editor to actually leave before reading the day. `dayCell` returns the
@@ -96,11 +103,11 @@ final class EmptyDayTapMarkerTests: XCTestCase {
             "The batch editor should be dismissed after going back"
         )
 
-        XCTAssertFalse(
+        XCTAssertTrue(
             KeyboardAvoidanceTestSupport.isDayMarked(day: day, in: app),
             """
-            Backing out of the batch editor discards the staged event, so day \(day) must \
-            not still be marked; label = \
+            Tapping day \(day) wrote its batch, so the marker is real and should survive \
+            leaving the editor; label = \
             \(KeyboardAvoidanceTestSupport.dayCell(day: day, in: app).label)
             """
         )

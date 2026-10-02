@@ -32,7 +32,7 @@ final class ArchiveUndoToastTests: XCTestCase {
     }
 
     private func launch(_ app: XCUIApplication) {
-        app.launchArguments = ["-UITestSeedData", "-UITestColumns", "1", "-UITestUndoWindowSeconds", "120"]
+        app.launchArguments = ["-UITestSeedData", "-UITestColumns", "1", "-UITestNameAutosaveSeconds", "0", "-UITestUndoWindowSeconds", "120"]
         app.launch()
     }
 

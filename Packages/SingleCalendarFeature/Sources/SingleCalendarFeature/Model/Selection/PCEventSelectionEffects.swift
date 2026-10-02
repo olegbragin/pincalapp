@@ -64,16 +64,23 @@ public func pcEventSelectionEffects(
         return adoptedBefore == adoptedAfter ? [] : write()
 
     case .setBatchName, .setBatchColor, .toggleDay, .removeEvent,
-         .setEventName, .setEventDate, .setEventColor, .saveEventTapped,
-         .openEvent, .discardEventTapped, .openBatch, .startNewBatch,
-         .dayTappedInCalendar, .backTapped, .closeTapped, .cancelTapped,
+         .setEventName, .setEventDate, .setEventColor,
+         .startNewBatch, .dayTappedInCalendar:
+        // These merge into `batches` as they are made, so the write is already implied by
+        // the state changing. The shared test is the same one every other writing action
+        // uses: did the merge actually move anything. That is also what keeps an edit that
+        // did not change the row from becoming a pointless write — renaming a batch to the
+        // name it already has produces an identical row, so there is nothing to persist.
+        return next.batches == previous.batches ? [] : write()
+
+    case .saveEventTapped, .openEvent, .discardEventTapped, .openBatch,
+         .backTapped, .closeTapped, .cancelTapped,
          .ensureAssemblyStarted, .navigationRequestHandled, .resetSession,
          .setMultiSelectMode, .setMultiSelectColor, .confirmMultiSelectTapped,
          .cancelMultiSelectTapped, .setEditorYear, .setScrollAnchor:
-        // Everything here is staged or view-only. Touching a batch in the editor must not
-        // write; only committing or saving does. `confirmMultiSelectTapped` builds a staged
-        // assembly but does not commit it, so it is inert too — the write happens when the
-        // editor's own save runs.
+        // Staging, navigation, or view-only. `openEvent` copies a row into a draft without
+        // changing it; `discardEventTapped` drops that draft; the rest move between stages.
+        // None of them alter a batch, so none of them have anything to write.
         return []
     }
 }

@@ -100,6 +100,15 @@ public struct PCEventSelectionState: Equatable {
 
     // MARK: Intent
 
+    /// Set by a name edit: this change reached `batches` but the store owes a write for it.
+    ///
+    /// The reducer cannot debounce — it is a pure function, and "wait a quarter second" is
+    /// not a transition. So it records *that* a write is owed and leaves the timing to the
+    /// store, which is where effects already run. Every other merge writes immediately.
+    ///
+    /// Read and cleared by the store; it is not a property of the state a screen renders.
+    public var persistsAsTyped = false
+
     /// Whether the last write landed.
     ///
     /// `isDirty` used to sit next to this: written in 21 places by the reducer, read nowhere

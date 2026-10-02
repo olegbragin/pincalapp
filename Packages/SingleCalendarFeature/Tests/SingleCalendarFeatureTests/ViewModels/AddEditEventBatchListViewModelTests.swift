@@ -58,11 +58,21 @@ struct AddEditEventBatchListViewModelTests {
         #expect(Set(vm.eventBatches.map(\.name)) == ["Evening", "Morning"])
     }
 
-    @Test("A day with no batches projects an empty list")
-    func emptyForAFreshDay() {
-        let (vm, _) = makeContext(day: Fixture.day(20))
+    /// Tapping an empty day no longer leaves it empty.
+    ///
+    /// This asserted the old contract: a tap staged a batch that nothing had written yet, so
+    /// the day's list was empty and the batch appeared only after Save. A tap now writes the
+    /// batch, which means the day genuinely has one — the assertion that mattered (the list
+    /// is derived from `batches`, not cached) is checked below instead.
+    @Test("Tapping an empty day writes a batch, and the list projects it")
+    func tappingAnEmptyDayWritesABatch() {
+        let (vm, store) = makeContext(day: Fixture.day(20))
 
-        #expect(vm.eventBatches.isEmpty)
+        // The store still holds the two seeded batches on day 1; the point is that day 20
+        // gained one, so the assertion is scoped to the day rather than the whole registry.
+        #expect(vm.eventBatches.count == 1, "the tapped day gained exactly one batch")
+        #expect(vm.eventBatches.first?.name == "New event", "named by default")
+        #expect(store.state.batches.count == 3, "written into the store, not just staged")
     }
 
     /// The regression §12.5 asks for. The old implementation stored a copy of the list and

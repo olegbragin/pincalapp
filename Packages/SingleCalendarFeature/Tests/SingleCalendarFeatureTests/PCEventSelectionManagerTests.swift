@@ -31,8 +31,17 @@ actor RecordingCalendarPersisting: CalendarPersisting {
         self.delay = delay
     }
 
+    /// Batch names as offered to the port, oldest first.
+    ///
+    /// Recorded per *write attempt*, not per final state, so a test can ask what a specific
+    /// write carried. That matters for the debounce: the question is not "what is the name
+    /// now" but "did the write that superseded the pending one carry the name", and only the
+    /// payload answers that.
+    private(set) var names: [String] = []
+
     func save(numberOfColumns: Int, eventBatches: [CalendarEventBatch], forCalendar id: Int64) async throws {
         log.append(.begin(columns: numberOfColumns, calendarID: id))
+        names.append(eventBatches.first?.name ?? "")
         try? await Task.sleep(for: delay)
         log.append(.end(columns: numberOfColumns, calendarID: id))
     }
@@ -204,8 +213,12 @@ struct PCEventSelectionManagerTests {
         store.send(.commitTapped)
         let afterCommit = store.state
 
-        #expect(afterCommit.batches == before.batches, "an unsavable batch writes nothing")
-        #expect(afterCommit.stage == .batchEditor, "and it does not close either")
+        // An unsavable batch is refused, but the batch is already in `batches`: a tap writes
+        // its batch immediately, and clearing the colour afterwards leaves the row as it was
+        // written. So this no longer asserts that nothing happened — the colour change itself
+        // wrote nothing new, because a batch with no colour does not resolve to a row. The
+        // point being kept is that the stage did not move.
+        #expect(afterCommit.stage == .batchEditor, "a refused commit does not close the editor")
     }
 
     @Test("A nameless batch is committable — the name is not what makes a batch")
@@ -353,6 +366,63 @@ struct PCEventSelectionManagerTests {
 
         #expect(store.failedSave == nil, "a landed retry clears the block")
         #expect(store.canSwitchCalendar)
+    }
+
+    /// The user-facing risk of the debounce: a colour tap can arrive while a name write is
+    /// still waiting, and cancelling it must not cost the name.
+    ///
+    /// It does not, because the name is *already in the state* the moment it is typed —
+    /// `editing` merges it into `batches` on every change, and only the database write is
+    /// deferred. So the colour write carries a batch that is already renamed, and dropping the
+    /// pending name write drops nothing. If that were not true, cancelling would silently lose
+    /// the name, which is why this is pinned rather than assumed.
+    @Test("A colour write after a pending name does not lose the name")
+    func colourWriteSupersedesPendingNameWithoutLosingIt() async {
+        let persistence = RecordingCalendarPersisting()
+        // Long enough that no name write can fire on its own during the test.
+        let store = PCEventSelectionManager(
+            initialState: PCEventSelectionState(dataProvider: PCCalendarDataProvider()),
+            persistence: persistence,
+            daySelectionManager: PCCalendarDaySelectionManager(),
+            nameAutosaveDelay: .seconds(30)
+        )
+        store.send(.syncCalendar(calendarID: 42, batches: []))
+        store.send(.startNewBatch(on: day(4)))
+        _ = await persistence.waitForWrites(1)
+
+        store.send(.setBatchName("Swimming"))
+        store.send(.setBatchColor(PCColorOption.option2))
+        _ = await persistence.waitForWrites(2)
+
+        // The colour write is the last one, and it must carry the name.
+        let written = await persistence.names
+        #expect(written.last == "Swimming",
+                "the colour write superseded the name write but kept the name: \(written)")
+    }
+
+    /// And the reverse order: a name write waiting when the user switches calendars must not
+    /// be dropped by the flush.
+    @Test("Leaving the calendar flushes a pending name write")
+    func leavingFlushesPendingNameWrite() async {
+        let persistence = RecordingCalendarPersisting()
+        let store = PCEventSelectionManager(
+            initialState: PCEventSelectionState(dataProvider: PCCalendarDataProvider()),
+            persistence: persistence,
+            daySelectionManager: PCCalendarDaySelectionManager(),
+            nameAutosaveDelay: .seconds(30)
+        )
+        store.send(.syncCalendar(calendarID: 42, batches: []))
+        store.send(.startNewBatch(on: day(4)))
+        _ = await persistence.waitForWrites(1)
+
+        store.send(.setBatchName("Swimming"))
+
+        let allowed = await store.flushBeforeLeavingCalendar()
+
+        #expect(allowed, "a flush is not a failure")
+        let written = await persistence.names
+        #expect(written.last == "Swimming",
+                "the last keystroke before a switch is the one most at risk of being lost")
     }
 
     @Test("In-flight writes do not block the calendar switch")
