@@ -54,6 +54,16 @@ public nonisolated struct CalendarStore: CalendarPersisting, CalendarManaging {
         eventBatches: [CalendarEventBatch],
         forCalendar id: Int64
     ) async throws {
+        // Fault injection, so the save-failure path is reachable from a UI test.
+        //
+        // That path is the one that decides whether a user loses work: a failure blocks the
+        // calendar switch and raises a toast with Retry, and none of that is testable while
+        // the only way to fail a save is to fill the disk. `-UITestFailSaves` makes every
+        // write throw, so a test can drive the real user-visible path — toast, button,
+        // blocked switch — rather than a stand-in for it.
+        if ProcessInfo.processInfo.arguments.contains("-UITestFailSaves") {
+            throw URLError(.cannotWriteToFile)
+        }
         guard var dto = try await cache.getCalendar(id: id) else { return }
         dto.numberOfColumns = numberOfColumns
         dto.eventBatches = mapper.eventBatchDataSources(from: eventBatches)

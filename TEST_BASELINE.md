@@ -309,16 +309,27 @@ run through `AutoTestRunner` reported 386 completed, **30 failures**, with
 *"Calendar should load"*, *"day cell should exist"* and *"detail view should appear"* — the
 calendar list could no longer be read by name at all.
 
-Two things did it, and both are worth more than the diagnosis they enabled:
+**The cause was container identifiers shadowing their children, not the `accessibilityElement`
+calls.** The original diagnosis here blamed `.accessibilityElement(children: .contain)` for
+rewriting the subtree, and the fix that followed was built around removing those calls. That
+was wrong, and it cost a second round of investigation to undo.
 
-- `.accessibilityElement(children: .contain)` on a card **rewrites that subtree's accessibility
-  tree**, and the card's name stopped being exposed as a `StaticText`. A calendar list is read
-  by name; take the names away and the list cannot be opened.
-- `.accessibilityIdentifier` on a **column root** was enough to break the iPhone on its own.
-  The failures are indistinguishable from "the app is broken", which is what made this
-  expensive: the build succeeded, the app ran, and 30 tests said otherwise.
+What actually happens: putting an `.accessibilityIdentifier` on a **container** makes that
+container the accessibility element for its whole subtree, so everything inside it stops being
+reachable as a separate element. A query for a day cell inside an identified column, or a
+calendar name inside an identified card, returns nothing — not because the element is missing
+but because it is no longer addressable. The `.accessibilityElement` calls were innocent
+bystanders; they were present in the same diff and easy to blame.
 
-An identifier is *additive*; an `accessibilityElement` is a *rewrite*. Every change here has
+The distinction that matters:
+
+- An identifier on a **leaf** (a button, a day cell, a text field) is what you want. It names
+  one element and leaves its siblings alone.
+- An identifier on a **container** silently removes its descendants from the tree. It does not
+  merge with them, and it does not fail loudly — the element is simply not there any more.
+
+The failures were indistinguishable from "the app is broken", which is what made this
+expensive: the build succeeded, the app ran, and 30 tests said otherwise. Every change here has
 been reverted — `RootView`, `RootContentView`, `RootDetailView`, `RooSidebarView` and
 `CalendarListContent` are all back to their committed state.
 
@@ -376,7 +387,9 @@ straight back out.
   (`archive-undo-toast-button`). The action used to be a `Text` inside a tap gesture on the
   whole toast, so "press Undo" was not expressible — only "tap the toast near the right third",
   which passes by luck and fails by geography.
-- **`.accessibilityElement(children: .contain)` on the toast**, and only on the toast. Without
+- **`.accessibilityElement(children: .contain)` on the toast**, and only on the toast. (Note this
+  is a containment, which is legitimate; it is the *identifier on an ancestor* from Stage 18
+  that costs a subtree its descendants. The two are unrelated.) Without
   it SwiftUI merges the toast's children and the button's identifier matches nothing. It is
   explicitly *not* safe on a list card: applied there in §18 it rewrote the subtree and the
   card's name stopped being exposed as a `StaticText`, breaking 30 tests.
