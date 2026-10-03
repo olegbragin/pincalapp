@@ -61,7 +61,7 @@ final class SaveFailedToastTests: XCTestCase {
         let day = try firstEmptyDay(in: app, from: [20, 21, 22, 23, 24])
         KeyboardAvoidanceTestSupport.tapDay(day: day, in: app)
         XCTAssertTrue(
-            app.buttons["batch-save-button"].waitForExistence(timeout: 10),
+            app.buttons["batch-editor-back-button"].waitForExistence(timeout: 10),
             "the batch editor should open"
         )
 
@@ -74,7 +74,7 @@ final class SaveFailedToastTests: XCTestCase {
         // needed the workaround.
         KeyboardAvoidanceTestSupport.leaveCurrentScreen(in: app)
         XCTAssertTrue(
-            app.buttons["batch-save-button"].waitForNonExistence(timeout: 5),
+            app.buttons["batch-editor-back-button"].waitForNonExistence(timeout: 5),
             "the editor should be closed so the calendar's toast is reachable"
         )
 

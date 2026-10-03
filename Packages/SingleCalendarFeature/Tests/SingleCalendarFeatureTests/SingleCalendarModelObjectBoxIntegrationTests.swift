@@ -62,8 +62,13 @@ struct SingleCalendarModelObjectBoxIntegrationTests {
         )
     }
 
-    /// Names and colours a new batch, then saves it. This is the "fill in the editor and
-    /// press save" path that most of these tests are variations on.
+    /// Names and colours a new batch, then leaves the editor. This is the "fill in the editor
+    /// and go back" path that most of these tests are variations on.
+    ///
+    /// It used to end in `save()`. The checkmark is gone, so Back is the exit — and it is not
+    /// just a different call: the batch is already in `state.batches` by the time Back runs,
+    /// because every field wrote through as it was edited. Nothing here commits anything, which
+    /// is the point the whole suite was quietly resting on a button for.
     @discardableResult
     private func commitNewBatch(
         _ context: Context,
@@ -74,19 +79,22 @@ struct SingleCalendarModelObjectBoxIntegrationTests {
         context.store.send(.startNewBatch(on: day))
         context.editor.nameBinding.wrappedValue = name
         context.editor.colorBinding.wrappedValue = color
-        context.editor.save()
+        context.store.send(.backTapped)
         return context.store.state.batches
     }
 
     // MARK: - Editing an event in a batch
 
-    @Test func editingEventInBatchPersistsWhenBatchSaved() throws {
+    /// **Premise changed.** This was "editing an event persists when the *batch* is saved",
+    /// and the batch save was the step that made the rename visible. It no longer is: the
+    /// rename is in the batch from the keystroke, so the assertion below is checking the state
+    /// the editor was in before the user left rather than anything a commit did.
+    @Test func editingEventInBatchPersistsWithoutAnySave() throws {
         let context = makeContext()
         let someDay = day(1)
         commitNewBatch(context, on: someDay, name: "Swim")
 
-        // Open the event, rename it, save it back into the batch.
-        // Saving the batch cleared the assembly, so the batch has to be opened again
+        // Leaving the batch editor cleared the assembly, so the batch has to be opened again
         // before its events can be — which is exactly what the day list does. `openEvent`
         // is correctly refused with no assembly, so skipping this would silently test
         // nothing.
@@ -96,9 +104,12 @@ struct SingleCalendarModelObjectBoxIntegrationTests {
         context.list.open(event)
         let eventEditor = AddEditEventViewModel(store: context.store)
         eventEditor.nameBinding.wrappedValue = "Lap"
-        eventEditor.save()
 
-        context.editor.save()
+        // Still in the event editor, and the batch already has it.
+        #expect(context.store.state.stage != .idle)
+        #expect(context.store.state.batches.first?.events.first?.name == "Lap")
+
+        context.store.send(.backTapped)
 
         let batch = context.store.state.batches.first
         #expect(batch?.name == "Swim")
@@ -136,7 +147,7 @@ struct SingleCalendarModelObjectBoxIntegrationTests {
         context.store.send(.syncCalendar(calendarID: 42, batches: stored))
         context.store.send(.openBatch(id: stored[0].mergeKey))
         context.editor.nameBinding.wrappedValue = "Swimming"
-        context.editor.save()
+        context.store.send(.backTapped)
 
         let before = await context.persistence.writes.count
         _ = await context.persistence.waitForWrites(before + 1)
@@ -171,7 +182,7 @@ struct SingleCalendarModelObjectBoxIntegrationTests {
         let stored = context.store.state.batches
         context.store.send(.syncCalendar(calendarID: 42, batches: stored))
         context.store.send(.openBatch(id: stored[0].mergeKey))
-        context.editor.save()
+        context.store.send(.backTapped)
 
         #expect(context.store.state.batches.count == 1)
     }
@@ -185,7 +196,7 @@ struct SingleCalendarModelObjectBoxIntegrationTests {
         #expect(context.list.events.count == 2)
 
         context.list.remove(context.list.events[0])
-        context.editor.save()
+        context.store.send(.backTapped)
 
         #expect(context.store.state.batches.first?.events.count == 1)
     }
@@ -196,13 +207,13 @@ struct SingleCalendarModelObjectBoxIntegrationTests {
         context.store.send(.toggleDay(day(2)))
         context.editor.nameBinding.wrappedValue = "Morning"
         context.editor.colorBinding.wrappedValue = .option1
-        context.editor.save()
+        context.store.send(.backTapped)
 
         let stored = context.store.state.batches
         context.store.send(.syncCalendar(calendarID: 42, batches: stored))
         context.store.send(.openBatch(id: stored[0].mergeKey))
         context.editor.colorBinding.wrappedValue = .option3
-        context.editor.save()
+        context.store.send(.backTapped)
 
         let batch = context.store.state.batches.first
         #expect(batch?.colorName == "eventColorOption3")
@@ -243,9 +254,12 @@ struct SingleCalendarModelObjectBoxIntegrationTests {
         let stored = context.store.state.batches
         context.store.send(.syncCalendar(calendarID: 42, batches: stored))
         context.store.send(.openBatch(id: stored[0].mergeKey))
-        // Remove the only day: the batch is emptied, so the row must leave the calendar.
+        // Remove the only day: the batch is emptied. The row survives until the user leaves —
+        // deleting on the removal itself would make a mis-tap on the final day destroy the
+        // batch, and there is no undo for a batch anywhere in the app.
         context.list.remove(context.list.events[0])
-        context.editor.save()
+        #expect(!context.store.state.batches.isEmpty, "still there while the editor is open")
+        context.store.send(.backTapped)
 
         #expect(context.store.state.batches.isEmpty, "an emptied batch leaves the calendar")
     }
@@ -256,13 +270,13 @@ struct SingleCalendarModelObjectBoxIntegrationTests {
         context.store.send(.toggleDay(day(2)))
         context.editor.nameBinding.wrappedValue = "Morning"
         context.editor.colorBinding.wrappedValue = .option1
-        context.editor.save()
+        context.store.send(.backTapped)
 
         let stored = context.store.state.batches
         context.store.send(.syncCalendar(calendarID: 42, batches: stored))
         context.store.send(.openBatch(id: stored[0].mergeKey))
         context.list.remove(context.list.events[0]) // the anchor day
-        context.editor.save()
+        context.store.send(.backTapped)
 
         let batch = context.store.state.batches.first
         #expect(batch != nil, "a batch with a day left is still a batch")
@@ -271,10 +285,21 @@ struct SingleCalendarModelObjectBoxIntegrationTests {
 
     // MARK: - Round trips
 
-    @Test func savingForACalendarRoundTripsThroughThePort() async throws {
+    /// Two writes, not one, and the reason is worth stating because it used to be hidden.
+    ///
+    /// Creating the batch writes at once; the *name* is debounced for 250 ms because typing is
+    /// one edit rather than one write per keystroke. Save used to be an accidental flush — it
+    /// superseded the pending name write on its way out — so `waitForWrites(1)` was enough and
+    /// the name was there by luck. Back writes nothing, which is the whole point of removing
+    /// it, so the debounce is now the only path the name takes.
+    ///
+    /// It is still safe: the store outlives the editor and `flushBeforeLeavingCalendar` flushes
+    /// the autosave before a calendar switch, so there is no window where a typed name is lost.
+    @Test func leavingAcalendarRoundTripsTheDebouncedNameThroughThePort() async throws {
         let context = makeContext()
         commitNewBatch(context, on: day(1), name: "Swim")
-        _ = await context.persistence.waitForWrites(1)
+        // Creation, then the debounced name.
+        _ = await context.persistence.waitForWrites(2)
 
         // Read it back the way a reopen would.
         let readBack = try await context.persistence.eventBatches(calendarID: 42)
@@ -292,7 +317,7 @@ struct SingleCalendarModelObjectBoxIntegrationTests {
         context.store.send(.syncCalendar(calendarID: 42, batches: stored))
         context.store.send(.openBatch(id: stored[0].mergeKey))
         context.editor.nameBinding.wrappedValue = "Swimming"
-        context.editor.save()
+        context.store.send(.backTapped)
         let before = await context.persistence.writes.count
         _ = await context.persistence.waitForWrites(before + 1)
 
@@ -315,10 +340,11 @@ struct SingleCalendarModelObjectBoxIntegrationTests {
         #expect(context.store.state.batches.count == 1)
     }
 
-    @Test func calendarUpdateAfterCommitRetrievesTheCorrectBatches() async throws {
+    @Test func calendarUpdateAfterLeavingRetrievesTheCorrectBatches() async throws {
         let context = makeContext()
         commitNewBatch(context, on: day(1), name: "Swim")
-        _ = await context.persistence.waitForWrites(1)
+        // Creation, then the debounced name — see the round-trip test above.
+        _ = await context.persistence.waitForWrites(2)
 
         let readBack = try await context.persistence.eventBatches(calendarID: 42)
         #expect(readBack.map(\.name) == ["Swim"])
@@ -327,13 +353,18 @@ struct SingleCalendarModelObjectBoxIntegrationTests {
     // MARK: - Helper
 
     /// Mimics what a reload does to a row: a *fresh* `pendingID`, because a DTO carries
-    /// none, and the day's events re-based to start-of-day. This is why §6.5 adoption has
-    /// to be content-based — an id lookup can never match across a reload.
+    /// none. This is why §6.5 adoption has to be content-based — an id lookup can never
+    /// match across a reload.
+    ///
+    /// It used to re-base every event to the start of its day as well, on the premise that
+    /// `PCEventBatchAssembleUnitOfWork` normalised everything it staged. It does not any
+    /// more — `applying` keeps the time of day so a picked time survives — so re-basing here
+    /// would fabricate a difference between a row and its own reloaded copy, and hide exactly
+    /// the class of bug this helper exists to be faithful about.
     private func store_as_reloaded(
         _ batches: inout [CalendarEventBatch],
         using store: PCEventSelectionManager
     ) {
-        let provider = store.state.dataProvider
         batches = batches.map { batch in
             CalendarEventBatch(
                 pendingID: UUID(),
@@ -344,7 +375,7 @@ struct SingleCalendarModelObjectBoxIntegrationTests {
                     CalendarEvent(
                         persistedID: $0.persistedID,
                         name: $0.name,
-                        date: provider.startOfDay(for: $0.date),
+                        date: $0.date,
                         colorName: $0.colorName
                     )
                 }
@@ -425,19 +456,26 @@ struct RemovingThreeOfFourDaysTests {
             "and the survivor is the one on the day that was kept, with its own real id"
         )
 
-        store.send(.saveTapped)
+        // Back, not Save: the checkmark is gone and every toggle above already wrote the
+        // one-event row. This send is the re-anchor, not the commit.
+        store.send(.backTapped)
 
-        // The store executes effects through a chained `Task`, so the write has not
-        // happened by the time `send` returns. Reading `writes` straight away reports an
-        // empty array and reads exactly like "the save never wrote" — which is why
-        // `InMemoryCalendarPersisting` carries `waitForWrites`.
-        await persistence.waitForWrites(1)
+        // The store executes effects through a chained `Task`, so nothing has happened by the
+        // time `send` returns. And there are three writes in flight, not one: each `toggleDay`
+        // merged and wrote as it went, which is the whole point — so `waitForWrites(1)` returns
+        // after the *first* toggle and `writes.last` is then the four-event row. Waiting on a
+        // count is the wrong tool when the interesting thing is the *content* of the final
+        // write, so poll for that instead.
+        let lastWrite = try #require(
+            await persistence.waitForLastWrite { batches in
+                guard let batch = batches.first else { return false }
+                return batch.events.count == 1 && batch.persistedID == committed.persistedID
+            },
+            "no write carried the one-event row under the batch's own id"
+        )
+        let written = try #require(lastWrite.first)
 
-        let writes = await persistence.writes
-        let last = try #require(writes.last)
-        let written = try #require(last.batches.first)
-
-        #expect(last.batches.count == 1, "one batch is written")
+        #expect(lastWrite.count == 1, "one batch is written")
         #expect(
             written.persistedID == committed.persistedID,
             "under the batch's own id, so this is an update — got \(String(describing: written.persistedID))"
@@ -457,11 +495,11 @@ struct RemovingThreeOfFourDaysTests {
         let reloaded = try await persistence.eventBatches(calendarID: 42)
         store.send(.syncCalendar(calendarID: 42, batches: reloaded))
 
-        // …and the session has to be pointing at a day the saved batch is actually listed
-        // on, because `saveTapped` pops to the day list for `state.day`. `openBatch` set it
-        // to the row's *first* event, which this edit removes, so before the fix the pop
-        // returned to a day list the batch was no longer on and it rendered empty — the
-        // reported AB, with a perfectly correct batch behind it.
+        // …and the session has to be pointing at a day the batch is actually listed on,
+        // because Back pops to the day list for `state.day`. `openBatch` set it to the row's
+        // *first* event, which this edit removes, so without re-anchoring the pop returned to
+        // a day list the batch was no longer on and it rendered empty — the reported AB, with
+        // a perfectly correct batch behind it.
         let sessionDay = try #require(store.state.day)
         #expect(
             provider.isSameDay(sessionDay, day(13)),

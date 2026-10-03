@@ -85,6 +85,31 @@ actor InMemoryCalendarPersisting: CalendarPersisting {
         }
         return writes.count
     }
+
+    /// Waits until the *most recent* write satisfies `predicate`, and hands it back.
+    ///
+    /// The counterpart to `waitForWrites`, for when the interesting thing is the content of the
+    /// final write rather than how many there were.
+    ///
+    /// It has to be this and not `waitForWrites(1)` plus `writes.last`. An edit that persists as
+    /// it is made enqueues one write per edit, all serialised down the same chain, so a test that
+    /// waits for the first of three reads whichever landed first and concludes the *last* one was
+    /// wrong. That is a flake whose failure names the feature under test rather than the harness,
+    /// which is the worst kind: it reads as §16 regressing when the assertion simply ran too early.
+    ///
+    /// Polling for the condition is the same discipline as above, one predicate wider.
+    @discardableResult
+    func waitForLastWrite(
+        timeout: Duration = .seconds(5),
+        where predicate: @Sendable ([CalendarEventBatch]) -> Bool
+    ) async -> [CalendarEventBatch]? {
+        let deadline = ContinuousClock.now + timeout
+        while ContinuousClock.now < deadline {
+            if let last = writes.last, predicate(last.batches) { return last.batches }
+            try? await Task.sleep(for: .milliseconds(10))
+        }
+        return writes.last?.batches
+    }
 }
 
 /// A `CalendarManaging` that keeps one calendar in memory and lets a test publish changes.

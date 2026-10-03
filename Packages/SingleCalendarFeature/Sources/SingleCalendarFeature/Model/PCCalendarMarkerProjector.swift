@@ -61,8 +61,9 @@ enum PCCalendarMarkerProjector {
     /// gave was the colour picker greying out, which reads as the picker reacting rather
     /// than the calendar responding, and that is exactly how the bug was reported.
     ///
-    /// Projected last, on top, because the session is what the user is looking at and it
-    /// overrides nothing already committed.
+    /// Projected last, but only for days the batches did not already paint — see the comment
+    /// at the append. The session is what the user is looking at and it overrides nothing
+    /// already committed.
     nonisolated static func colorsByDay(
         from batches: [CalendarEventBatch],
         includingStaged staged: PCEventBatchAssembleUnitOfWork?,
@@ -87,7 +88,21 @@ enum PCCalendarMarkerProjector {
         }
         if let multiSelect {
             for day in multiSelect.days {
-                result[dataProvider.startOfDay(for: day), default: []].append(multiSelect.colorName)
+                let key = dataProvider.startOfDay(for: day)
+                // Replaces rather than appends, for the same reason the staged row does
+                // above: "one batch on a day is labelled with two" is a bug, and a session
+                // day stopped being a special case the moment the first tap wrote it.
+                //
+                // It used to be one. The reasoning here was that a session is days and a
+                // colour with no row anywhere, true while confirming was what committed it,
+                // and not true once every tap merged into `batches` — which is what removed
+                // the need for a confirm step at all. From the first tap the session's days
+                // are committed rows, so appending painted every selected day a second time,
+                // and `PCCalendarDayEventView` draws one band per entry: each selected day
+                // was split between two copies of its own colour instead of filled with it.
+                if result[key]?.isEmpty ?? true {
+                    result[key, default: []].append(multiSelect.colorName)
+                }
             }
         }
         return result

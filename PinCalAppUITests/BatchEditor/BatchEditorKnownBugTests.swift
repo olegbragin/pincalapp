@@ -7,7 +7,7 @@
 //  §16.4 requires this test to **fail on the current code first**. It does; see the
 //  comment on the final assertion. The diagnostic assertions in the middle are not
 //  decoration: §16.3 hypothesis 1 says the symptom to distinguish is "does the editor
-//  still show the surviving event when Save is pressed, or is it already gone", and that
+//  still show the surviving event when the editor is left, or is it already gone", and that
 //  is exactly the question these answer.
 //
 //  The STR in §16.1 names Oct 4/5/6/7. The seeded calendar is built for the *current*
@@ -44,9 +44,9 @@ final class BatchEditorKnownBugTests: XCTestCase {
         let nameField = app.textFields["batch-name-field"]
         XCTAssertTrue(nameField.waitForExistence(timeout: 5), "Batch editor should open for the anchor day")
 
-        // §16.1 step 3 — name the batch, then go into its event, name that, and save.
-        // A colour is required at every save: a batch staged from a day tap has
-        // `colorName: ""`, and an uncoloured batch's Save is disabled.
+        // §16.1 step 3 — name the batch, then go into its event and name that.
+        // A colour was required at every save: a batch staged from a day tap had
+        // `colorName: ""` and an uncoloured batch's Save was disabled. It gates nothing now.
         KeyboardAvoidanceTestSupport.replaceText(in: nameField, with: batchName)
         KeyboardAvoidanceTestSupport.selectColor("eventColorOption1", in: app)
 
@@ -59,26 +59,28 @@ final class BatchEditorKnownBugTests: XCTestCase {
         let eventNameField = app.textFields["event-name-field"]
         XCTAssertTrue(eventNameField.waitForExistence(timeout: 5), "Event editor should open")
         KeyboardAvoidanceTestSupport.replaceText(in: eventNameField, with: "Named")
-        let eventSave = KeyboardAvoidanceTestSupport.toolbarAction("Save", in: app)
-        XCTAssertTrue(eventSave.isEnabled, "A named, coloured event must be savable")
-        eventSave.tap()
+        // The event editor's Back. Its Save checkmark is gone; the rename reached the batch on
+        // the keystroke, so leaving loses nothing.
+        let eventEditorBack = app.buttons["event-editor-back-button"]
+        XCTAssertTrue(eventEditorBack.isEnabled, "The event editor must be leaveable")
+        eventEditorBack.tap()
         XCTAssertTrue(
-            app.buttons["batch-save-button"].waitForExistence(timeout: 5),
-            "Back in the batch editor after the event save"
+            app.buttons["batch-editor-back-button"].waitForExistence(timeout: 5),
+            "Back in the batch editor after leaving the event editor"
         )
 
-        // §16.1 step 4 — add the other three days, then save.
+        // §16.1 step 4 — add the other three days, then leave.
         for day in addedDays {
             KeyboardAvoidanceTestSupport.tapDay(day: day, in: app)
         }
-        let batchSave = app.buttons["batch-save-button"]
-        XCTAssertTrue(batchSave.isEnabled, "The named, coloured batch must be savable")
-        batchSave.tap()
-        XCTAssertTrue(batchSave.waitForNonExistence(timeout: 3), "Batch editor should dismiss after Save")
+        let batchEditorBack = app.buttons["batch-editor-back-button"]
+        XCTAssertTrue(batchEditorBack.isEnabled, "The batch editor must be leaveable")
+        batchEditorBack.tap()
+        XCTAssertTrue(batchEditorBack.waitForNonExistence(timeout: 3), "Batch editor should dismiss after Back")
 
         // Already back on the calendar, with no back tap in between: the anchor day was
         // empty, so `dayTappedInCalendar` pushed the editor *from the calendar* rather than
-        // from a day list, and the save popped that one level. (A batch opened from a day
+        // from a day list, and leaving popped that one level. (A batch opened from a day
         // list pops back to the day list instead, which is why
         // `testBatchListStillShowsBatchAfterRemovingAnchorDay` does need a back tap here.)
 
@@ -87,7 +89,7 @@ final class BatchEditorKnownBugTests: XCTestCase {
         let card = app.staticTexts[batchName]
         XCTAssertTrue(card.waitForExistence(timeout: 5), "The batch list should show the batch")
         card.tap()
-        XCTAssertTrue(batchSave.waitForExistence(timeout: 5), "The batch editor should open")
+        XCTAssertTrue(batchEditorBack.waitForExistence(timeout: 5), "The batch editor should open")
 
         // Sanity: the batch really did hold all four days before we remove any. If this
         // ever fails, steps 4 or the day taps moved and nothing below is about the bug.
@@ -101,7 +103,7 @@ final class BatchEditorKnownBugTests: XCTestCase {
         // §16.3 hypothesis 1's diagnostic, asked directly. The report is that the list comes
         // back empty; that has two quite different causes — the removals took an event they
         // should not have, or they were fine and the save treated the batch as a delete
-        // because it looked empty. The count before Save tells them apart, and it is
+        // because it looked empty. The count before leaving tells them apart, and it is
         // asserted rather than printed so a regression is a failure and not a log line.
         XCTAssertEqual(
             eventRowCount(in: app), 1,
@@ -120,8 +122,8 @@ final class BatchEditorKnownBugTests: XCTestCase {
             assertUnmarked(day, in: app, line: #line + 1)
         }
 
-        batchSave.tap()
-        XCTAssertTrue(batchSave.waitForNonExistence(timeout: 3), "Batch editor should dismiss after Save")
+        batchEditorBack.tap()
+        XCTAssertTrue(batchEditorBack.waitForNonExistence(timeout: 3), "Batch editor should dismiss after Back")
 
         // No marker check here. The save pops to the day list, which covers the calendar, and
         // a day cell that is not in the accessibility tree is indistinguishable from one

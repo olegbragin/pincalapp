@@ -57,7 +57,7 @@ public struct PCEventBatchAssembleUnitOfWork: Equatable, Sendable {
         adoptedPersistedID.map(EventBatchKey.persisted) ?? batch.mergeKey
     }
 
-    /// Whether Save is a meaningful action on this batch.
+    /// Whether this batch is in a state worth writing.
     ///
     /// A batch needs a **colour** to be written, and nothing else. The name is not required,
     /// because the name is not what makes a batch a batch: a batch is a set of dated, coloured
@@ -71,14 +71,17 @@ public struct PCEventBatchAssembleUnitOfWork: Equatable, Sendable {
     /// they are made, refusing to save did not leave the work staged and recoverable — it left
     /// the store ahead of the database with nowhere to put it.
     ///
-    /// `resolved()` still returns `nil` for a batch with no events, so it is `commitTapped`'s
-    /// `let row =` guard, not this flag, that keeps an eventless row from being persisted.
-    /// That still matters for the delete path: removing every event is how a batch is deleted
-    /// from the editor, and the row goes with it. Requiring `!events.isEmpty` here instead
-    /// would make that unreachable — Save disabled from exactly the state that triggers the
-    /// delete, stranding the user in an editor whose only way out is Back, and Back *discards*
-    /// the deletion rather than committing it. The batch was undeletable by the only route the
-    /// screen offered.
+    /// What it gates now is only whether `editing` merges a row. It no longer has a button:
+    /// there is no Save in either editor, so "the user cannot save this yet" has no way to be
+    /// expressed to them, and a batch that exists without a colour exists only mid-edit — the
+    /// editor, having opened on `PCColorOption.firstAvailable`, always has one.
+    ///
+    /// `resolved()` still returns `nil` for a batch with no events, so it is the `editing`
+    /// helper's `let row =` guard, not this flag, that keeps an eventless row from being
+    /// persisted. That still matters for the delete path: removing every event empties the
+    /// batch, and leaving the editor deletes the row. Folding `!events.isEmpty` in here
+    /// instead would make that unreachable — declined from exactly the state that triggers the
+    /// delete, and the row would sit in the calendar marking days the user had just cleared.
     public var canSave: Bool {
         !batch.colorName.isEmpty
     }
@@ -102,9 +105,14 @@ public struct PCEventBatchAssembleUnitOfWork: Equatable, Sendable {
     /// Both parameters still take arguments, for the tests that assert the uncoloured and
     /// unnamed shapes, but the defaults are what production callers get.
     ///
-    /// The anchor is normalised to the start of its day, because a batch is day-granular
-    /// and every later comparison — `occurs(on:using:)`, `hasSameContent(as:using:)`,
-    /// the day-marker projection — keys on a start-of-day value.
+    /// The anchor is normalised to the start of its day, so a freshly created event sits at
+    /// midnight until the user gives it a time. It has to be a whole day rather than
+    /// whatever instant the tap carried, because every later comparison — `occurs(on:using:)`,
+    /// `hasSameContent(as:using:)`, the day-marker projection — keys on the *day*, and one that
+    /// compared instants would disagree with itself about which day a batch is on.
+    ///
+    /// Only creation normalises. `applying` deliberately does not: it takes the event's date
+    /// verbatim so a time the user picked survives.
     public static func new(
         anchor: Date,
         name: String = PCEventBatchAssembleUnitOfWork.defaultBatchName,
@@ -214,7 +222,19 @@ public struct PCEventBatchAssembleUnitOfWork: Equatable, Sendable {
     /// holds even when the edit changes an existing event's date onto a taken day, which
     /// the pendingID-only rule would let through.
     public func applying(_ event: CalendarEvent, using dataProvider: PCCalendarDataProvider) -> PCEventBatchAssembleUnitOfWork {
-        let incoming = event.with(date: dataProvider.startOfDay(for: event.date))
+        // The incoming date is taken as it comes, time component and all. It used to be
+        // normalised to the start of its day here, which threw away the time the user had
+        // just picked in the event editor: the binding carried it, the draft carried it, and
+        // this line dropped it on the way into the batch. So the batch went on listing the
+        // event at 12:00 AM, reopening the event showed the picker back at midnight, and the
+        // only symptom was that "the time is not saved".
+        //
+        // The normalisation was solving the right problem in the wrong place. What actually
+        // needs to be day-granular is *identity* — which event occupies which day — and that
+        // is the survivor test below, which has always compared days and never instants.
+        // Truncating the stored value bought nothing the comparison was not already
+        // guaranteeing, and cost the time of day.
+        let incoming = event
         let survivors = batch.events.filter {
             $0.pendingID != incoming.pendingID && !dataProvider.isSameDay($0.date, incoming.date)
         }
@@ -259,11 +279,15 @@ public struct PCEventBatchAssembleUnitOfWork: Equatable, Sendable {
 
     /// An event occupying a day, named by default.
     ///
-    /// It used to be empty, and the empty name is what `saveEventTapped`'s "name non-empty"
-    /// guard reads as *unedited*. That made the guard useless in practice: a placeholder
-    /// could never be saved and every one of them had to be typed out first, and a batch
-    /// whose events were never opened could not be committed at all. The guard still means
-    /// "has a name" — it just no longer rejects a value that is already there.
+    /// It used to be empty, and the empty name is what a "has this been named?" guard read
+    /// as *unedited*. That made the guard useless in practice: a placeholder could never be
+    /// saved and every one of them had to be typed out first, and a batch whose events were
+    /// never opened could not be committed at all. The guard still means "has a name" — it
+    /// just no longer rejects a value that is already there.
+    ///
+    /// Midnight, deliberately. A day that has just been switched on has no time yet, and the
+    /// event editor is where a time is chosen; midnight is the honest "unset" rather than a
+    /// fabricated default like 09:00 that the user then has to notice and correct.
     private static func placeholder(on day: Date, colorName: String) -> CalendarEvent {
         CalendarEvent(name: defaultEventName, date: day, colorName: colorName)
     }

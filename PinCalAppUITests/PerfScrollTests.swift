@@ -21,8 +21,8 @@ final class PerfScrollTests: XCTestCase {
         XCTAssertTrue(womenCycle.waitForExistence(timeout: 5), "Batch list should show the existing batch")
         womenCycle.tap()
 
-        let editorSave = KeyboardAvoidanceTestSupport.toolbarAction("Save", in: app)
-        XCTAssertTrue(editorSave.waitForExistence(timeout: 5), "Batch editor should open")
+        let editorBack = app.buttons["batch-editor-back-button"]
+        XCTAssertTrue(editorBack.waitForExistence(timeout: 5), "Batch editor should open")
 
         let editorCalendar = app.descendants(matching: .any).matching(identifier: "batch-editor-calendar").firstMatch
         XCTAssertTrue(editorCalendar.waitForExistence(timeout: 5))
@@ -39,7 +39,7 @@ final class PerfScrollTests: XCTestCase {
         RunLoop.current.run(until: Date().addingTimeInterval(0.5))
         KeyboardAvoidanceTestSupport.tapDay(day: 1, in: app)
         RunLoop.current.run(until: Date().addingTimeInterval(0.5))
-        editorSave.tap()
+        editorBack.tap()
 
         // Back on the single calendar, drive the year scroll.
         let yearScrollDeadline = Date().addingTimeInterval(40)

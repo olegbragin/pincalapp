@@ -41,12 +41,12 @@ struct TwoSingleDayBatchesReproTests {
         store.send(.startNewBatch(on: Fixture.day(9)))
         batchViewModel.nameBinding.wrappedValue = "First"
         batchViewModel.colorBinding.wrappedValue = .option1
-        batchViewModel.save()
+        store.send(.backTapped)
 
         store.send(.startNewBatch(on: Fixture.day(10)))
         batchViewModel.nameBinding.wrappedValue = "Second"
         batchViewModel.colorBinding.wrappedValue = .option2
-        batchViewModel.save()
+        store.send(.backTapped)
 
         #expect(store.state.batches.count == 2)
         #expect(
@@ -67,7 +67,7 @@ struct TwoSingleDayBatchesReproTests {
             store.send(.startNewBatch(on: Fixture.day(day)))
             batchViewModel.nameBinding.wrappedValue = name
             batchViewModel.colorBinding.wrappedValue = color
-            batchViewModel.save()
+            store.send(.backTapped)
             model.send(.ensureAssemblyStarted)
         }
 
@@ -127,12 +127,12 @@ struct TwoSingleDayBatchesReproTests {
         }
     }
 
-    @Test func saveButtonHasAccessibilityIdentifier() {
-        #expect(AddEditEventBatchView.saveButtonAccessibilityIdentifier == "batch-save-button")
-    }
-
     /// The other half of the file's original purpose: opening an existing batch and adding
     /// a day to it must extend that batch, not create a second one.
+    ///
+    /// The exit is Back rather than the checkmark that used to be here. It was never really
+    /// the thing under test — leaving the editor re-sent a row the `toggleDay`s had
+    /// already written, so the assertion passed whether or not re-saving could append.
     @Test func editingAnExistingBatchAddingDaysDoesNotCreateDuplicates() {
         let store = Fixture.makeStore(persistence: InMemoryCalendarPersisting())
         let batchViewModel = AddEditEventBatchViewModel(store: store)
@@ -140,12 +140,12 @@ struct TwoSingleDayBatchesReproTests {
         store.send(.startNewBatch(on: Fixture.day(9)))
         batchViewModel.nameBinding.wrappedValue = "Morning"
         batchViewModel.colorBinding.wrappedValue = .option1
-        batchViewModel.save()
+        store.send(.backTapped)
         #expect(store.state.batches.count == 1)
 
         store.send(.openBatch(id: store.state.batches[0].mergeKey))
-        batchViewModel.save()
+        store.send(.backTapped)
 
-        #expect(store.state.batches.count == 1, "re-saving an unchanged batch is not an append")
+        #expect(store.state.batches.count == 1, "leaving an unchanged batch is not an append")
     }
 }

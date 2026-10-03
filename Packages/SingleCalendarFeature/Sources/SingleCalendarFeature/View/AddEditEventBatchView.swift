@@ -11,8 +11,6 @@ import DSKit
 public struct AddEditEventBatchView: View {
     @Environment(PCEventSelectionManager.self) private var store
 
-    public static let saveButtonAccessibilityIdentifier = "batch-save-button"
-
     public init() {}
 
     public var body: some View {
@@ -44,18 +42,19 @@ public struct AddEditEventBatchView: View {
         .padding()
         .keyboardAvoidable()
         .toolbarTitleDisplayMode(.inline)
-        .toolbar {
-            ToolbarItem(placement: .pcTrailing) {
-                PCButton {
-                    viewModel.save()
-                } label: {
-                    Image(systemName: "checkmark")
-                        .accessibilityLabel("Save")
-                }
-                .accessibilityIdentifier(Self.saveButtonAccessibilityIdentifier)
-                .disabled(!viewModel.canSave)
-            }
-        }
+        // No Save, and no toolbar of its own.
+        //
+        // Every field here writes through as it is edited — `setBatchName` is debounced,
+        // `setBatchColor` and `toggleDay` are not — so a checkmark could only re-write a row
+        // that was already durable or navigate away from one that was. Worse, it was the
+        // *only* exit: `saveTapped` is what cleared `state.assembly` and popped, so removing
+        // the button without moving that would have left the editor with no way out. Back,
+        // which `AddEditEventBatchScreen` already owns and routes through the store, is now
+        // the single exit — and it is the better one, because it does not ask about a save
+        // that already happened.
+        //
+        // Back is also where an emptied batch is deleted. `canSave` is not consulted here
+        // at all: it was only ever feeding this button's `isEnabled`.
     }
 }
 

@@ -39,21 +39,27 @@ struct PinCalAppApp: App {
         self.managing = store
         let dataProvider = PCCalendarDataProvider()
         let columnCountResolver = PCCalendarSession.makeColumnCountResolver()
-        // The store keeps its own `dataProvider` inside its state rather than taking one
-        // here, because the reducer needs it and the state has to be `Equatable`. Handing
-        // it the session's instance is what keeps the store and the session agreeing about
-        // which day a timestamp names.
-        let eventSelection = PCEventSelectionManager(
-            initialState: PCEventSelectionState(dataProvider: dataProvider),
-            persistence: store,
-            // A fresh instance, *not* the main calendar's. The store writes
-            // `selectedDays` and installs a tap listener on this, so handing it the
-            // calendar's own would leak the editor's selection mode onto the screen
-            // behind the sheet. See `PCEventSelectionManager.daySelectionManager`.
-            daySelectionManager: PCCalendarDaySelectionManager(),
-            columnCountResolver: columnCountResolver,
-            nameAutosaveDelay: PCCalendarSession.makeNameAutosaveDelay()
-        )
+        // One batch-assembly store per calendar, built on first use by the session.
+        //
+        // There was a single store here, injected into the environment for the whole app, and
+        // that made the first calendar opened pin the store's `calendarID` for the life of the
+        // process — so a second calendar's batches were rejected on sync and its taps were
+        // written into the first calendar's row by a destructive save. `PCCalendarSession` owns
+        // the cache and says why.
+        //
+        // The day-selection manager is per store and must be: the store writes `selectedDays`
+        // on it and installs a tap listener, so sharing one across calendars would let the
+        // editor's selection mode and tap handler leak onto the screen behind. See
+        // `PCEventSelectionManager.daySelectionManager`.
+        let makeEventSelection: @MainActor (Int64) -> PCEventSelectionManager = { _ in
+            PCEventSelectionManager(
+                initialState: PCEventSelectionState(dataProvider: dataProvider),
+                persistence: store,
+                daySelectionManager: PCCalendarDaySelectionManager(),
+                columnCountResolver: columnCountResolver,
+                nameAutosaveDelay: PCCalendarSession.makeNameAutosaveDelay()
+            )
+        }
         _session = State(
             initialValue: PCCalendarSession(
                 persistence: store,
@@ -61,10 +67,9 @@ struct PinCalAppApp: App {
                 // change feed; injecting a second would mean two subscriptions to the same
                 // actor, and the two subscribers would not agree about anything.
                 managing: store,
-                eventSelection: eventSelection,
+                makeEventSelection: makeEventSelection,
                 dataProvider: dataProvider,
-                columnCountResolver: columnCountResolver,
-                daySelectionManager: PCCalendarDaySelectionManager()
+                columnCountResolver: columnCountResolver
             )
         )
     }
@@ -75,7 +80,18 @@ struct PinCalAppApp: App {
                 .environment(session)
                 .environment(\.calendarCache, cache)
                 .environment(\.calendarManaging, managing)
-                .environment(session.eventSelection)
+                // The current calendar's store, injected at the root.
+                //
+                // Still app-wide — not because sharing is right, but because a
+                // `navigationDestination`'s content does not reliably inherit an environment
+                // applied below the `NavigationStack`, and every pushed editor reads the store
+                // from `@Environment`. Injecting per calendar *here* rather than below the stack
+                // is what makes it per calendar without that trap; see
+                // `PCCalendarSession.currentEventSelection`.
+                //
+                // `session` is `@State` over an `@Observable`, so this body re-runs when
+                // `currentCalendarID` changes — which is what swaps the injected store.
+                .environment(session.currentEventSelection)
         }
     }
 }

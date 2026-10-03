@@ -163,8 +163,8 @@ final class MultiselectAndDefaultsTests: XCTestCase {
             "A new batch should arrive with a colour already selected rather than a grey picker"
         )
 
-        let batchSave = app.buttons["batch-save-button"]
-        XCTAssertTrue(batchSave.isEnabled, "So the batch must be savable without the user doing anything")
+        let batchEditorBack = app.buttons["batch-editor-back-button"]
+        XCTAssertTrue(batchEditorBack.isEnabled, "So the batch must be savable without the user doing anything")
 
         // The event inherits the batch's colour and gets its own default name.
         let eventRow = app.collectionViews.buttons
@@ -179,9 +179,14 @@ final class MultiselectAndDefaultsTests: XCTestCase {
             eventName.value as? String, "New event day",
             "A new event should arrive with a default name rather than an empty field"
         )
+        // **Premise changed.** This asserted the event's Save was enabled, i.e. that a
+        // placeholder was savable without the user doing anything. There is no Save: the batch
+        // was written the moment the event row was opened, and the only thing left to check is
+        // that the editor can be left. The default-name assertion above is still the point of
+        // the test — it is what the user sees in the field.
         XCTAssertTrue(
-            KeyboardAvoidanceTestSupport.toolbarAction("Save", in: app).isEnabled,
-            "So the event must be savable without the user doing anything"
+            app.buttons["event-editor-back-button"].isEnabled,
+            "So the event editor can be left without the user doing anything"
         )
     }
 }

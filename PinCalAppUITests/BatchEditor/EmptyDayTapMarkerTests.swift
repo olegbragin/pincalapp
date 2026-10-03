@@ -69,7 +69,7 @@ final class EmptyDayTapMarkerTests: XCTestCase {
 
         // The editor is what the report is about, so assert we actually got there.
         XCTAssertTrue(
-            app.buttons["batch-save-button"].waitForExistence(timeout: 5),
+            app.buttons["batch-editor-back-button"].waitForExistence(timeout: 5),
             "Tapping an empty day should open the batch editor"
         )
 
@@ -97,9 +97,9 @@ final class EmptyDayTapMarkerTests: XCTestCase {
         // *topmost hittable* cell, and during the pop transition the editor's calendar is
         // still hittable and still marked — so asserting immediately reads the screen being
         // dismissed and reports a failure that is really a race. Same reason the
-        // editor-present assertion above waits for `batch-save-button` first.
+        // editor-present assertion above waits for `batch-editor-back-button` first.
         XCTAssertTrue(
-            app.buttons["batch-save-button"].waitForNonExistence(timeout: 5),
+            app.buttons["batch-editor-back-button"].waitForNonExistence(timeout: 5),
             "The batch editor should be dismissed after going back"
         )
 

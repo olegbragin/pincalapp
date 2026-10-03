@@ -363,11 +363,13 @@ enum KeyboardAvoidanceTestSupport {
 
     /// Picks `colorName` on the colour picker the frontmost editor exposes.
     ///
-    /// Any test that builds a batch from scratch needs this. Tapping an empty calendar day
-    /// stages a batch with `colorName: ""`, and a batch is only saveable once it has a
-    /// colour — so without a colour the editor's Save is disabled, the tap is a no-op, and
-    /// the test fails on "editor should dismiss" for a reason that has nothing to do with
-    /// what it is testing.
+    /// Any test that builds a batch from scratch wants this. It used to be *required*: tapping
+    /// an empty calendar day staged a batch with `colorName: ""`, a batch was only written once
+    /// it had a colour, and the editor's Save checkmark was `.disabled(!canSave)` — so without
+    /// a colour the tap was a no-op and the test failed on "editor should dismiss" for a reason
+    /// that had nothing to do with what it was testing. Nothing gates on a colour now, so this
+    /// is about matching the colour a real batch arrives in rather than about getting through
+    /// the flow at all.
     ///
     /// Several screens can expose a `color-picker-compact` at once — the batch editor behind,
     /// the event editor in front — so this takes the topmost *hittable* one, which makes the
@@ -404,12 +406,39 @@ enum KeyboardAvoidanceTestSupport {
     /// Triple-tap selects the line and the next keystroke replaces it. This is the same
     /// idiom the calendar-rename test already uses, and it does not depend on the delete key
     /// being reachable, which is not true on every keyboard layout.
+    ///
+    /// It waits for the typed characters to *land in the field* before returning, and that wait
+    /// is not belt-and-braces. `typeText` returns once the keys have been sent, not once the app
+    /// has acted on them, so a caller could navigate away with the last keystroke still in
+    /// flight — and in the batch editor that loses the edit outright: leaving clears
+    /// `state.assembly`, and `editing` declines a name change when there is no assembly, so the
+    /// trailing characters are silently dropped. It presented as a flake in whichever test
+    /// happened to lose the race, with the failure naming the batch ("the list should contain
+    /// the batch") rather than the typing, which is why it was worth fixing here rather than at
+    /// the call site.
+    ///
+    /// **A suffix, not equality.** Two different things can go wrong here and only one of them
+    /// is this function's business. The triple-tap selection is itself flaky, and when it fails
+    /// the text is *appended* — "New eventCycle" instead of "Cycle". Asserting equality here
+    /// would report that as a typing-timing failure, which it is not, and would fail a test
+    /// whose own assertion on the resulting name is the right place to hear about it. So this
+    /// waits for the suffix and leaves the value to the caller.
     @MainActor
     static func replaceText(in field: XCUIElement, with text: String) {
         XCTAssertTrue(field.waitForExistence(timeout: 5), "The field should be on screen before typing into it")
         field.tap(withNumberOfTaps: 3, numberOfTouches: 1)
         Thread.sleep(forTimeInterval: 0.2)
         field.typeText(text)
+
+        let deadline = Date().addingTimeInterval(5)
+        while Date() < deadline {
+            if (field.value as? String)?.hasSuffix(text) == true { return }
+            usleep(50_000)
+        }
+        XCTFail(
+            "The field never showed the typed text (it reads "
+                + "\(String(describing: field.value)); a caller that navigates now would drop the tail of it)"
+        )
     }
 
     @MainActor
@@ -420,6 +449,47 @@ enum KeyboardAvoidanceTestSupport {
         let back = app.buttons["Back"].exists ? app.buttons["Back"] : app.buttons["BackButton"]
         XCTAssertTrue(back.waitForExistence(timeout: 5), "Back button should be visible")
         back.tap()
+    }
+
+    /// Switches to the calendar named `name`, on either form factor.
+    ///
+    /// Gets to the calendar list first if it is not already there — leaving the open calendar
+    /// when needed — and then reveals the sidebar rather than assuming a Back button, because on
+    /// the iPad split view the rows are not in the hierarchy at all. A test that taps a Back
+    /// button directly does nothing there, silently, and then carries on against the wrong
+    /// calendar, which is worse than failing.
+    ///
+    /// A helper for the same reason `leaveCurrentScreen` is one: switching is the step that ends
+    /// a multi-select session, so a test that inlines it is the only thing standing between a
+    /// session outliving its calendar and a green run that means nothing.
+    ///
+    /// Returns whether the switch happened, so a caller that cares can fail loudly.
+    @discardableResult
+    @MainActor
+    static func switchToCalendar(named name: String, in app: XCUIApplication) -> Bool {
+        var row = app.staticTexts[name].firstMatch
+        if !row.waitForExistence(timeout: 2) {
+            // The list is behind the open calendar. `leaveCurrentScreen` ends at the list and
+            // asserts that it did, so a failure here is about leaving rather than about this
+            // switch — which is the right place for it to surface.
+            leaveCurrentScreen(in: app)
+            row = app.staticTexts[name].firstMatch
+        }
+        guard row.waitForExistence(timeout: 5) else {
+            XCTFail("No calendar named '\(name)' to switch to")
+            return false
+        }
+
+        if !row.isHittable {
+            let show = app.buttons["Show Sidebar"]
+            if show.exists, show.isHittable { show.tap() }
+        }
+        guard row.isHittable else {
+            XCTFail("Calendar '\(name)' is listed but not reachable")
+            return false
+        }
+        row.tap()
+        return true
     }
 
     /// Leaves the calendar detail, on either form factor, and puts the layout back the way
@@ -449,20 +519,17 @@ enum KeyboardAvoidanceTestSupport {
     /// the app launches in and the state every toolbar assertion in the suite was written
     /// against. Without it, "reopen the calendar" means something different on the iPad
     /// from what it means everywhere else.
-    @MainActor
-    /// Leave whatever screen is showing, so the caller can set up a known state again.
     ///
-    /// Prefers an explicit Back button, and only falls back to the sidebar when there is none.
+    /// Prefers an explicit Back button, and only falls back to the sidebar when there is none —
+    /// so: Back if there is one, sidebar only when there is not.
     ///
     /// It used to do the opposite — reveal the sidebar, go to Settings, come back to Calendars,
-    /// collapse — and that detour is what this ordering removes. Two reasons it is now the wrong
-    /// tool: it only existed because a revealed calendar had no way back on a wide layout, and
-    /// selecting a calendar in the list now resets the detail column to its root, so the detour
-    /// no longer does what it was written to do. Worse, the sidebar sits under the same taps:
-    /// revealing it and tapping a category can land on a calendar row instead, which silently
-    /// re-selects a calendar rather than leaving the screen.
-    ///
-    /// So: Back if there is one, sidebar only when there is not.
+    /// collapse — and that detour is what this ordering removes. Selecting a calendar in the list
+    /// now resets the detail column to its root, so the detour no longer does what it was written
+    /// to do, and worse: the sidebar sits under the same taps, so revealing it and tapping a
+    /// category can land on a calendar row instead, which silently re-selects a calendar rather
+    /// than leaving the screen.
+    @MainActor
     static func leaveCurrentScreen(in app: XCUIApplication) {
         let back = app.buttons.matching(identifier: "Back").firstMatch.exists
             ? app.buttons.matching(identifier: "Back").firstMatch

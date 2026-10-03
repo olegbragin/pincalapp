@@ -25,11 +25,6 @@ public struct AddEditEventViewModel {
 
     private var draft: CalendarEvent? { store.state.eventDraft }
 
-    var canSave: Bool {
-        guard let draft, !draft.name.isEmpty else { return false }
-        return !draft.colorName.isEmpty
-    }
-
     /// Shown in the toolbar. Falls back to the assembly's anchor day so the title is
     /// never empty mid-transition.
     var displayedDate: Date {
@@ -49,12 +44,5 @@ public struct AddEditEventViewModel {
             get: { draft.flatMap { PCColorOption($0.colorName) } },
             set: { store.send(.setEventColor($0)) }
         )
-    }
-
-    /// Commits the draft into the batch and asks for the pop. The reducer declines an
-    /// unnamed event, so the editor stays open with the draft intact rather than the edit
-    /// being silently dropped.
-    func save() {
-        store.send(.saveEventTapped)
     }
 }

@@ -237,7 +237,7 @@ struct CalendarStoreTests {
     /// `persistedID`, so `ObjectBoxCalendarStorage.saveCalendar` classifies the row already
     /// on disk as an orphan, deletes it with its events, and writes a fresh one — a path
     /// that works and is also why those tests are cheap. The app does not do that: it
-    /// `openBatch`es the row, edits it, and `saveTapped` commits through `resolved()`,
+    /// `openBatch`es the row and edits it, and the edit merges through `resolved()`,
     /// which carries the row's **real** `persistedID`. That takes the update branch instead,
     /// and it is the branch §16's step 6 uses.
     @Test("Re-saving an existing batch by its real id keeps it and the events that remain")

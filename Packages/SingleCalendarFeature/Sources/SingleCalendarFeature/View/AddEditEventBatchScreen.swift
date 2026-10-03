@@ -19,6 +19,15 @@ public struct AddEditEventBatchScreen: View {
     @Environment(RootNavigation.self) private var navigation
     @Environment(\.pcVibe) private var vibe
 
+    /// The editor's only exit.
+    ///
+    /// Named rather than left as a bare label so the UI suite has a stable handle on it. It
+    /// used to reach for the Save checkmark instead — as the way *out*, and, because nothing
+    /// else on that screen was addressable, as the way to tell that the editor was open at
+    /// all. Both jobs are this button's now, so one identifier serves both and there is no
+    /// element in these tests whose only purpose was to prove a screen had appeared.
+    public static let backButtonAccessibilityIdentifier = "batch-editor-back-button"
+
     public let calendarID: Int64
 
     public init(calendarID: Int64) {
@@ -55,6 +64,7 @@ public struct AddEditEventBatchScreen: View {
                 } label: {
                     Label("Back", systemImage: "chevron.backward")
                 }
+                .accessibilityIdentifier(Self.backButtonAccessibilityIdentifier)
             }
             ToolbarItem(placement: .principal) {
                 BatchEditorTitleContent(

@@ -122,8 +122,6 @@ private struct PCTostCountdownBar: View {
 
     private var elapsed: TimeInterval {
         guard let startedAt else { return 0 }
-        let seconds = duration.components.seconds
-        let attos = Double(duration.components.attoseconds) / 1e18
         return Date().timeIntervalSince(startedAt)
     }
 

@@ -87,6 +87,31 @@ public class RootNavigation {
     /// otherwise, and the hop is not optional: the closure cannot be called synchronously.
     public var canLeaveCurrentCalendar: (@MainActor @Sendable () async -> Bool)?
 
+    /// Runs when a calendar is being left, before the switch is carried out.
+    ///
+    /// The sibling of `canLeaveCurrentCalendar`, and it exists because a *question* is not
+    /// enough. Leaving has a consequence that nothing else performs: ending the calendar's
+    /// multi-select session, and deleting its batch if the user took every day back off.
+    ///
+    /// It was being done from the calendar detail's `onDisappear`, which covers Back on iPhone
+    /// and a switch on iPad — but only when that view is actually torn down, and on iPad the
+    /// detail column sometimes never loads. A session that outlives its calendar comes back
+    /// painted and unendable, and the store is cached, so it comes back *populated*. Dispatching
+    /// from the switch itself makes the lifetime a property of the switch rather than of a view
+    /// teardown that may not happen.
+    ///
+    /// `@MainActor @Sendable` for the same reason as the guard above: the state it touches is
+    /// main-actor isolated in a store one layer down.
+    public var willLeaveCurrentCalendar: (@MainActor @Sendable () async -> Void)?
+
+    /// Called with the new calendar id at the moment `detailCalendarID` changes, before the change.
+    ///
+    /// Installed by whoever owns the per-calendar state, so the app root can inject the right
+    /// store for the calendar that is about to be shown. Synchronous and inside the mutation for
+    /// the reason given at the call site: an observer would be a frame late, and this value
+    /// chooses which store the whole subtree reads.
+    public var onCalendarChanged: (@MainActor (Int64) -> Void)?
+
     /// Switches to `calendarID` only if the guard allows it.
     ///
     /// This is the only supported way to change calendars, because it is the only place the
@@ -101,6 +126,9 @@ public class RootNavigation {
         if let canLeaveCurrentCalendar, await canLeaveCurrentCalendar() == false {
             return
         }
+        // The switch was allowed, so this calendar is actually being left — end its session
+        // before the route changes, while the store for it is still the one on screen.
+        await willLeaveCurrentCalendar?()
         goTo(.calendar(id, toRoot: true))
     }
     
@@ -123,6 +151,13 @@ public class RootNavigation {
             if toRoot {
                 popToRoot()
             }
+            // Told *before* the state changes, not from an `onChange` on the view that observes
+            // it. An observer runs after the render that acted on the new value, so whatever it
+            // feeds is one frame stale — and the app root injects the current calendar's store
+            // from that value, so a frame of staleness means the calendar detail is built with
+            // one store while every view reads another. The symptom is a day list that opens and
+            // is empty. Setting it here makes the two agree by construction.
+            onCalendarChanged?(id)
             detailCalendarID = id
             preferredCompactColumn = .detail
             presentedSheet = nil

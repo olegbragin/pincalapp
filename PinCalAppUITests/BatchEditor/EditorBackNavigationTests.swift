@@ -54,7 +54,7 @@ final class EditorBackNavigationTests: XCTestCase {
         XCTAssertTrue(batch.waitForExistence(timeout: 5), "The seeded batch should be listed")
         batch.tap()
         XCTAssertTrue(
-            app.buttons["batch-save-button"].waitForExistence(timeout: 5),
+            app.buttons["batch-editor-back-button"].waitForExistence(timeout: 5),
             "Tapping a batch should open the batch editor"
         )
         return app
@@ -83,7 +83,7 @@ final class EditorBackNavigationTests: XCTestCase {
             "Back should leave the event editor"
         )
         XCTAssertTrue(
-            app.buttons["batch-save-button"].waitForExistence(timeout: 5),
+            app.buttons["batch-editor-back-button"].waitForExistence(timeout: 5),
             "Back from the event editor should land on the batch editor, not the calendar"
         )
 

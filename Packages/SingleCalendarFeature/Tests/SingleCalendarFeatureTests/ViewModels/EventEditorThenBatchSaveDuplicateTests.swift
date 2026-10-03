@@ -13,9 +13,9 @@ import DSKit
 
 /// The reported duplicate-batch bug, end to end through the store.
 ///
-/// Save an event from the child event editor, then save the batch. The batch used to be
+/// Edit an event from the child event editor, then leave the batch. The batch used to be
 /// committed with `persistedID == nil` while the row that came back from the store had a
-/// real one, so the next commit found nothing to update and appended a second row.
+/// real one, so the next write found nothing to update and appended a second row.
 ///
 /// This used to run against a real ObjectBox store through `SingleCalendarModel`. It no
 /// longer can: the DTO→domain adapter (`CalendarStore`) is in the app target, not in a
@@ -23,10 +23,10 @@ import DSKit
 /// `EventBatchDataSource` and should not. The scenario is preserved against the port, and
 /// the ObjectBox round trip is covered where the adapter lives, in `PinCalAppTests`.
 @MainActor
-@Suite("Saving an event then its batch does not duplicate the batch")
+@Suite("Editing an event then leaving its batch does not duplicate the batch")
 struct EventEditorThenBatchSaveDuplicateTests {
 
-    @Test func savingEventThenBatchDoesNotDuplicateNewBatch() {
+    @Test func editingEventThenLeavingBatchDoesNotDuplicateNewBatch() {
         let persistence = InMemoryCalendarPersisting()
         let store = Fixture.makeStore(persistence: persistence)
         let batchViewModel = AddEditEventBatchViewModel(store: store)
@@ -37,32 +37,36 @@ struct EventEditorThenBatchSaveDuplicateTests {
         store.send(.startNewBatch(on: day))
         #expect(store.state.assembly?.isNew == true)
 
-        // Name it, so it is savable.
+        // Name it, so it is written.
         batchViewModel.nameBinding.wrappedValue = "Swim"
         batchViewModel.colorBinding.wrappedValue = .option1
-        #expect(batchViewModel.canSave)
+        #expect(store.state.assembly?.canSave == true)
 
-        // Open the child event editor and save the event.
+        // Open the child event editor, rename the event, and leave it.
         let listViewModel = AddEditEventListViewModel(store: store)
         let event = listViewModel.events[0]
         listViewModel.open(event)
         let eventViewModel = AddEditEventViewModel(store: store)
         eventViewModel.nameBinding.wrappedValue = "Lap"
-        eventViewModel.save()
 
-        #expect(store.state.eventDraft == nil, "the event went back into the batch")
-        #expect(store.state.assembly?.batch.events.first?.name == "Lap")
+        #expect(
+            store.state.assembly?.batch.events.first?.name == "Lap",
+            "already in the batch while the event editor is still open"
+        )
+        store.send(.backTapped)
+
+        #expect(store.state.eventDraft == nil, "the draft is dropped on the way out")
         #expect(store.state.assembly?.batch.events.count == 1, "edited, not appended")
 
-        // Save the batch.
-        batchViewModel.save()
+        // Leave the batch editor.
+        store.send(.backTapped)
 
         #expect(store.state.batches.count == 1, "one row, not two")
         #expect(store.state.batches.first?.name == "Swim")
     }
 
     /// The second half of the original bug: the committed row comes back from the store
-    /// under a real id, and the *next* commit must update it rather than append. That is
+    /// under a real id, and the *next* write must update it rather than append. That is
     /// §6.5 adoption, and the store's write is what makes the id real.
     @Test func reopeningAndEditingUpdatesTheSameRow() async {
         let persistence = InMemoryCalendarPersisting()
@@ -72,7 +76,7 @@ struct EventEditorThenBatchSaveDuplicateTests {
         store.send(.startNewBatch(on: Fixture.day(3)))
         batchViewModel.nameBinding.wrappedValue = "Swim"
         batchViewModel.colorBinding.wrappedValue = .option1
-        batchViewModel.save()
+        store.send(.backTapped)
         #expect(store.state.batches.count == 1)
 
         // Wait for the write chain, then read the row back as the store would.
@@ -91,7 +95,7 @@ struct EventEditorThenBatchSaveDuplicateTests {
             events: stored[0].events.map {
                 CalendarEvent(
                     name: $0.name,
-                    date: store.state.dataProvider.startOfDay(for: $0.date),
+                    date: $0.date,
                     colorName: $0.colorName
                 )
             }
@@ -101,7 +105,7 @@ struct EventEditorThenBatchSaveDuplicateTests {
 
         store.send(.openBatch(id: stored[0].mergeKey))
         batchViewModel.nameBinding.wrappedValue = "Swimming"
-        batchViewModel.save()
+        store.send(.backTapped)
 
         #expect(store.state.batches.count == 1, "still one row")
         #expect(store.state.batches.first?.name == "Swimming")

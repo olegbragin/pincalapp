@@ -22,18 +22,17 @@ struct AddEditEventViewModelTests {
         return (AddEditEventViewModel(store: store), store)
     }
 
-    @Test("With no draft, the name is empty and it cannot be saved")
+    @Test("With no draft, the name is empty")
     func noDraft() {
         let store = Fixture.makeStore(persistence: InMemoryCalendarPersisting())
         let vm = AddEditEventViewModel(store: store)
 
+        #expect(store.state.eventDraft == nil, "precondition: nothing is being edited")
         #expect(vm.nameBinding.wrappedValue.isEmpty)
-        #expect(!vm.canSave)
     }
 
-    /// §12.4: projections track `state.eventDraft`, and `save()` dispatches
-    /// `saveEventTapped`. The old version kept its own mutable `event`, so these
-    /// assertions are about the *store* moving rather than a local field.
+    /// §12.4: projections track `state.eventDraft`. The old version kept its own mutable
+    /// `event`, so these assertions are about the *store* moving rather than a local field.
     @Test("The name binding dispatches to the draft")
     func nameBindingDispatches() {
         let (vm, store) = makeContext()
@@ -64,20 +63,33 @@ struct AddEditEventViewModelTests {
         #expect(store.state.eventDraft?.date == newDate)
     }
 
-    /// A new event arrives named and coloured (§5.4), so this walks the draft *down*:
-    /// clearing the colour alone is not enough to refuse a save, and clearing both is.
-    @Test("canSave refuses a draft whose name or colour has been cleared")
-    func canSaveRequirements() {
-        let (vm, _) = makeContext()
+    /// The time of day has to survive the trip into the batch, not just the draft.
+    ///
+    /// The picker's binding and the draft both carried it, and `PCEventBatchAssembleUnitOfWork.applying`
+    /// threw it away on the way in — normalising the event's date to the start of its day.
+    /// So the batch went on listing the event at 12:00 AM and reopening the event showed the
+    /// picker back at midnight, while everything in the editor looked correct. Asserting on the
+    /// draft alone is exactly what let that through: it is the one place the time still was.
+    @Test("A time picked in the editor reaches the batch, time component and all")
+    func pickedTimeReachesTheBatch() throws {
+        let (vm, store) = makeContext()
+        // 19:00 *local*, on the day the placeholder occupies. `Fixture.day` is noon UTC, so
+        // adding 19 hours to it lands on 07:00 somewhere else entirely — the point is a
+        // non-midnight hour component, and it has to be built in the zone it is read back in.
+        var local = Calendar(identifier: .gregorian)
+        local.timeZone = .current
+        let sevenPm = try #require(
+            local.date(bySettingHour: 19, minute: 0, second: 0, of: Fixture.day(4))
+        )
 
-        #expect(vm.canSave, "the event arrives named and coloured")
-        vm.colorBinding.wrappedValue = nil
-        #expect(!vm.canSave, "no colour of its own")
-        vm.colorBinding.wrappedValue = .option1
-        vm.nameBinding.wrappedValue = ""
-        #expect(!vm.canSave, "and no name")
-        vm.nameBinding.wrappedValue = "Swim"
-        #expect(vm.canSave)
+        vm.dateBinding.wrappedValue = sevenPm
+
+        let inBatch = try #require(store.state.assembly?.batch.events.first?.date)
+        #expect(inBatch == sevenPm, "the batch holds 19:00, not \(inBatch)")
+        #expect(
+            local.component(.hour, from: inBatch) == 19,
+            "and the hour component really is 19 — not a midnight that happens to compare equal"
+        )
     }
 
     @Test("The title date is the draft's, falling back to the assembly's day")
@@ -91,52 +103,50 @@ struct AddEditEventViewModelTests {
         #expect(vm.displayedDate == Fixture.day(4), "falls back to the anchor day")
     }
 
-    @Test("Saving commits the draft into the batch and asks for the pop")
-    func saveCommits() {
+    /// What replaced `saveCommits`: there is no Save, so the batch has to be current before
+    /// the user leaves. This is the invariant that made the checkmark redundant, so it is the
+    /// one worth pinning — the old test asserted the draft was committed *by pressing Save*,
+    /// which passed while the writes were already happening on every keystroke.
+    @Test("The draft is written into the batch as it is typed, with no Save")
+    func editsReachTheBatchWithoutSaving() {
         let (vm, store) = makeContext()
+        // The push from `openEvent` is still pending — the view layer has not reported back —
+        // so "no new navigation" means this request, unchanged.
+        let pendingOnEntry = store.state.navigationRequest
         vm.nameBinding.wrappedValue = "Swim"
         vm.colorBinding.wrappedValue = .option2
 
-        vm.save()
-
-        #expect(store.state.eventDraft == nil, "the draft is done")
-        #expect(store.state.stage == .batchEditor)
-        #expect(store.state.assembly?.batch.events.first?.name == "Swim")
+        #expect(
+            store.state.assembly?.batch.events.first?.name == "Swim",
+            "already in the batch, while the editor is still open"
+        )
         #expect(store.state.assembly?.batch.events.first?.colorName == "eventColorOption2")
-        #expect(store.state.navigationRequest?.target == .pop)
+        #expect(store.state.stage == .eventEditor(batchPendingID: store.state.assembly!.batch.pendingID, eventPendingID: store.state.eventDraft!.pendingID))
+        #expect(
+            store.state.navigationRequest == pendingOnEntry,
+            "and nothing new navigated: there is nothing to commit"
+        )
     }
 
-    /// A *cleared* name is declined, and the draft survives.
+    /// Leaving is Back, and it drops the draft without losing the edit — the draft is a
+    /// working copy of an already-durable change, not a pending one.
     ///
-    /// This used to be about the everyday case — a placeholder event had an empty name, so
-    /// opening one and pressing Save was rejected. Placeholders now arrive named (§5.4) and
-    /// save, so the guard has one job left and this pins it: a name the user emptied is a
-    /// dismissal, not a save, and must not silently drop the edit.
-    @Test("Saving an event whose name was cleared is declined, and the draft survives")
-    func saveIsGuarded() {
+    /// This is the test that says the removed checkmark was redundant. `saveEventTapped` used
+    /// to re-apply the draft on the way out "so nothing is lost", which was only ever true
+    /// because nothing had been lost in the first place.
+    @Test("Backing out keeps the edit and clears the draft")
+    func backKeepsTheEditAndDropsTheDraft() {
         let (vm, store) = makeContext()
-        store.send(.setEventName(""))
-        let before = store.state.eventDraft
-        #expect(before?.name.isEmpty == true, "precondition: the draft really is unnamed")
+        vm.nameBinding.wrappedValue = "Swim"
 
-        vm.save()
+        store.send(.backTapped)
 
-        #expect(store.state.eventDraft == before, "a dismissal, not a silent drop")
-        #expect(store.state.stage == .eventEditor(batchPendingID: store.state.assembly!.batch.pendingID, eventPendingID: before!.pendingID))
-    }
-
-    /// The complement: a placeholder's default name is a name, so it saves.
-    @Test("A new event saves on its default name without the user typing")
-    func saveWorksOnTheDefaultName() {
-        let (vm, store) = makeContext()
-        #expect(vm.canSave, "the event arrives named and coloured")
-        let eventName = store.state.eventDraft?.name
-        #expect(eventName?.isEmpty == false, "precondition: the draft has a name")
-
-        vm.save()
-
-        #expect(store.state.eventDraft == nil, "committed")
+        #expect(store.state.eventDraft == nil, "the working copy is gone")
         #expect(store.state.stage == .batchEditor)
-        #expect(store.state.assembly?.batch.events.contains { $0.name == eventName } == true)
+        #expect(
+            store.state.assembly?.batch.events.first?.name == "Swim",
+            "and the edit is still in the batch"
+        )
+        #expect(store.state.navigationRequest?.target == .pop)
     }
 }

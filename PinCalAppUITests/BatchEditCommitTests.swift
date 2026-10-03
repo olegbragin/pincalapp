@@ -13,11 +13,16 @@ final class BatchEditCommitTests: XCTestCase {
         continueAfterFailure = false
     }
 
-    /// STR regression: edit a batch (add an event), press Save, go back to the
+    /// STR regression: edit a batch (add an event), leave the editor, go back to the
     /// calendar. The newly selected day must immediately behave as a day with
     /// events (opens the batch list, not a new-batch editor).
     @MainActor
-    func testSavingBatchFromEditorUpdatesCalendarWithoutReachingRoot() throws {
+    /// **Premise changed.** This was "saving the batch from the editor updates the calendar",
+    /// and the Save checkmark was the step under test. It no longer is: the day was added by
+    /// `toggleDay`, which merged and wrote the row at the moment it was tapped. The test now
+    /// leaves with Back and asserts the same visible outcome — the day holds a batch and
+    /// tapping it opens the batch list rather than a new-batch editor.
+    func testLeavingBatchEditorUpdatesCalendarWithoutReachingRoot() throws {
         let app = KeyboardAvoidanceTestSupport.launchSeededApp()
         KeyboardAvoidanceTestSupport.openCalendarDetail(app, named: "UI Test Calendar")
 
@@ -31,15 +36,16 @@ final class BatchEditCommitTests: XCTestCase {
         // Select an additional event on an empty day inside the editor.
         KeyboardAvoidanceTestSupport.tapDay(day: 20, in: app)
 
-        // Save via the toolbar checkmark.
-        let saveButton = KeyboardAvoidanceTestSupport.toolbarAction("Save", in: app)
-        XCTAssertTrue(saveButton.waitForExistence(timeout: 5), "Save button should be visible in the editor")
-        saveButton.tap()
+        // Back is the only exit now, and it is also the editor's one addressable element —
+        // which is why this doubles as the "editor is open" wait.
+        let editorBack = app.buttons["batch-editor-back-button"]
+        XCTAssertTrue(editorBack.waitForExistence(timeout: 5), "Back button should be visible in the editor")
+        editorBack.tap()
 
         // Editor dismissed back to the batch list; go back to the calendar.
         XCTAssertFalse(
-            saveButton.waitForExistence(timeout: 2),
-            "Editor should be dismissed after Save"
+            editorBack.waitForExistence(timeout: 2),
+            "Editor should be dismissed after Back"
         )
         KeyboardAvoidanceTestSupport.leaveCurrentScreen(in: app)
         // Leaving dismisses the calendar, so re-open it before tapping a day. On the iPhone
@@ -85,17 +91,19 @@ final class BatchEditCommitTests: XCTestCase {
         let prefilledName = nameField.value as? String ?? ""
         XCTAssertEqual(prefilledName, "Event1", "Event name field must be pre-filled with the existing name")
 
-        // Append text and save.
+        // Append text and leave. The rename reached the batch on the keystroke, not on the way out.
         nameField.tap()
         nameField.typeText("Renamed")
-        let eventSaveButton = KeyboardAvoidanceTestSupport.toolbarAction("Save", in: app)
-        XCTAssertTrue(eventSaveButton.waitForExistence(timeout: 3), "Event save button should be visible")
-        eventSaveButton.tap()
+        // The event editor's Back. Its Save checkmark is gone, and an identifier is what makes
+        // this unambiguous — the main calendar's multi-select confirm is *also* labelled "Save".
+        let eventEditorBack = app.buttons["event-editor-back-button"]
+        XCTAssertTrue(eventEditorBack.waitForExistence(timeout: 3), "Event editor back button should be visible")
+        eventEditorBack.tap()
 
-        // Back in the batch editor, save the batch.
-        let batchSaveButton = KeyboardAvoidanceTestSupport.toolbarAction("Save", in: app)
-        XCTAssertTrue(batchSaveButton.waitForExistence(timeout: 5), "Batch save button should be visible after event save")
-        batchSaveButton.tap()
+        // Back in the batch editor — the rename is already in it.
+        let editorBack = app.buttons["batch-editor-back-button"]
+        XCTAssertTrue(editorBack.waitForExistence(timeout: 5), "Batch editor back button should be visible after leaving the event editor")
+        editorBack.tap()
 
         // Dismiss back to the calendar.
         KeyboardAvoidanceTestSupport.leaveCurrentScreen(in: app)
@@ -120,15 +128,15 @@ final class BatchEditCommitTests: XCTestCase {
         // Verify the persisted name is shown.
         XCTAssertTrue(nameField.waitForExistence(timeout: 5), "Event editor should open for renamed event")
         let persistedName = nameField.value as? String ?? ""
-        XCTAssertEqual(persistedName, "Event1Renamed", "Event name must persist after save and reopen")
+        XCTAssertEqual(persistedName, "Event1Renamed", "Event name must persist after leaving and reopening")
     }
 
     /// STR regression for the reported bug:
     /// 1) Open calendar -> tap day with batch -> batch list
     /// 2) Tap batch -> batch editor
     /// 3) Tap event -> event editor
-    /// 4) Change name, Save (event)
-    /// 5) Save (batch) -> back to batch list
+    /// 4) Change name, leave the event editor
+    /// 5) Leave the batch editor -> back to batch list
     /// 6) Tap same batch again
     /// AB was old name; EB is renamed name persists without ever returning to the calendar root.
     @MainActor
@@ -155,21 +163,21 @@ final class BatchEditCommitTests: XCTestCase {
         XCTAssertEqual(nameField.value as? String ?? "", "Event1")
         nameField.tap()
         nameField.typeText("Renamed")
-        let eventSaveButton = KeyboardAvoidanceTestSupport.toolbarAction("Save", in: app)
-        XCTAssertTrue(eventSaveButton.waitForExistence(timeout: 3))
-        eventSaveButton.tap()
+        let eventEditorBack = app.buttons["event-editor-back-button"]
+        XCTAssertTrue(eventEditorBack.waitForExistence(timeout: 3))
+        eventEditorBack.tap()
 
-        // Batch editor Save -> back to batch list
-        let batchSaveButton = KeyboardAvoidanceTestSupport.toolbarAction("Save", in: app)
-        XCTAssertTrue(batchSaveButton.waitForExistence(timeout: 5), "Batch Save should be visible after event Save")
-        batchSaveButton.tap()
+        // Back in the batch editor -> leave it for the batch list.
+        let batchEditorBack = app.buttons["batch-editor-back-button"]
+        XCTAssertTrue(batchEditorBack.waitForExistence(timeout: 5), "Batch editor Back should be visible after leaving the event editor")
+        batchEditorBack.tap()
         XCTAssertFalse(
-            batchSaveButton.waitForExistence(timeout: 2),
-            "Batch editor should be dismissed after Save"
+            batchEditorBack.waitForExistence(timeout: 2),
+            "Batch editor should be dismissed after Back"
         )
 
         // Should be back at batch list, without navigating to calendar
-        XCTAssertTrue(batchRow.waitForExistence(timeout: 5), "Should be back at batch list after batch Save")
+        XCTAssertTrue(batchRow.waitForExistence(timeout: 5), "Should be back at batch list after leaving the batch editor")
 
         // Re-open same batch immediately (no tap on calendar day, no root)
         batchRow.tap()
@@ -194,8 +202,8 @@ final class BatchEditCommitTests: XCTestCase {
     /// 3) Enter a batch name
     /// 4) Tap the event in the list -> event editor
     /// 5) Enter an event name
-    /// 6) Save (event)   -> auto-persists the batch
-    /// 7) Save (batch)
+    /// 6) Leave the event editor -> the batch already holds the edit
+    /// 7) Leave the batch editor
     /// 8) Tap the day again
     /// EB: exactly one batch in the list. AB: two batches with the same event.
     @MainActor
@@ -211,12 +219,14 @@ final class BatchEditCommitTests: XCTestCase {
         XCTAssertTrue(batchNameField.waitForExistence(timeout: 5), "Batch editor should open for the tapped day")
         KeyboardAvoidanceTestSupport.replaceText(in: batchNameField, with: "Edited Batch")
 
-        // 3b) Give the batch a colour. `PCEventBatchAssembleUnitOfWork.canSave` requires a name, a
-        //     colour and at least one day, and the event editor's own Save is
-        //     disabled until the event has one too — a day tapped on the calendar
-        //     starts the batch with `colorName: ""`. Without this step both Saves
-        //     are disabled, tapping them is a no-op, and the batch editor never
-        //     comes back. Recolouring the batch propagates to its events, so the
+        // 3b) Give the batch a colour.
+        //
+        //     This used to be load-bearing in a way that no longer exists. While a Save button
+        //     was on screen it was `.disabled(!canSave)`, and a day tapped on the calendar
+        //     started the batch with `colorName: ""` — so without this step both Saves sat
+        //     disabled, tapping them was a no-op, and the batch editor never came back.
+        //     Nothing gates on it now: the write happens per edit, and `canSave` has no button
+        //     to disable. Recolouring the batch still propagates to its events, so the
         //     placeholder event picks the colour up here.
         selectEventColor("eventColorOption2", in: app)
 
@@ -240,29 +250,29 @@ final class BatchEditCommitTests: XCTestCase {
         eventNameField.tap()
         eventNameField.typeText("Edited Event")
 
-        // 6) Save the event (auto-persists the batch, store assigns a real id).
-        let eventSaveButton = KeyboardAvoidanceTestSupport.toolbarAction("Save", in: app)
-        XCTAssertTrue(eventSaveButton.waitForExistence(timeout: 5), "Event save button should be visible")
-        eventSaveButton.tap()
+        // 6) Leave the event editor (the batch was written by the keystroke).
+        let eventEditorBack = app.buttons["event-editor-back-button"]
+        XCTAssertTrue(eventEditorBack.waitForExistence(timeout: 5), "Event editor back button should be visible")
+        eventEditorBack.tap()
 
-        // 7) Save the batch.
-        let batchSaveButton = app.buttons["batch-save-button"]
-        XCTAssertTrue(batchSaveButton.waitForExistence(timeout: 5), "Back in the batch editor after the event save")
-        batchSaveButton.tap()
+        // 7) Leave the batch editor.
+        let batchEditorBack = app.buttons["batch-editor-back-button"]
+        XCTAssertTrue(batchEditorBack.waitForExistence(timeout: 5), "Back in the batch editor after leaving the event editor")
+        batchEditorBack.tap()
         XCTAssertFalse(
-            batchSaveButton.waitForExistence(timeout: 2),
-            "Batch editor should be dismissed after Save"
+            batchEditorBack.waitForExistence(timeout: 2),
+            "Batch editor should be dismissed after Back"
         )
 
         // 8a) The editor dismissed back to the calendar detail. The day we just
-        //     saved must now be MARKED as having events. The reported bug leaves
-        //     it unmarked because the saved batch holds no events.
+        //     added a batch to must now be MARKED as having events. The reported bug
+        //     leaves it unmarked because the saved batch holds no events.
         let day20ID = KeyboardAvoidanceTestSupport.dayIdentifier(day: 20)
         let day20Query = app.descendants(matching: .any).matching(identifier: day20ID)
-        XCTAssertTrue(day20Query.firstMatch.waitForExistence(timeout: 5), "Should be back on the calendar detail after the batch Save")
+        XCTAssertTrue(day20Query.firstMatch.waitForExistence(timeout: 5), "Should be back on the calendar detail after leaving the batch editor")
         XCTAssertTrue(
             day20Query.firstMatch.label.lowercased().contains("events"),
-            "Bug: day 20 is not marked as having events after the Save (label: '\(day20Query.firstMatch.label)')"
+            "Bug: day 20 is not marked as having events after the edit (label: '\(day20Query.firstMatch.label)')"
         )
 
         // 8b) Tap the day again. The day now has a batch, so this opens the
@@ -307,9 +317,9 @@ final class BatchEditCommitTests: XCTestCase {
     }
 
     /// Changing the batch color (which is applied to, and rewrites, every event
-    /// in the batch) must persist after batch Save and calendar round-trip.
+    /// in the batch) must persist after leaving the batch editor and a calendar round-trip.
     @MainActor
-    func testChangingEventColorPersistsAfterBatchSave() throws {
+    func testChangingEventColorPersistsAfterLeavingBatchEditor() throws {
         let app = KeyboardAvoidanceTestSupport.launchSeededApp()
         KeyboardAvoidanceTestSupport.openCalendarDetail(app, named: "UI Test Calendar")
 
@@ -326,9 +336,9 @@ final class BatchEditCommitTests: XCTestCase {
 
         selectEventColor("eventColorOption2", in: app)
 
-        let batchSaveButton = app.buttons["batch-save-button"]
-        XCTAssertTrue(batchSaveButton.waitForExistence(timeout: 5))
-        batchSaveButton.tap()
+        let batchEditorBack = app.buttons["batch-editor-back-button"]
+        XCTAssertTrue(batchEditorBack.waitForExistence(timeout: 5))
+        batchEditorBack.tap()
 
         KeyboardAvoidanceTestSupport.leaveCurrentScreen(in: app)
         // Leaving dismisses the calendar, so re-open it before tapping a day. On the iPhone
@@ -365,10 +375,10 @@ final class BatchEditCommitTests: XCTestCase {
 
         selectEventColor("eventColorOption3", in: app)
 
-        let batchSaveButton = app.buttons["batch-save-button"]
-        XCTAssertTrue(batchSaveButton.waitForExistence(timeout: 5))
-        batchSaveButton.tap()
-        XCTAssertFalse(batchSaveButton.waitForExistence(timeout: 2), "Batch editor should be dismissed after Save")
+        let batchEditorBack = app.buttons["batch-editor-back-button"]
+        XCTAssertTrue(batchEditorBack.waitForExistence(timeout: 5))
+        batchEditorBack.tap()
+        XCTAssertFalse(batchEditorBack.waitForExistence(timeout: 2), "Batch editor should be dismissed after Back")
         XCTAssertTrue(batchRow.waitForExistence(timeout: 5))
 
         batchRow.tap()
@@ -393,8 +403,10 @@ final class BatchEditCommitTests: XCTestCase {
         XCTAssertTrue(batchRow.waitForExistence(timeout: 5))
         batchRow.tap()
 
-        let saveButton = app.buttons["batch-save-button"]
-        XCTAssertTrue(saveButton.waitForExistence(timeout: 5), "Batch editor should open")
+        XCTAssertTrue(
+            app.buttons["batch-editor-back-button"].waitForExistence(timeout: 5),
+            "Batch editor should open"
+        )
 
         // The batch editor's calendar marks days that have events.
         let day1ID = KeyboardAvoidanceTestSupport.dayIdentifier(day: 1)

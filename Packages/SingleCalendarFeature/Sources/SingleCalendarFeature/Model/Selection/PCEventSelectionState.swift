@@ -62,8 +62,10 @@ public struct PCEventSelectionState: Equatable {
     public var stage: PCEventSelectionStage = .idle
     public var assembly: PCEventBatchAssembleUnitOfWork?
     /// The event under edit while `stage == .eventEditor`. It lives outside the assembly
-    /// because it is not yet part of the batch — the batch only gains it on
-    /// `saveEventTapped`.
+    /// because it is not yet part of the batch — the batch gains it on the first keystroke,
+    /// via `persistEventDraft`, which folds every change straight back in. It is a working
+    /// copy of an edit that is already durable, not a pending change, which is why leaving
+    /// the editor can simply drop it.
     public var eventDraft: CalendarEvent?
     /// The day the day-list is scoped to, and the anchor the assembly scrolls to.
     public var day: Date?
@@ -141,6 +143,30 @@ public struct PCEventSelectionState: Equatable {
 
     // MARK: - Derivations
 
+    /// The marker payload for the **batch editor's** calendar: the batch being edited, and
+    /// nothing else.
+    ///
+    /// A second payload rather than a narrower reading of `dayEventColors`, because the two
+    /// answer different questions. The main panel asks "which days hold anything", and the
+    /// answer is every batch in the registry. The editor asks "which days does *this* batch
+    /// hold", and every other batch's days are not merely noise there — they are
+    /// indistinguishable from this batch's, which is worse. Tapping a marked day in the
+    /// editor calls `toggling`, which only knows about the assembly: a day another batch
+    /// holds is *added* to this one, not removed from it. So a stranger's days drawn in the
+    /// editor's calendar were days that looked switchable and were not.
+    ///
+    /// Reported as the assembly being reused across sessions. It was not — `assembly` is a
+    /// fresh one-day batch every time an empty day is tapped, and the editor's event list
+    /// reads nothing else. The calendar above the list was showing the whole calendar.
+    ///
+    /// Empty when there is no assembly, which is every stage but the batch editor's: the
+    /// editor's calendar is not on screen, and a payload describing batches nobody is
+    /// editing would only be waiting to be read as one.
+    public var editorDayEventColors: [Date: [String]] {
+        guard let assembly else { return [:] }
+        return PCCalendarMarkerProjector.colorsByDay(from: [assembly.batch], using: dataProvider)
+    }
+
     /// The committed batches that fall on `day`, in date order.
     public var dayBatches: [CalendarEventBatch] {
         guard let day else { return [] }
@@ -148,6 +174,4 @@ public struct PCEventSelectionState: Equatable {
             .filter { $0.occurs(on: day, using: dataProvider) }
             .sorted { ($0.date ?? .distantPast) < ($1.date ?? .distantPast) }
     }
-
-    public var canSave: Bool { assembly?.canSave ?? false }
 }

@@ -81,6 +81,65 @@ struct RootNavigationTests {
         #expect(nav.path.isEmpty, "selecting from the list resets the detail to its root")
     }
 
+    /// Leaving a calendar has a consequence, not just a permission: the calendar's multi-select
+    /// session ends, and its batch goes if the user took every day back off.
+    ///
+    /// It used to happen only in the detail view's `onDisappear`, which covers Back on iPhone and
+    /// a switch on iPad — but only when that view is torn down, and on iPad the detail column
+    /// sometimes never loads. Dispatching from the switch makes the session's lifetime a property
+    /// of the switch rather than of a teardown that may not happen.
+    @Test("switchCalendar runs the leave hook, and only once the guard has allowed the switch")
+    @MainActor
+    func switchCalendarRunsTheLeaveHook() async {
+        let nav = RootNavigation()
+        nav.goTo(.calendar(1, toRoot: false))
+
+        var asked = 0
+        var left = 0
+        nav.canLeaveCurrentCalendar = {
+            asked += 1
+            return true
+        }
+        nav.willLeaveCurrentCalendar = { left += 1 }
+
+        await nav.switchCalendar(to: 2)
+
+        #expect(asked == 1)
+        #expect(left == 1, "the session is ended on the way out")
+        #expect(nav.detailCalendarID == 2)
+    }
+
+    /// A refused switch leaves nothing behind. Ending the session first would throw away a
+    /// selection the user is still looking at and did not agree to end.
+    @Test("A refused switch does not end the session")
+    @MainActor
+    func refusedSwitchDoesNotRunTheLeaveHook() async {
+        let nav = RootNavigation()
+        nav.goTo(.calendar(1, toRoot: false))
+
+        var left = 0
+        nav.canLeaveCurrentCalendar = { false }
+        nav.willLeaveCurrentCalendar = { left += 1 }
+
+        await nav.switchCalendar(to: 2)
+
+        #expect(left == 0, "the calendar was not left, so its session is not over")
+        #expect(nav.detailCalendarID == 1)
+    }
+
+    /// No hook installed is the ordinary case for anything that is not a calendar detail, and it
+    /// must not be a crash or a stall.
+    @Test("No leave hook means there is nothing to end")
+    @MainActor
+    func switchCalendarWithoutALeaveHook() async {
+        let nav = RootNavigation()
+        nav.goTo(.calendar(1, toRoot: false))
+
+        await nav.switchCalendar(to: 2)
+
+        #expect(nav.detailCalendarID == 2)
+    }
+
     @Test("No guard means the switch is allowed — nothing to protect")
     @MainActor
     func switchCalendarWithoutAGuard() async {

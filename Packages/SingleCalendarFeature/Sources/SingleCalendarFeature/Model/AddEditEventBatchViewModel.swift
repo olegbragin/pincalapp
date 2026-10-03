@@ -35,7 +35,6 @@ public struct AddEditEventBatchViewModel {
     private var batch: CalendarEventBatch? { store.state.assembly?.batch }
 
     var name: String { batch?.name ?? "" }
-    var canSave: Bool { store.state.canSave }
     var events: [CalendarEvent] { batch?.events ?? [] }
     var isEmpty: Bool { events.isEmpty }
 
@@ -67,12 +66,6 @@ public struct AddEditEventBatchViewModel {
     }
 
     // MARK: - Commands
-
-    /// Saves the batch and asks for the pop. The reducer declines an unsavable batch, so
-    /// `canSave` in the view is a convenience rather than the guard.
-    func save() {
-        store.send(.saveTapped)
-    }
 
     func switchYear(to year: Int) {
         store.send(.setEditorYear(year))

@@ -201,45 +201,50 @@ struct PCEventSelectionManagerTests {
         let persistence = RecordingCalendarPersisting()
         let store = makeStore(persistence: persistence)
 
-        let before = store.state
-        // A batch with no colour cannot be committed, so the reducer must decline. Colour is
-        // the one thing a batch cannot be written without — the name is optional and always
-        // has been since names stopped gating `canSave`, so clearing the name would no longer
-        // produce a refusal. It has to be cleared explicitly to reach a declined action at all.
+        // A batch with no colour cannot be written, so the reducer must decline. Colour is the
+        // one thing a batch cannot do without — the name is optional and always has been since
+        // names stopped gating `canSave`, so clearing the name would no longer produce a
+        // refusal. It has to be cleared explicitly to reach a declined transition at all.
         store.send(.startNewBatch(on: day(4)))
         store.send(.setBatchColor(nil))
-        let staged = store.state
-        #expect(!staged.canSave, "precondition: the batch really is unsavable")
-        store.send(.commitTapped)
-        let afterCommit = store.state
+        #expect(store.state.assembly?.canSave == false, "precondition: the batch is unwritable")
 
-        // An unsavable batch is refused, but the batch is already in `batches`: a tap writes
-        // its batch immediately, and clearing the colour afterwards leaves the row as it was
-        // written. So this no longer asserts that nothing happened — the colour change itself
-        // wrote nothing new, because a batch with no colour does not resolve to a row. The
-        // point being kept is that the stage did not move.
-        #expect(afterCommit.stage == .batchEditor, "a refused commit does not close the editor")
+        store.send(.backTapped)
+
+        // An unwritable batch is still a batch: a tap wrote it immediately, and clearing the
+        // colour afterwards leaves the row as it was written. So this does not assert that
+        // nothing happened — the colour change wrote nothing new, because a batch with no
+        // colour resolves to no row. The point being kept is that Back did not read the
+        // unwritable batch as a reason to unwind past the day list.
+        //
+        // Compared as a *day*. `backTapped` re-anchors on the registry row's `date`, which is
+        // the placeholder's start-of-day, where `day(4)` is noon UTC. Same day, different
+        // instant — and only the day is the contract.
+        let stage = store.state.stage
+        #expect(stage.asDayList != nil, "an unwritable batch is still a batch — got \(stage)")
+        #expect(
+            stage.asDayList.map { store.state.dataProvider.isSameDay($0, day(4)) } == true,
+            "on the day it was created for"
+        )
+        #expect(store.state.batches.count == 1, "and the row it was created with is untouched")
     }
 
-    @Test("A nameless batch is committable — the name is not what makes a batch")
+    @Test("A nameless batch is written — the name is not what makes a batch")
     func namelessBatchCommits() {
         let persistence = RecordingCalendarPersisting()
         let store = makeStore(persistence: persistence)
 
         store.send(.startNewBatch(on: day(4)))
         store.send(.setBatchName(""))
-        let staged = store.state
 
-        #expect(staged.canSave, "colour alone is enough to write a batch")
-        store.send(.commitTapped)
-
-        #expect(store.state.batches.count == 1, "and it lands")
+        #expect(store.state.assembly?.canSave == true, "colour alone is enough to write a batch")
+        #expect(store.state.batches.count == 1, "and it landed when the name was cleared")
         #expect(store.state.batches[0].name.isEmpty, "with the empty name the user chose")
     }
 
     // MARK: §12.3 — the reported duplicate-batch bug
 
-    @Test("A staged batch that comes back under a real id is adopted, and the next commit updates that row")
+    @Test("A staged batch that comes back under a real id is adopted, and leaving updates that row")
     func syncAdoptsTheStagedBatch() async throws {
         let persistence = RecordingCalendarPersisting()
         let store = makeStore(persistence: persistence)
@@ -268,7 +273,7 @@ struct PCEventSelectionManagerTests {
 
         #expect(store.state.assembly?.adoptedPersistedID == 77)
 
-        store.send(.commitTapped)
+        store.send(.backTapped)
 
         #expect(store.state.batches.count == 1, "one row, not a duplicate")
         #expect(store.state.batches.first?.persistedID == 77, "and it is the adopted row")
@@ -329,7 +334,7 @@ struct PCEventSelectionManagerTests {
 
         // Polled rather than slept: the chain runs on the scheduler, so a fixed wait would be
         // a flake that reads as "the failure was lost" instead of "the test gave up".
-        var deadline = ContinuousClock.now + .seconds(5)
+        let deadline = ContinuousClock.now + .seconds(5)
         while store.failedSave == nil, ContinuousClock.now < deadline {
             try? await Task.sleep(for: .milliseconds(10))
         }
@@ -349,7 +354,7 @@ struct PCEventSelectionManagerTests {
         store.send(.setNumberOfColumns(6))
         await persistence.waitForAttempts(1)
 
-        var deadline = ContinuousClock.now + .seconds(5)
+        let deadline = ContinuousClock.now + .seconds(5)
         while store.failedSave == nil, ContinuousClock.now < deadline {
             try? await Task.sleep(for: .milliseconds(10))
         }
@@ -359,8 +364,8 @@ struct PCEventSelectionManagerTests {
         store.retryFailedSave()
         await persistence.waitForAttempts(2)
 
-        deadline = ContinuousClock.now + .seconds(5)
-        while store.failedSave != nil, ContinuousClock.now < deadline {
+        let retryDeadline = ContinuousClock.now + .seconds(5)
+        while store.failedSave != nil, ContinuousClock.now < retryDeadline {
             try? await Task.sleep(for: .milliseconds(10))
         }
 
@@ -439,8 +444,38 @@ struct PCEventSelectionManagerTests {
 
     // MARK: Projection
 
-    @Test("The projected year model carries the state's markers")
+    /// This matrix is the *editor's* calendar, so the markers it carries are the edited
+    /// batch's and no one else's. It used to be asserted against a synced row with nothing
+    /// staged, which is the whole registry painted into a panel whose only job is picking
+    /// days for one batch — and it passed, because that was what the projection did.
+    @Test("The projected year model marks the batch being edited")
     func projectionCarriesMarkers() {
+        let persistence = RecordingCalendarPersisting()
+        let store = makeStore(
+            batches: [batch("morning", on: 4, color: "eventColorOption3")],
+            persistence: persistence
+        )
+
+        store.send(.startNewBatch(on: day(9)))
+
+        let marked = store.yearModel.months
+            .flatMap(\.weeks)
+            .flatMap(\.days)
+            .filter { $0.events.isEmpty == false }
+        #expect(marked.count == 1, "one day carries a marker")
+        #expect(marked.first?.events == [PCColorOption.firstAvailable.colorName])
+        #expect(
+            marked.first?.text == "9",
+            "the edited batch's day, not the committed row's"
+        )
+    }
+
+    /// The other half of the same rule: a matrix nobody is editing marks nothing. Kept
+    /// because "no assembly" is the state every non-editor stage is in, and a payload that
+    /// kept describing the registry would put the whole calendar back under the editor the
+    /// moment the user opened it for a new batch.
+    @Test("The projected year model marks nothing when no batch is being edited")
+    func projectionIsEmptyWithoutAnAssembly() {
         let persistence = RecordingCalendarPersisting()
         let store = makeStore(
             batches: [batch("morning", on: 4, color: "eventColorOption3")],
@@ -451,8 +486,7 @@ struct PCEventSelectionManagerTests {
             .flatMap(\.weeks)
             .flatMap(\.days)
             .filter { $0.events.isEmpty == false }
-        #expect(marked.count == 1, "one day carries a marker")
-        #expect(marked.first?.events == ["eventColorOption3"])
+        #expect(marked.isEmpty)
     }
 
     @Test("The year model keeps its day-model instances when only markers change")

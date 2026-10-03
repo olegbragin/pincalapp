@@ -58,7 +58,7 @@ struct EventBatchCreationTests {
 
     // These four used to test `prepare(with:)` and `apply(with:)` on the list view model.
     // Neither method survives: staging is `PCEventBatchAssembleUnitOfWork.new` and applying an edited
-    // event is `saveEventTapped`, both in the reducer, and both already covered there.
+    // event is `persistEventDraft` in the reducer, both already covered there.
     // What the tests were really guarding is kept, because it is still a live invariant —
     // a batch with two events sharing a `pendingID` could not be told apart.
     @MainActor
@@ -88,14 +88,14 @@ struct EventBatchCreationTests {
         let target = store.state.assembly!.batch.events[0]
 
         store.send(.openEvent(pendingID: target.pendingID))
-        // The draft needs a name of its own for the colour edit to be committed — a save
-        // is refused for an event whose name has been cleared, and the point of this test
-        // is the colour, not the default name.
         store.send(.setEventName("Swim"))
         store.send(.setEventColor(.option3))
-        store.send(.saveEventTapped)
 
         let events = store.state.assembly!.batch.events
+        #expect(
+            store.state.stage != .idle,
+            "still in the event editor: the batch was rewritten by the keystroke, not by leaving"
+        )
         #expect(events.count == 2, "edited, not appended")
         #expect(
             events.filter { $0.colorName == "eventColorOption3" }.count == 1,

@@ -17,32 +17,109 @@ Paths below are relative to this file, which is the repository root.
 
 ## Building and testing
 
-**Always verify through the iOS workspace.** This is the single most expensive mistake here:
+**Always verify through the iOS workspace.** This is the single most expensive mistake here.
+
+### Use the MobileBuildMCP tools, not a hand-typed `xcodebuild`
+
+The MCP server is the build and test interface here. Its session already has the workspace, the
+scheme and a dedicated AutoTest simulator configured, so there is nothing to derive and no reason
+to reach past it.
 
 ```
-# Build and run unit tests for one target
+# Once per session, before the first build/run/test — not optional
+MobileBuildMCP_session_show_defaults
+
+MobileBuildMCP_build_run_sim                      # build, install, launch, capture logs
+MobileBuildMCP_test_sim                           # run the tests
+```
+
+Both take empty arguments once the defaults are right. Pass `extraArgs` for `-only-testing:…`,
+`-parallel-testing-enabled NO`, or anything else you would have put after `xcodebuild`.
+
+This is not a style preference. A whole session was spent driving a *different* simulator than the
+one the session had configured — typing `-destination "platform=iOS Simulator,id=B1542052-…"`
+into dozens of commands while the defaults named `E368D458-…` — and hand-managing lifecycle that
+the tools do for you. That is the cost of skipping this, and it is a real one.
+
+The `installcoordinationd` / `IXSPlaceholder` failures below are **not** part of that bill: those
+happen through `AutoTestRunner` too, which drives this same server. Two different causes, and only
+one of them is avoidable.
+
+**Two rules that follow:**
+
+- **Never type a simulator UDID.** If the configured one is wrong, fix it with
+  `MobileBuildMCP_session_set_defaults` (`simulatorId` / `simulatorName`), choosing from
+  `MobileBuildMCP_list_sims`. A UDID you found with `xcrun simctl list` is a device nobody is
+  tracking, and it will be half-erased from an unrelated run.
+- **`session_show_defaults` first, every session.** It is cheap, and the alternative is
+  discovering mid-run that the scheme or simulator was never what you assumed.
+- **But "configured" is not "valid".** `show_defaults` happily reported a simulator
+  (`E368D458-…`) that no longer exists on this machine; `test_sim` then failed with *"Unable to
+  find a device matching the provided destination specifier"*. Check it against
+  `MobileBuildMCP_list_sims` and correct it with `session_set_defaults` — a stale default fails
+  late and looks like a tool problem rather than a config one.
+
+### The whole suite: `AutoTestRunner`
+
+```
+cd Packages/AutoTestRunner && swift run AutoTestRunner --profile iphone   # or: ipad
+```
+
+One command: builds, installs, launches, runs every target, prints a pass count. It drives
+mobilebuildmcp underneath — a failure surfaces as `error: mobilebuildmcp failed with exit code 1`,
+with the result bundle path above it.
+
+A green run on one target is not a green suite; the targets you did not name are the ones that
+were not run.
+
+### When `xcodebuild` is still the right call
+
+Only to narrow to a single test while iterating — reproducing a failure, or re-running one suite
+three times to tell a flake from a real bug:
+
+```
+# A Swift Testing suite: the class is enough
 xcodebuild test -workspace PinCalApp.xcworkspace -scheme PinCalApp \
   -destination "platform=iOS Simulator,id=<UDID>" \
   -parallel-testing-enabled NO \
   -only-testing:SingleCalendarFeatureTests
 
-# Whole suite on a simulator (build, install, launch, run, report)
-cd Packages/AutoTestRunner && swift run AutoTestRunner --profile iphone   # or: ipad
+# An XCTest UI test: the METHOD name, not just the class, or it silently runs nothing
+xcodebuild test -workspace PinCalApp.xcworkspace -scheme PinCalApp \
+  -destination "platform=iOS Simulator,id=<UDID>" \
+  -parallel-testing-enabled NO \
+  -only-testing:PinCalAppUITests/EditorBackNavigationTests/testBackOutOfEventEditorLeavesTheBatchEditorUsable
 ```
+
+Prefer `MobileBuildMCP_test_sim` with the same filter in `extraArgs` first; reach for the shell
+only when the MCP filter cannot express what you need.
 
 ### Gotchas that have each cost a run
 
 - **`Executed 0 tests` does not mean nothing ran.** That line counts *XCTest* only. Swift
-  Testing suites report separately as `Test run with N tests in M suites`. Filter with
-  `-only-testing:<Package>Tests/<SuiteName>`.
+  Testing suites report separately as `Test run with N tests in M suites`. `test_sim` prints
+  `Discovered N test(s)` before running, which is the number to check when a filter is suspect.
+- **A failed install is the simulator, not the code.** `installcoordinationd` or
+  `IXSPlaceholder`, with every unit test already green, means the test *runner* was never
+  installed. It happens through `AutoTestRunner` too, so it is not an artefact of the tool you
+  chose. Remedy: `MobileBuildMCP_boot_sim`, or `MobileBuildMCP_erase_sims` when a re-boot is not
+  enough — the iPad AutoTest device needed an erase before it would install anything at all.
+  Never read it as a regression.
+- **A stale `.xctest` bundle in DerivedData fails as *"Trying to load an unsigned library"*,**
+  reported as `xctest (…) encountered an error` under a `System Failures` heading rather than as
+  a test failure. No test in that bundle ran. Delete the product bundle
+  (`rm -rf <DerivedData>/Build/Products/Debug-iphonesimulator/<Target>.xctest`) and re-run.
 - **`swift build --package-path Packages/SingleCalendarFeature` cannot work.** That package
   uses iOS-only UIKit APIs, so it does not compile for macOS. It also means its tests cannot be
   run with `swift test` — use the workspace. The other packages do build for macOS.
 - **`-parallel-testing-enabled NO` is required.** The simulator cannot run the suite in
   parallel, and parallel runs produce order-dependent failures that look like real bugs.
 - **Test targets** are `SingleCalendarFeatureTests`, `AppNavigationTests`,
-  `CorePersistenceTests`, `DSKitTests`, `PinCalAppTests`, `PinCalAppUITests`.
-  Roughly 400 tests total on iPhone.
+  `CorePersistenceTests`, `DSKitTests`, `PinCalAppTests`, `PinCalAppUITests`,
+  `CalendarListFeatureTests`. Roughly 420 tests total on iPhone, of which 49 are UI tests and
+  take about 20 minutes; everything else is seconds.
+- **Run both profiles.** The iPad profile is the only run that checks the calendar-switch
+  guarantees — see "A multi-select session is per calendar" below for the measured reason.
 - **When using ripgrep, type flags deliberately.** `-r` is `--replace` (it takes an argument),
   not "recursive". `rg -rln "x"` silently eats `ln` as the replacement and matches nothing.
   Prefer the `grep`/`glob` tools over hand-built `rg` invocations.
@@ -103,10 +180,69 @@ These are load-bearing. Each was arrived at by fixing a bug, and the reasoning i
 - **The store is the only writer.** `PCEventSelectionManager.send` is the single mutation
   point; `pcEventSelectionReducer` is pure. Do not add `didSet` observers or a second path
   into state.
+- **There is one store per calendar, and `PCCalendarSession` owns them.** Not one for the
+  process — that was the rule until it cost data. `state.calendarID` is written in exactly one
+  place (`syncCalendar`), behind a guard that accepts only the calendar it already holds, so a
+  single app-wide store meant the **first calendar ever opened pinned it for good**: a second
+  calendar's sync was rejected, it rendered the first calendar's markers, and every write still
+  targeted the pinned id — with a destructive `saveCalendar`, a tap in the second calendar wrote
+  into the first calendar's row. Get a store from `session.eventSelection(for: calendarID)`; never
+  hold one app-wide, and never inject one above `CalendarDetailView`.
+- **A multi-select session is per calendar too, so leaving a calendar has to end it.** The stores
+  are *cached*, so a session would otherwise come back painted and unendable. Three places end it,
+  deliberately overlapping: `SingleCalendarView.onDisappear`, `CalendarDetailView.onDisappear`,
+  and `RootNavigation.switchCalendar` via the `willLeaveCurrentCalendar` hook. Only the last one
+  survives on iPad — measured, with all three disabled, `testSwitchingCalendarEndsAMultiselectSession`
+  is green on iPhone and red on iPad, because a phone pops the calendar view away while an iPad
+  replaces the detail column in place. **So run the suite on both profiles**; the iPad profile is
+  where the calendar-switch guarantees are actually checked, and an iPhone-only green run has
+  never exercised them.
+- **Inject the store at the app root, per calendar.** `PinCalAppApp` injects
+  `session.currentEventSelection`. Two traps, both of which cost a day:
+  - **Not below the `NavigationStack`.** A `navigationDestination`'s content is rendered in the
+    stack's context and does not reliably inherit an environment applied under it. Injecting on
+    `CalendarDetailView` trapped every pushed editor with `_assertionFailure` inside
+    `EnvironmentValues.subscript.getter` — a crash report with no app frame in it at all.
+  - **Not from an `onChange`.** The id has to be set from inside the navigation mutation
+    (`RootNavigation.onCalendarChanged`), because an observer runs a frame *after* the render that
+    acted on the new value. A frame of staleness means the detail is built against one store
+    while every view reads another, and the symptom is a day list that opens empty.
+- **Ending a session deletes a batch that has no days.** `endingMultiSelectSession` is the single
+  place that decides, shared by Confirm and Cancel — two copies of it is how Confirm came to stage
+  an event-less batch while Cancel left the row behind. Normally the tap that takes the last day
+  has already deleted the row, so this is the guarantee rather than the mechanism.
 - **Edits persist as they are made.** A mutation merges into `state.batches` immediately; only
   the *database write* is deferred. This is why there is no save-or-discard question, and it is
   why cancelling a pending debounced write is safe — the value is already in the state. If you
   change the merge, re-check that invariant.
+- **There is no Save.** Neither editor has one; `AddEditEventBatchScreen` and `AddEditEventView`
+  each have a single store-routed Back that is also their one addressable element. Every field
+  writes through as it is edited, so Back has nothing to commit — with one exception: leaving
+  an *emptied* batch deletes its row, which is the only way to delete a batch from the editor.
+  Nothing gates on a batch having a colour any more, so there is no path where the user is stuck
+  on an unsaveable edit.
+- **An event's `date` carries a time of day.** It is deliberately not normalised to start-of-day;
+  truncating it is what silently discarded the time picked in the event editor. Day *identity* is
+  day-granular (`occurs(on:using:)`, `hasSameContent(as:using:)`, `isSnapshot(of:using:)`,
+  `PCEventSelectionReducer.dayTappedInCalendar`) — keep those comparisons on days and leave the
+  stored value alone. A freshly added day is midnight, which is the honest "unset".
+- **`syncCalendar` must adopt every live assembly, not just the editor's.** A reload replaces
+  `state.batches` wholesale with rows the database has given real ids, which strands any staged
+  assembly still holding a `.pending(…)` key — and the next merge then *appends* instead of
+  replacing. A multi-select session writes on every tap, so it reloads between every tap: four
+  days tapped produced four batches holding one, two, three and four events. Adoption is one
+  helper applied to both, and it matches on `isSnapshot(of:using:)` rather than equality, because
+  the row in the database is the assembly as of the write and the assembly has usually moved on
+  by the time the reload lands.
+- **There are two day-marker payloads, and merging them reintroduces a reported bug.** The main
+  calendar reads `state.dayEventColors` — every batch in the registry, which is what that panel is
+  for. The batch editor reads `state.editorDayEventColors` — the staged assembly and nothing else.
+  They were one payload, and the editor came up showing every batch's days: a batch created for an
+  empty day appeared to already hold the days of the batch made before it. Worse than the clutter,
+  because a marked day belonging to another batch is *added* to this one when tapped, not removed
+  from that one — `toggling` only knows about the assembly — so the foreign days read as this
+  batch's own and could not be acted on. Do not "simplify" the editor back onto
+  `dayEventColors`.
 - **Writes are chained.** `writeChain` makes two concurrent writers unrepresentable by having
   each write await its predecessor. Do not replace it with a bare `Task { }` — actor
   reentrancy means that is not ordered.
@@ -117,6 +253,29 @@ These are load-bearing. Each was arrived at by fixing a bug, and the reasoning i
 - **Accessibility identifiers go on leaf views only.** An identifier on a container shadows its
   descendants' identifiers and breaks queries for everything inside it. This cost 30 tests once.
 
+### UI tests
+
+- **Match on accessibility identifier, never on label.** A label is neither unique nor stable.
+  Both editors used to have a checkmark labelled "Save", and so does the multi-select confirm on
+  the main calendar, so `toolbarAction("Save", in: app)` could resolve to any of the three
+  depending on what was on screen. Give the thing under test an identifier and query that.
+- **Every screen a test waits on needs at least one addressable element.** Until the checkmarks
+  went, `batch-save-button` was doing two unrelated jobs in ~28 places: the way *out* of the
+  editor, *and* — because nothing else on that screen was addressable — the way to tell the
+  editor was open. When an affordance is removed, check whether it was load-bearing for a test
+  in a way nothing obvious suggests.
+- **`typeText` returns when the keys are sent, not when the app has acted on them.** A test can
+  navigate away with the last keystroke in flight, and in the batch editor that loses the edit
+  outright: leaving clears `state.assembly` and `editing` declines a name change when there is no
+  assembly, so the trailing characters are dropped. It surfaces as a flake in whichever test lost
+  the race, with the failure naming the batch rather than the typing. `replaceText` waits for the
+  typed text to land in the field — keep that wait.
+- **`replaceText`'s triple-tap selection is itself flaky.** When it fails the text is *appended*
+  ("New eventCycle"), so wait for a **suffix**, not equality: the value is the caller's to assert
+  on, and a helper that fails on the wrong-value case reports it as a timing problem.
+- A UI test that takes a screenshot or dumps the hierarchy is worth the seconds when a UI change
+  has to be verified by hand — but say so in the report, separately from the suite result.
+
 ## Testing conventions
 
 - Unit tests use **Swift Testing** (`import Testing`, `@Test`, `#expect`). New unit tests should
@@ -124,9 +283,26 @@ These are load-bearing. Each was arrived at by fixing a bug, and the reasoning i
 - UI tests must be **XCTest** — `XCUIApplication` has no Swift Testing bridge.
 - Prefer polling for a condition over sleeping a fixed duration. The write chain is
   scheduler-driven, so a fixed wait is a flake that reads as "work was lost".
+- **Wait on the content of the last write, not on a count.** Edits persist as they are made, so a
+  three-edit sequence enqueues three writes down one chain; `waitForWrites(1)` returns after the
+  first and `writes.last` is then the *wrong* write. Use `waitForLastWrite(where:)`. Asserting a
+  count is only right when the count is the thing under test.
+- **When a test drives an affordance, ask what the affordance was actually doing.** Half the
+  `saveTapped` tests were asserting that a row which had already been written got written again —
+  which passed while the feature had no real save step, because the button was what made it look
+  like one. "I removed a button" is a prompt to re-derive every test that touched it.
+- **Removing a UI affordance means removing what fed it, too.** An action no screen can send is a
+  case nothing can exercise (`everyActionIsCovered` counts them), and a ViewModel projection no
+  view reads is dead code kept alive only by its own tests — the `isDirty` and `canSave` pattern.
+  Re-point those tests at the domain property instead of keeping the projection alive for them.
 - When a test's *premise* changes (not just its expectation), say so in the comment and often
   rename the test. A test name that describes behaviour that no longer exists is worse than no
   test.
+- **Check that a test can fail.** `flushOnNothingIsHarmless` declared a counter, never wired it,
+  and asserted the counter was zero — it could not fail. A counter that is never mutated, or a
+  fixture that builds a state the reducer cannot emit, is the same failure wearing a passing
+  test's clothes. The compiler flags the first (`variable was never mutated`); the second needs
+  reading for.
 - If a test fails, establish whether the code is wrong or the test is wrong *before* changing
   either. Many failures in this repo have been harness problems.
 

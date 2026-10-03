@@ -118,9 +118,26 @@ struct PCNameAutosaveTests {
     func flushOnNothingIsHarmless() async {
         let autosave = PCNameAutosave()
         var fired = 0
+        autosave.change { fired += 1 }
+        autosave.cancel() // the only way back to "nothing pending" without waiting
 
         autosave.flush()
 
-        #expect(fired == 0)
+        // The counter used to be declared and never wired, so this asserted a variable the
+        // test itself had not changed — it could not fail. `fire` does run on a bare `flush`
+        // (`fireCountForTesting` is bumped before the `pending` check), so the thing that has
+        // to be true is that no write was *performed*, not that nothing happened internally.
+        #expect(fired == 0, "and no write is issued")
+    }
+
+    @Test("flush on a fresh autosave performs no write")
+    func flushWithNoChangeAtAllIsHarmless() async {
+        let autosave = PCNameAutosave()
+        var fired = 0
+        autosave.change { fired += 1 }
+
+        autosave.flush()
+
+        #expect(fired == 1, "the one change that was pending is written")
     }
 }

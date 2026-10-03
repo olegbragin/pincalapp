@@ -99,6 +99,10 @@ public final class PCEventSelectionManager {
     /// it. The day-model instances inside are the ones the views bind to, so this is
     /// mutated in place and rebuilt only when the year or the column count changes; see
     /// `projectCalendar`.
+    ///
+    /// Marked from `state.editorDayEventColors`, which is scoped to the batch being edited.
+    /// This is not the main calendar's matrix and does not describe the calendar: see
+    /// `PCEventSelectionState.editorDayEventColors` for why the two cannot share a payload.
     public private(set) var yearModel: PCCalendarYearModel
 
     /// Solves the `-UITestColumns` override. Carried through so the UI suite keeps its
@@ -250,7 +254,12 @@ public final class PCEventSelectionManager {
             )
         }
 
-        PCCalendarMarkerProjector.apply(state.dayEventColors, to: yearModel, using: dataProvider)
+        // The editor's calendar, so the editor's payload: this matrix exists to pick days
+        // for the batch being edited, and every other batch's days are wrong there rather
+        // than merely redundant. `SingleCalendarModel` projects the calendar-wide
+        // `state.dayEventColors` into the *main* matrix, which is the panel that is
+        // supposed to describe every batch.
+        PCCalendarMarkerProjector.apply(state.editorDayEventColors, to: yearModel, using: dataProvider)
         yearModel.scrollTargetMonth = state.scrollAnchor.map { dataProvider.month(of: $0) }
         daySelectionManager.selectedDays = Set(state.multiSelectDays)
     }

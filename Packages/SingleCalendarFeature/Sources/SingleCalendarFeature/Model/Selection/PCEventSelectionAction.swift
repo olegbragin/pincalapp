@@ -71,9 +71,6 @@ public enum PCEventSelectionAction: Equatable {
 
     // MARK: Persistence
 
-    case commitTapped
-    case saveTapped
-    case saveEventTapped
     case discardEventTapped
     case deleteBatches([CalendarEventBatch])
 

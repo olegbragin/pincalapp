@@ -28,14 +28,14 @@ struct AddEditEventBatchViewModelTests {
         return (AddEditEventBatchViewModel(store: store), store, persistence)
     }
 
-    @Test("With no assembly, every projection is empty and it cannot be saved")
+    @Test("With no assembly, every projection is empty")
     func emptyWithoutAssembly() {
-        let (vm, _, _) = makeContext()
+        let (vm, store, _) = makeContext()
 
         #expect(vm.name.isEmpty)
         #expect(vm.events.isEmpty)
         #expect(vm.defaultColor == nil)
-        #expect(!vm.canSave)
+        #expect(store.state.assembly == nil, "precondition: nothing is being edited")
     }
 
     @Test("Starting a batch makes the editor show it")
@@ -46,30 +46,35 @@ struct AddEditEventBatchViewModelTests {
 
         #expect(vm.events.count == 1, "one placeholder day")
         #expect(vm.events.first?.date == store.state.dataProvider.startOfDay(for: Fixture.day(4)))
-        #expect(vm.canSave, "a new batch arrives named and coloured, so it is savable at once")
+        #expect(store.state.assembly?.canSave == true, "a new batch arrives named and coloured, so it is written at once")
     }
 
-    /// Colour is what `canSave` reads. The name deliberately is not: a batch is a set of
-    /// dated, coloured events, so clearing the title does not make it any less one, and
-    /// refusing to save it would leave the store ahead of the database with nowhere to put
-    /// the work.
-    @Test("canSave needs a colour, and does not care about the name")
-    func canSaveRequirements() {
-        let (vm, store, _) = makeContext()
+    /// Colour is what `PCEventBatchAssembleUnitOfWork.canSave` reads. The name deliberately is
+    /// not: a batch is a set of dated, coloured events, so clearing the title does not make it
+    /// any less one, and refusing to write it would leave the store ahead of the database with
+    /// nowhere to put the work.
+    ///
+    /// Asserted on the assembly rather than on `AddEditEventBatchViewModel.canSave`, which is
+    /// gone with the checkmark it fed. A projection nothing renders is a projection that can
+    /// drift from the domain without anything noticing — which is how `canSave` came to need a
+    /// test of its own in the first place.
+    @Test("A batch needs a colour to be written, and does not care about the name")
+    func writableRequirements() {
+        let (_, store, _) = makeContext()
         store.send(.startNewBatch(on: Fixture.day(4)))
 
-        #expect(vm.canSave, "a new batch arrives ready to save")
+        #expect(store.state.assembly?.canSave == true, "a new batch arrives ready to write")
         store.send(.setBatchName(""))
-        #expect(vm.canSave, "a nameless batch is still a batch")
+        #expect(store.state.assembly?.canSave == true, "a nameless batch is still a batch")
         store.send(.setBatchName("Morning"))
-        #expect(vm.canSave)
+        #expect(store.state.assembly?.canSave == true)
         store.send(.setBatchColor(nil))
-        #expect(!vm.canSave, "no colour is the one thing that stops a write")
+        #expect(store.state.assembly?.canSave == false, "no colour is the one thing that stops a write")
         store.send(.setBatchColor(PCColorOption.firstAvailable))
-        #expect(vm.canSave)
+        #expect(store.state.assembly?.canSave == true)
     }
 
-    @Test("A recolour to nil clears the colour and makes the batch unsavable again")
+    @Test("A recolour to nil clears the colour and makes the batch unwritable again")
     func recolouringNilClears() {
         let (vm, store, _) = makeContext()
         store.send(.startNewBatch(on: Fixture.day(4)))
@@ -80,7 +85,7 @@ struct AddEditEventBatchViewModelTests {
         store.send(.setBatchColor(nil))
 
         #expect(vm.defaultColor == nil)
-        #expect(!vm.canSave)
+        #expect(store.state.assembly?.canSave == false)
     }
 
     @Test("The name binding dispatches; it does not assign")
@@ -120,48 +125,65 @@ struct AddEditEventBatchViewModelTests {
         store.send(.setBatchColor(nil))
 
         #expect(vm.defaultColor == nil)
-        #expect(!vm.canSave, "and an uncoloured batch is not savable")
+        #expect(store.state.assembly?.canSave == false, "and an uncoloured batch is not written")
     }
 
-    /// An uncoloured batch cannot be written, and Save must not pretend otherwise.
+    /// An uncoloured batch has no row to write, and clearing the colour must not pretend
+    /// otherwise.
     ///
-    /// The batch is already in the store — `startNewBatch` writes it — so this cannot assert
-    /// an empty registry any more. What it can still pin is that Save on an uncoloured batch
-    /// writes no *further* row and does not leave the editor, which is the guard that matters:
-    /// a batch with no colour has no row to save.
-    @Test("Saving an uncoloured batch writes nothing further")
-    func saveIsGuarded() async {
-        let (vm, store, persistence) = makeContext()
+    /// **Premise changed.** This used to assert that *Save* on an uncoloured batch wrote
+    /// nothing and left the editor open — the checkmark's `isEnabled` was
+    /// `!canSave`, so the guard had a button and the test had something to press. The
+    /// checkmark is gone, so the fact worth pinning is the one underneath it: the row the
+    /// batch was created with is still there, still coloured as it was, and clearing the
+    /// colour is staged but not persisted — because `editing` declines to merge a batch with
+    /// no colour rather than writing one the user cannot see.
+    @Test("Clearing a batch's colour writes nothing and leaves the committed row coloured")
+    func clearingColourWritesNothing() async {
+        let (_, store, persistence) = makeContext()
         store.send(.startNewBatch(on: Fixture.day(4)))
-        // Colour is what has to go — the name stopped being a precondition, so clearing it
-        // would no longer produce an unsavable batch to test the guard with.
         // Settle the writes from creating the batch before counting, or the count races the
-        // chain rather than measuring the save.
+        // chain rather than measuring the edit.
         _ = await persistence.waitForWrites(2)
         let writesBefore = await persistence.writes.count
 
         store.send(.setBatchColor(nil))
-        #expect(!vm.canSave, "precondition: the batch really is unsavable")
 
-        vm.save()
-
-        #expect(await persistence.writes.count == writesBefore,
-                "an uncoloured batch resolves to no row, so there is nothing further to write")
-        #expect(store.state.stage == .batchEditor, "and the editor stays open")
+        #expect(store.state.assembly?.canSave == false, "precondition: the batch is unwritable")
+        #expect(
+            await persistence.writes.count == writesBefore,
+            "an uncoloured batch resolves to no row, so there is nothing to write"
+        )
+        #expect(
+            store.state.batches.first?.colorName == PCColorOption.firstAvailable.colorName,
+            "and the row on the calendar keeps the colour it was written with"
+        )
     }
 
-    @Test("Saving a valid batch commits it to the registry")
-    func saveCommits() {
-        let (vm, store, _) = makeContext()
+    /// Back is the editor's only exit now, and the batch is already in the registry when it
+    /// arrives — which is the whole reason the checkmark was redundant.
+    @Test("Backing out of the editor leaves the batch committed and writes nothing new")
+    func backCommitsAndCloses() async {
+        let (_, store, persistence) = makeContext()
         store.send(.startNewBatch(on: Fixture.day(4)))
         store.send(.setBatchName("Morning"))
         store.send(.setBatchColor(.option1))
+        #expect(store.state.batches.count == 1, "written on creation, not on the way out")
+        // Settle creation and colouring before counting, so the count below measures the write
+        // Back causes rather than one still in flight.
+        _ = await persistence.waitForWrites(2)
+        let writesBefore = await persistence.writes.count
 
-        vm.save()
+        store.send(.backTapped)
 
         #expect(store.state.batches.count == 1)
         #expect(store.state.batches.first?.name == "Morning")
         #expect(store.state.assembly == nil, "the assembly has left the line")
+        #expect(store.state.navigationRequest?.target == .pop)
+        #expect(
+            await persistence.writes.count == writesBefore,
+            "the row was already in `batches` — `editing` merged it when it was typed, so leaving has nothing to write"
+        )
     }
 
     @Test("Titles describe the batch's day span")

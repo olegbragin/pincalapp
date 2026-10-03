@@ -162,23 +162,28 @@ struct PCEventBatchAssembleUnitOfWorkTests {
         #expect(namedAssembler(color: nil).canSave == false, "no colour is the only refusal")
     }
 
-    /// An emptied batch stays savable, because that is how it gets deleted.
+    /// An emptied batch stays writable, because that is how it gets deleted.
     ///
-    /// The reducer's `saveTapped` treats "saves but resolves to nothing" as *delete the row
-    /// and return to the calendar*. Gating Save on a non-empty batch made that branch
-    /// unreachable: the button was disabled in exactly the state that would have triggered
-    /// it, so a user who removed every event could not commit the removal, and Back — the
-    /// only way out left — discards it.
-    @Test("A batch with no events is still savable, so emptying it deletes it")
-    func emptyBatchIsStillSavable() {
+    /// The reducer's `backTapped` treats "leaves with nothing to resolve" as *delete the row
+    /// and return to the calendar*. Folding `!events.isEmpty` into `canSave` made that branch
+    /// unreachable — and once there was a checkmark it was worse than unreachable, because the
+    /// button's `isEnabled` read this flag, so it was *disabled* in exactly the state that
+    /// would have triggered the delete. A user who removed every event had no way to commit
+    /// the removal, and the only exit left was Back, which discards it.
+    ///
+    /// **Premise changed.** The name says "savable" because the flag used to gate a Save. It
+    /// now gates only whether `editing` merges a row, and the delete hangs off leaving rather
+    /// than off a flag. Both halves still have to hold, so both are still asserted.
+    @Test("A batch with no events is still writable, which is what lets leaving delete it")
+    func emptyBatchIsStillWritable() {
         let assembler = namedAssembler()
         let emptied = assembler.removingEvent(pendingID: assembler.batch.events[0].pendingID)
 
         #expect(emptied.batch.events.isEmpty)
-        #expect(emptied.canSave, "Save has to stay reachable for the delete to be reachable")
+        #expect(emptied.canSave, "the delete branches on emptiness, so this must not refuse it")
         #expect(
             emptied.resolved() == nil,
-            "but there is still nothing to write, which is what keeps `commitTapped` from persisting it"
+            "but there is still nothing to write, which is what keeps `editing` from persisting it"
         )
     }
 
