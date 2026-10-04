@@ -1,3 +1,4 @@
+
 import Foundation
 import Testing
 import DSKit
@@ -5,7 +6,6 @@ import DSKit
 @Suite("PCCalendarDaySelectionManager Tests")
 @MainActor
 struct PCCalendarDaySelectionManagerTests {
-
     private func dayModel(_ dayOfMonth: Int, inCurrentMonth: Bool = true) -> PCCalendarDayModel {
         var components = DateComponents()
         components.year = 2026
@@ -82,7 +82,6 @@ struct PCCalendarDaySelectionManagerTests {
 
 @Suite("PCColorOption Tests")
 struct PCColorOptionTests {
-
     @Test("Cases are equatable and hashable, so a colour can live in an Equatable state")
     func casesAreEquatableAndHashable() {
         #expect(PCColorOption.option1 == .option1)

@@ -6,8 +6,8 @@
 //
 
 import SwiftUI
-import DSKit
 import AppNavigation
+import DSKit
 
 /// The single-event editor.
 ///

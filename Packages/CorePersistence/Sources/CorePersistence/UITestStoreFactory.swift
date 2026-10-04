@@ -8,7 +8,7 @@
 import Foundation
 import ObjectBox
 
-public struct UITestStoreFactory {
+public enum UITestStoreFactory {
     public static let launchArgument = "-UITestSeedData"
 
     public static func makeSeededStore() -> Store {

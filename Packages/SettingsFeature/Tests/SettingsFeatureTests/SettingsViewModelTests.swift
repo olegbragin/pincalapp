@@ -1,3 +1,4 @@
+
 import Foundation
 import Testing
 import DSKit
@@ -6,7 +7,6 @@ import SettingsFeature
 @MainActor
 @Suite("SettingsViewModel Tests")
 struct SettingsViewModelTests {
-
     private func makeDefaults() -> UserDefaults {
         let suite = "SettingsViewModelTests-\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suite)!

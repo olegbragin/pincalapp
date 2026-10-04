@@ -37,9 +37,17 @@ public struct CalendarEventBatch: Identifiable, Hashable, Sendable {
     /// Always sorted ascending by `date`, at most one event per calendar day.
     public var events: [CalendarEvent]
 
-    public var id: UUID { pendingID }
-    public var isPersisted: Bool { persistedID != nil }
-    public var isEmpty: Bool { events.isEmpty }
+    public var id: UUID {
+        pendingID
+    }
+
+    public var isPersisted: Bool {
+        persistedID != nil
+    }
+
+    public var isEmpty: Bool {
+        events.isEmpty
+    }
 
     public init(
         pendingID: UUID = UUID(),
@@ -61,7 +69,9 @@ public struct CalendarEventBatch: Identifiable, Hashable, Sendable {
     }
 
     /// The first event's day, or `nil` when the batch is empty.
-    public var date: Date? { events.first?.date }
+    public var date: Date? {
+        events.first?.date
+    }
 
     public func occurs(on day: Date, using dataProvider: PCCalendarDataProvider) -> Bool {
         events.contains { dataProvider.isSameDay($0.date, day) }
@@ -128,7 +138,9 @@ public struct CalendarEventBatch: Identifiable, Hashable, Sendable {
         guard name == other.name, colorName == other.colorName else {
             return false
         }
-        if events.isEmpty && other.events.isEmpty { return true }
+        if events.isEmpty, other.events.isEmpty {
+            return true
+        }
         guard !events.isEmpty, !other.events.isEmpty else {
             return false
         }

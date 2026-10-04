@@ -12,17 +12,17 @@ public struct PCColorPickerView: View {
         case compact
         case expanded
     }
-    
+
     @Binding var selectedColor: PCColorOption?
     public var style: Style = .compact
-    public var defaultColor: PCColorOption? = nil
+    public var defaultColor: PCColorOption?
 
     public init(selectedColor: Binding<PCColorOption?>, style: Style = .compact, defaultColor: PCColorOption? = nil) {
         self._selectedColor = selectedColor
         self.style = style
         self.defaultColor = defaultColor
     }
-    
+
     public var body: some View {
         switch style {
         case .compact:

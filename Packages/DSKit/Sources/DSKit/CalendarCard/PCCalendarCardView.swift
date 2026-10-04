@@ -13,7 +13,7 @@ public struct PCCalendarCardView: View {
     @Environment(\.pcVibe) private var vibe
 
     @FocusState private var nameFieldFocused: Bool
-    
+
     public init(viewModel: PCCalendarCardViewModel, onNameFieldFocusedChanged: ((Int64, Bool) -> Void)? = nil, nameFieldFocused: Bool) {
         self.viewModel = viewModel
         self.onNameFieldFocusedChanged = onNameFieldFocusedChanged

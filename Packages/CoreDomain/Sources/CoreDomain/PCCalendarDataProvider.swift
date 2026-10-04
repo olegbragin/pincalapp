@@ -1,5 +1,5 @@
 //
-//  USCalendarProvider.swift
+//  PCCalendarDataProvider.swift
 //  USkateAppV2
 //
 //  Created by Oleg Bragin on 23.03.2026.
@@ -22,13 +22,13 @@ public struct PCCalendarDataProvider: Equatable {
     public var numberOfCurrentMonth: Int {
         calendar.component(.month, from: Date())
     }
-    
+
     /// The current calendar year. This is the default year used when the feature
     /// layer does not pin the calendar to a specific year.
     public var currentYear: Int {
         year(of: Date())
     }
-    
+
     public init(
         calendar: Calendar = .autoupdatingCurrent
     ) {
@@ -36,7 +36,7 @@ public struct PCCalendarDataProvider: Equatable {
         self.calendar.timeZone = .current
         self.calendar.locale = .current
     }
-    
+
     public func months(forYear year: Int) -> [PCCalendarMonthDataSource] {
         (0...11).map {
             let monthNumber = $0 + 1
@@ -93,14 +93,14 @@ public struct PCCalendarDataProvider: Equatable {
         // today in whatever year the user is viewing.
         let todayMonth = calendar.component(.month, from: todayDate)
         let todayDay = calendar.component(.day, from: todayDate)
-        
+
         // 1. Первый день заданного месяца
         var components = DateComponents(year: year, month: month, day: 1)
         guard let startOfMonth = calendar.date(from: components) else { return [] }
-        
+
         // 2. Начало первой полной недели (может быть в предыдущем месяце)
         let startOfFirstWeek = calendar.date(from: calendar.dateComponents([.yearForWeekOfYear, .weekOfYear], from: startOfMonth))!
-        
+
         // 3. Конец последней полной недели (может быть в следующем месяце)
         let endOfMonth = calendar.range(of: .day, in: .month, for: startOfMonth)!.count
         components.day = endOfMonth
@@ -108,26 +108,26 @@ public struct PCCalendarDataProvider: Equatable {
             let lastDayOfMonth = calendar.date(from: components),
             let endOfLastWeek = date(byEndingOf: .weekOfYear, for: lastDayOfMonth)
         else { return [] }
-        
+
         // 4. Генерируем все даты от startOfFirstWeek до endOfLastWeek
         var dates: [Date] = []
         var currentDate = startOfFirstWeek
-        
+
         while currentDate <= endOfLastWeek {
             dates.append(currentDate)
             guard let nextDate = calendar.date(byAdding: .day, value: 1, to: currentDate) else { break }
             currentDate = nextDate
         }
-        
+
         // 5. Группируем по неделям
         var weeks: [PCCalendarWeekDataSource] = []
         var currentWeek: [PCCalendarDayDataSource] = []
-        
+
         for date in dates {
             let weekday = calendar.component(.weekday, from: date)
             let isFirstDayOfWeek = weekday == calendar.firstWeekday
-            
-            if isFirstDayOfWeek && !currentWeek.isEmpty {
+
+            if isFirstDayOfWeek, !currentWeek.isEmpty {
                 let weekNumber = calendar.component(.weekOfYear, from: date)
                 weeks.append(
                     PCCalendarWeekDataSource(
@@ -137,13 +137,13 @@ public struct PCCalendarDataProvider: Equatable {
                 )
                 currentWeek = []
             }
-            
+
             // Преобразуем дату в Day
             let dayNumberOfDate = calendar.component(.day, from: date)
             let monthOfDate = calendar.component(.month, from: date)
             let yearOfDate = calendar.component(.year, from: date)
             let isInMonth = (month == monthOfDate) && (year == yearOfDate)
-            
+
             currentWeek.append(
                 PCCalendarDayDataSource(
                     date: date,
@@ -153,7 +153,7 @@ public struct PCCalendarDataProvider: Equatable {
                 )
             )
         }
-        
+
         if !currentWeek.isEmpty {
             let weekNumber = calendar.component(.weekOfYear, from: todayDate)
             weeks.append(
@@ -163,12 +163,12 @@ public struct PCCalendarDataProvider: Equatable {
                 )
             )
         }
-        
+
         // 6. Если недель меньше 6 — дополняем следующими неделями
         while weeks.count < 6 {
             // Берём последний день последней недели
             guard let lastDate = weeks.last?.days.last?.date else { break }
-            
+
             // Генерируем следующую неделю (7 дней после lastDate)
             var nextWeekDates: [Date] = []
             var nextDate = calendar.date(byAdding: .day, value: 1, to: lastDate)!
@@ -177,7 +177,7 @@ public struct PCCalendarDataProvider: Equatable {
                 guard let futureDate = calendar.date(byAdding: .day, value: 1, to: nextDate) else { break }
                 nextDate = futureDate
             }
-            
+
             // Преобразуем даты в Day
             let nextWeekDays = nextWeekDates.map { date in
                 let dayNumberOfDate = calendar.component(.day, from: date)
@@ -191,7 +191,7 @@ public struct PCCalendarDataProvider: Equatable {
                     isToday: isInMonth && (monthOfDate == todayMonth) && (dayNumberOfDate == todayDay)
                 )
             }
-            
+
             let weekNumber = calendar.component(.weekOfYear, from: nextDate)
             weeks.append(
                 PCCalendarWeekDataSource(
@@ -200,13 +200,13 @@ public struct PCCalendarDataProvider: Equatable {
                 )
             )
         }
-        
+
         return weeks
     }
-    
+
     private func date(byEndingOf component: Calendar.Component, for date: Date) -> Date? {
         var comps = calendar.dateComponents([.year, .month, .day, .hour, .minute, .second], from: date)
-        
+
         switch component {
         case .weekOfYear:
             // Находим начало недели, затем добавляем 6 дней и 23:59:59
@@ -219,25 +219,25 @@ public struct PCCalendarDataProvider: Equatable {
                 return calendar.date(byAdding: endComps, to: startOfWeek)
             }
             return nil
-            
+
         case .month:
             comps.day = calendar.range(of: .day, in: .month, for: date)?.count
             comps.hour = 23
             comps.minute = 59
             comps.second = 59
             return calendar.date(from: comps)
-            
+
         case .day:
             comps.hour = 23
             comps.minute = 59
             comps.second = 59
             return calendar.date(from: comps)
-            
+
         default:
             return nil
         }
     }
-    
+
     private var orderedWeekdaySymbols: [String] {
         let allSymbols = calendar.veryShortStandaloneWeekdaySymbols
         let shift = calendar.firstWeekday - 1

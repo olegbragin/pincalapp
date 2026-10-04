@@ -31,8 +31,9 @@ import DSKit
 @MainActor
 @Suite("The batch editor's calendar shows only the batch being edited")
 struct BatchEditorCalendarScopeTests {
-
-    private func day(_ dayOfMonth: Int) -> Date { Fixture.day(dayOfMonth) }
+    private func day(_ dayOfMonth: Int) -> Date {
+        Fixture.day(dayOfMonth)
+    }
 
     /// The number of every marked day cell, ascending.
     ///

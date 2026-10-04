@@ -5,14 +5,13 @@
 //  Created by Oleg Bragin on 23.08.2026.
 //
 
-import Testing
 import Foundation
+import Testing
 import ObjectBox
 @testable import CorePersistence
 
 @MainActor
 struct CalendarCacheIntegrationTests {
-
     // MARK: - Helpers
 
     private func makeStore() throws -> Store {
@@ -40,7 +39,9 @@ struct CalendarCacheIntegrationTests {
             var received: [ChangeOperation] = []
             for await operation in stream {
                 received.append(operation)
-                if received.count >= count { break }
+                if received.count >= count {
+                    break
+                }
             }
             return received
         }
@@ -55,7 +56,9 @@ struct CalendarCacheIntegrationTests {
         let stream = await cache.changes()
         let waiter = Task {
             for await operation in stream {
-                if case .refresh = operation { return }
+                if case .refresh = operation {
+                    return
+                }
             }
         }
         await trigger()
@@ -203,7 +206,7 @@ struct CalendarCacheIntegrationTests {
         _ = try await createAndGetCalendar(cache, name: "Active2", year: 2026, numberOfColumns: 3)
         let cal3 = try await createAndGetCalendar(cache, name: "Archived", year: 2026, numberOfColumns: 4)
 
-        try await cache.archiveCalendar(try await cache.getCalendar(id: cal3.id) ?? cal1)
+        try await cache.archiveCalendar(cache.getCalendar(id: cal3.id) ?? cal1)
 
         // Path A: verify via cache
         await waitForRefresh(cache, trigger: { await cache.loadActive() })
@@ -250,7 +253,7 @@ struct CalendarCacheIntegrationTests {
         }
 
         #expect(receivedOperations.count == 1)
-        if case .add(let item) = receivedOperations.first {
+        if case let .add(item) = receivedOperations.first {
             #expect(item.name == "Signal Test")
         } else {
             Issue.record("Expected .add operation")
@@ -271,7 +274,9 @@ struct CalendarCacheIntegrationTests {
         }
 
         let changeOps = receivedOperations.filter {
-            if case .change = $0 { return true }
+            if case .change = $0 {
+                return true
+            }
             return false
         }
         #expect(changeOps.count == 1)
@@ -289,7 +294,9 @@ struct CalendarCacheIntegrationTests {
         }
 
         let deleteOps = receivedOperations.filter {
-            if case .delete = $0 { return true }
+            if case .delete = $0 {
+                return true
+            }
             return false
         }
         #expect(deleteOps.count == 1)
@@ -318,11 +325,11 @@ struct CalendarCacheIntegrationTests {
         _ = try calendarBox.put(calendar)
 
         let storage = ObjectBoxCalendarStorage(store: store)
-        var dto = try calendarBox.get(calendar.id).map { CalendarDataSource($0)! }!
-        dto.eventBatches[0].events.append(.init(name: "New", date: Date().addingTimeInterval(172800), color: "eventColorOption1"))
+        var dto = try #require(calendarBox.get(calendar.id).map { CalendarDataSource($0)! })
+        dto.eventBatches[0].events.append(.init(name: "New", date: Date().addingTimeInterval(172_800), color: "eventColorOption1"))
         _ = try await storage.saveCalendar(dto)
 
-        let readBack = try calendarBox.get(calendar.id).map { CalendarDataSource($0)! }!
+        let readBack = try #require(calendarBox.get(calendar.id).map { CalendarDataSource($0)! })
         #expect(readBack.eventBatches[0].events.count == 2)
         #expect(readBack.eventBatches[0].events.contains(where: { $0.name == "New" }))
         #expect(try eventBox.all().count == 2)
@@ -355,21 +362,22 @@ struct CalendarCacheIntegrationTests {
         _ = try calendarBox.put(calendar)
 
         let storage = ObjectBoxCalendarStorage(store: store)
-        var dto = try calendarBox.get(calendar.id).map { CalendarDataSource($0)! }!
+        var dto = try #require(calendarBox.get(calendar.id).map { CalendarDataSource($0)! })
         // The store holds a persisted event for the batch, but the in-memory
         // batch (as the app rebuilds it from the session) carries `id == 0`.
         dto.eventBatches[0].events = [.init(name: "Renamed", date: Date(), color: "eventColorOption1")]
         #expect(dto.eventBatches[0].events[0].id == 0)
         try await storage.saveCalendar(dto)
 
-        let readBack = try calendarBox.get(calendar.id).map { CalendarDataSource($0)! }!
+        let readBack = try #require(calendarBox.get(calendar.id).map { CalendarDataSource($0)! })
         #expect(readBack.eventBatches.count == 1)
         #expect(readBack.eventBatches[0].events.count == 1)
         #expect(readBack.eventBatches[0].events[0].name == "Renamed")
         #expect(try eventBox.all().count == 1)
     }
 
-    @Test func getActiveCalendarsReturnsOnlyNonArchived() async throws {        let store = try makeStore()
+    @Test func getActiveCalendarsReturnsOnlyNonArchived() async throws {
+        let store = try makeStore()
         defer { store.close() }
 
         let storage = ObjectBoxCalendarStorage(store: store)
@@ -422,7 +430,7 @@ struct CalendarCacheIntegrationTests {
         let empty = CalendarDataSource(id: Int64(calendar.id), name: "Test", year: 2026, numberOfColumns: 3, eventBatches: [])
         _ = try await storage.saveCalendar(empty)
 
-        let readBack = try calendarBox.get(calendar.id).map { CalendarDataSource($0)! }!
+        let readBack = try #require(calendarBox.get(calendar.id).map { CalendarDataSource($0)! })
         #expect(readBack.eventBatches.isEmpty)
         #expect(try batchBox.all().isEmpty)
         #expect(try eventBox.all().isEmpty)
@@ -450,11 +458,11 @@ struct CalendarCacheIntegrationTests {
         _ = try calendarBox.put(calendar)
 
         let storage = ObjectBoxCalendarStorage(store: store)
-        var dto = try calendarBox.get(calendar.id).map { CalendarDataSource($0)! }!
+        var dto = try #require(calendarBox.get(calendar.id).map { CalendarDataSource($0)! })
         dto.eventBatches[0].name = "Renamed"
         _ = try await storage.saveCalendar(dto)
 
-        let readBack = try calendarBox.get(calendar.id).map { CalendarDataSource($0)! }!
+        let readBack = try #require(calendarBox.get(calendar.id).map { CalendarDataSource($0)! })
         #expect(readBack.eventBatches.count == 1)
         #expect(readBack.eventBatches[0].name == "Renamed")
         #expect(readBack.eventBatches[0].events.count == 2)

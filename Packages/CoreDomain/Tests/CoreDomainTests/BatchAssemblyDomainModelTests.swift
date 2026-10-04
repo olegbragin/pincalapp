@@ -1,10 +1,10 @@
+
 import Foundation
 import Testing
 import CoreDomain
 
 @Suite("Batch Assembly Domain Models Tests")
 struct BatchAssemblyDomainModelTests {
-
     /// Pinned to UTC so the day-boundary arithmetic below cannot shift under a
     /// simulator whose time zone is not the host's.
     private static func makeGregorian() -> Calendar {

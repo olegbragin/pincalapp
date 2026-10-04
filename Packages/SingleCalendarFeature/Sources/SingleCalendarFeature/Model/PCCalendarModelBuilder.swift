@@ -27,7 +27,7 @@ enum PCCalendarModelBuilder {
         // year (e.g. a persisted calendar year) takes precedence.
         let resolvedYear = year ?? dataProvider.currentYear
         let dataSource = dataProvider.yearData(for: resolvedYear)
-        let model = PCCalendarYearModel(
+        return PCCalendarYearModel(
             numberOfCurrentMonth: numberOfCurrentMonth,
             numberOfColumns: columnCountResolver(numberOfColumns),
             year: dataSource.year,
@@ -36,7 +36,6 @@ enum PCCalendarModelBuilder {
                 daySelectionManager: daySelectionManager
             )
         )
-        return model
     }
 
     private static func monthModels(

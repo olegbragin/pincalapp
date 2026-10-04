@@ -28,7 +28,6 @@ import Foundation
 /// schedules has to be issued from there anyway.
 @MainActor
 public final class PCNameAutosave {
-
     // MARK: - Properties
 
     /// The quiet period production uses.
@@ -52,7 +51,9 @@ public final class PCNameAutosave {
     public private(set) var fireCountForTesting = 0
 
     /// Whether anything has fired yet, for the same reason.
-    public var hasFiredForTesting: Bool { fireCountForTesting > 0 }
+    public var hasFiredForTesting: Bool {
+        fireCountForTesting > 0
+    }
 
     private var pending: (@MainActor () -> Void)?
     private var timer: Task<Void, Never>?
@@ -128,7 +129,9 @@ public final class PCNameAutosave {
     /// `expectedRun` of `nil` means "fire regardless" — used by `flush` and the ceiling,
     /// which are not tied to a particular scheduled timer.
     private func fire(expectedRun: UInt64?) {
-        if let expectedRun, expectedRun != runID { return }
+        if let expectedRun, expectedRun != runID {
+            return
+        }
         timer?.cancel()
         timer = nil
         deadlineTask?.cancel()

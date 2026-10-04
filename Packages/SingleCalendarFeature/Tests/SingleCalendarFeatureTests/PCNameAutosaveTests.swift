@@ -12,7 +12,6 @@ import Testing
 @MainActor
 @Suite("PCNameAutosave")
 struct PCNameAutosaveTests {
-
     /// Counts what actually fired, without sleeping for the delay.
     private func settled(
         _ autosave: PCNameAutosave,
@@ -21,7 +20,9 @@ struct PCNameAutosaveTests {
         let deadline = ContinuousClock.now + timeout
         while ContinuousClock.now < deadline {
             try? await Task.sleep(for: .milliseconds(10))
-            if autosave.hasFiredForTesting { return autosave.fireCountForTesting }
+            if autosave.hasFiredForTesting {
+                return autosave.fireCountForTesting
+            }
         }
         return autosave.fireCountForTesting
     }
@@ -70,7 +71,7 @@ struct PCNameAutosaveTests {
     }
 
     @Test("flush writes immediately, without waiting out the delay")
-    func flushWritesNow() async {
+    func flushWritesNow() {
         let autosave = PCNameAutosave(delay: .seconds(30))
         var fired = 0
         autosave.change { fired += 1 }
@@ -115,7 +116,7 @@ struct PCNameAutosaveTests {
     }
 
     @Test("flush on nothing pending does nothing")
-    func flushOnNothingIsHarmless() async {
+    func flushOnNothingIsHarmless() {
         let autosave = PCNameAutosave()
         var fired = 0
         autosave.change { fired += 1 }
@@ -131,7 +132,7 @@ struct PCNameAutosaveTests {
     }
 
     @Test("flush on a fresh autosave performs no write")
-    func flushWithNoChangeAtAllIsHarmless() async {
+    func flushWithNoChangeAtAllIsHarmless() {
         let autosave = PCNameAutosave()
         var fired = 0
         autosave.change { fired += 1 }

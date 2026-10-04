@@ -1,9 +1,10 @@
+
 import SwiftUI
 
 public struct PCTextField: View {
     let title: String
     @Binding var text: String
-    var identifier: String? = nil
+    var identifier: String?
     var submitLabel: SubmitLabel = .done
 
     public init(title: String, text: Binding<String>, identifier: String? = nil, submitLabel: SubmitLabel = .done) {

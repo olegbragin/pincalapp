@@ -1,7 +1,7 @@
-import Testing
-import Foundation
-import CoreDomain
 
+import Foundation
+import Testing
+import CoreDomain
 @testable import CalendarListFeature
 
 // MARK: - In-memory CalendarManaging for Testing
@@ -60,7 +60,9 @@ actor InMemoryCalendarManaging: CalendarManaging {
         guard !subscriberWaiters.isEmpty else { return }
         let waiters = subscriberWaiters
         subscriberWaiters = []
-        for waiter in waiters { waiter.resume() }
+        for waiter in waiters {
+            waiter.resume()
+        }
     }
 
     private func unsubscribe(id: UUID) {
@@ -173,7 +175,6 @@ private func waitUntil(
 @MainActor
 @Suite("CalendarListViewModel Tests")
 struct CalendarListViewModelTests {
-
     @Test("Initial state has empty calendars and loading true")
     func initialState() async {
         let (_, vm) = await makeFixture()
@@ -224,7 +225,6 @@ struct CalendarListViewModelTests {
 
 @Suite("AddEditCalendarViewModel Tests")
 struct AddEditCalendarViewModelTests {
-
     @Test("AddEditCalendarViewModel saves valid label")
     func addEditCalendarViewModelSaveValid() {
         let vm = AddEditCalendarViewModel()
@@ -267,7 +267,6 @@ struct AddEditCalendarViewModelTests {
 
 @Suite("PinCalendar Tests")
 struct PinCalendarTests {
-
     @Test("PinCalendar is identifiable and hashable")
     func pinCalendarHashable() {
         let cal1 = PinCalendar(id: 1, name: "Test", year: 2026, numberOfColumns: 3)
@@ -298,7 +297,6 @@ struct PinCalendarTests {
 
 @Suite("CalendarListMode Tests")
 struct CalendarListModeTests {
-
     @Test("CalendarListMode has active and archived cases")
     func calendarListModeCases() {
         let active = CalendarListMode.active
@@ -315,12 +313,11 @@ struct CalendarListModeTests {
 @MainActor
 @Suite("CalendarListViewModel Integration Tests")
 struct CalendarListViewModelIntegrationTests {
-
     @Test("fetch loads active calendars")
     func fetchActiveCalendars() async {
         let (_, vm) = await makeFixture(seed: [
             PinCalendar(id: 1, name: "Calendar 1", year: 2026, numberOfColumns: 3),
-            PinCalendar(id: 2, name: "Calendar 2", year: 2026, numberOfColumns: 2)
+            PinCalendar(id: 2, name: "Calendar 2", year: 2026, numberOfColumns: 2),
         ])
 
         await vm.fetch()
@@ -336,7 +333,7 @@ struct CalendarListViewModelIntegrationTests {
         let (_, vm) = await makeFixture(
             seed: [
                 PinCalendar(id: 1, name: "Active", year: 2026, numberOfColumns: 3),
-                PinCalendar(id: 2, name: "Archived", year: 2026, numberOfColumns: 3, isArchived: true)
+                PinCalendar(id: 2, name: "Archived", year: 2026, numberOfColumns: 3, isArchived: true),
             ],
             mode: .archived
         )

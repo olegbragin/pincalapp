@@ -8,13 +8,12 @@
 import XCTest
 
 final class EditorKeyboardAvoidanceTests: XCTestCase {
-
     override func setUpWithError() throws {
         continueAfterFailure = false
     }
 
     @MainActor
-    func testBatchEditorNameFieldStaysAboveKeyboard() throws {
+    func testBatchEditorNameFieldStaysAboveKeyboard() {
         let app = KeyboardAvoidanceTestSupport.launchSeededApp()
         KeyboardAvoidanceTestSupport.openCalendarDetail(app, named: "UI Test Calendar")
 
@@ -32,7 +31,7 @@ final class EditorKeyboardAvoidanceTests: XCTestCase {
     }
 
     @MainActor
-    func testEventEditorNameFieldStaysAboveKeyboard() throws {
+    func testEventEditorNameFieldStaysAboveKeyboard() {
         let app = KeyboardAvoidanceTestSupport.launchSeededApp()
         KeyboardAvoidanceTestSupport.openCalendarDetail(app, named: "UI Test Calendar")
 

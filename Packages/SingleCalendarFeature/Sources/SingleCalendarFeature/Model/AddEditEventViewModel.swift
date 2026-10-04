@@ -6,9 +6,9 @@
 //
 
 import Foundation
+import SwiftUI
 import CoreDomain
 import DSKit
-import SwiftUI
 
 /// A projection facade over the store for the single-event editor.
 ///
@@ -23,7 +23,9 @@ public struct AddEditEventViewModel {
         self.store = store
     }
 
-    private var draft: CalendarEvent? { store.state.eventDraft }
+    private var draft: CalendarEvent? {
+        store.state.eventDraft
+    }
 
     /// Shown in the toolbar. Falls back to the assembly's anchor day so the title is
     /// never empty mid-transition.

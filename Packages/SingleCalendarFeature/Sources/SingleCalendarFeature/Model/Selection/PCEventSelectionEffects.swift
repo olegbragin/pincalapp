@@ -39,7 +39,7 @@ public func pcEventSelectionEffects(
                 calendarID: next.calendarID,
                 numberOfColumns: next.numberOfColumns,
                 batches: next.batches
-            )
+            ),
         ]
     }
 

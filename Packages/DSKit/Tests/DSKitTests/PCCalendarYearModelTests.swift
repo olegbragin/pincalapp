@@ -5,13 +5,12 @@
 //  Created by Oleg Bragin on 14.08.2026.
 //
 
-import Testing
 import Foundation
+import Testing
 import DSKit
 
 @MainActor
 struct PCCalendarYearModelTests {
-
     @Test func settingNumberOfColumnsPersistsTheValue() {
         let model = PCCalendarYearModel(year: 2026)
 

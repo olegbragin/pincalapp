@@ -1,7 +1,8 @@
+
 import SwiftUI
+import AppNavigation
 import DSKit
 import SettingsFeature
-import AppNavigation
 import SingleCalendarFeature
 
 struct RootView: View {
@@ -73,7 +74,9 @@ struct RootView: View {
             // already been swapped by the time this fires. Writing `0` from here as well would be
             // harmless today and would paper over a future route that clears the id without
             // notifying — which is the failure this backstop exists to catch, not to hide.
-            if let id { session.currentCalendarID = id }
+            if let id {
+                session.currentCalendarID = id
+            }
         }
         .preferredColorScheme(theme.colorScheme)
         .pcVibe(vibe)

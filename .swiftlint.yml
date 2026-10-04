@@ -1,0 +1,150 @@
+# SwiftLint configuration for PinCal.
+#
+# Division of labour with SwiftFormat (.swiftformat):
+#   SwiftFormat OWNS formatting   - it rewrites whitespace, wrapping and layout.
+#   SwiftLint  OWNS everything else - it reports, and never re-lays-out code.
+#
+# WHY THE `disabled_rules` BLOCK BELOW IS LARGE
+#
+# The two tools conflict wherever both believe they own a line. SwiftFormat owns
+# layout; any SwiftLint rule that AUTOCORRECTS whitespace or layout will disagree
+# with it somewhere, and the symptom is not a lint warning - it is two tools
+# rewriting one line into two different forms, permanently.
+#
+# The selection criterion is therefore NOT SwiftLint's own `kind` column. It is:
+# "does autocorrect move whitespace or tokens that SwiftFormat also moves?"
+# Filtering on `kind == style` alone is not sufficient, and was measured to be
+# wrong on this repo: `comment_spacing` and `mark` are labelled `kind: lint`, so
+# they slip through that filter, and they then reported 4302 and 75 violations
+# against SwiftFormat's own normalisation of the same comment and MARK spacing.
+#
+# Everything in this list is either pure layout, or a cosmetic rewrite
+# SwiftFormat has already made (redundant self, sorted imports, trailing commas,
+# closure spacing, ...). The list was generated from `swiftlint rules` and every
+# name verified against SwiftLint 0.65.1.
+#
+# Rules that are style but NOT autocorrecting - indentation_width, multiline_*,
+# collection_alignment, type_contents_order, identifier_name - deliberately stay
+# enabled: they report structure SwiftFormat will not touch.
+
+included:
+  - Packages
+  - PinCalApp
+  - PinCalAppTests
+  - PinCalAppUITests
+
+# `excluded` matches path PREFIXES relative to this file, so a bare `.build`
+# only matches a top-level one. Each package keeps its own checkout at
+# Packages/<Name>/.build, so the glob form is required - without it SwiftLint
+# lints ~2100 third-party sources and reports 6202 violations that are not ours.
+excluded:
+  - "**/.build/**"
+  - "**/generated/**"
+  # Standalone CLI that shells out to mobilebuildmcp; not app source.
+  - Packages/AutoTestRunner
+
+disabled_rules:
+  - attribute_name_spacing
+  - closing_brace
+  - closure_end_indentation
+  - closure_spacing
+  - colon
+  - comma
+  - comma_inheritance
+  - comment_spacing
+  - contrasted_opening_brace
+  - control_statement
+  - direct_return
+  - empty_enum_arguments
+  - empty_parameters
+  - empty_parentheses_with_trailing_closure
+  - explicit_self
+  - function_name_whitespace
+  - implicit_optional_initialization
+  - implicit_return
+  - leading_whitespace
+  - literal_expression_end_indentation
+  - mark
+  - modifier_order
+  - no_space_in_method_call
+  - non_overridable_class_declaration
+  - number_separator
+  - opening_brace
+  - operator_usage_whitespace
+  - optional_enum_case_matching
+  - period_spacing
+  - prefer_self_in_static_references
+  - prefer_self_type_over_type_of_self
+  - protocol_property_accessors_order
+  - redundant_discardable_let
+  - redundant_self
+  - return_arrow_whitespace
+  - self_binding
+  - sorted_imports
+  - statement_position
+  - superfluous_else
+  - trailing_closure
+  - trailing_comma
+  - trailing_newline
+  - trailing_whitespace
+  - unneeded_parentheses_in_closure_argument
+  - unused_closure_parameter
+  - vertical_whitespace
+  - vertical_whitespace_between_cases
+  - vertical_whitespace_closing_braces
+  - vertical_whitespace_opening_braces
+  - void_return
+
+# --- Thresholds, set from this codebase's measured shape ---
+
+# Deliberately NOT enforcing line length: p50 = 37, p90 = 89, p99 = 109,
+# max = 180. The long tail is mostly single log calls that cannot be usefully
+# wrapped, so a limit here would be noise rather than signal.
+line_length:
+  warning: 160
+  error: 240
+  ignores_urls: true
+  ignores_comments: false
+
+# SwiftLint wants `Id`/`Url`; the Swift API Design Guidelines want `id`/`url`.
+# This repo follows the guidelines, so the defaults are inverted rather than
+# rewriting the code.
+identifier_name:
+  min_length:
+    warning: 1
+    error: 1
+  excluded:
+    - id
+    - to
+    - up
+
+# TODO/FIXME markers live in the project's planning docs, not in source.
+todo: false
+
+file_length:
+  warning: 800
+  error: 1200
+type_body_length:
+  warning: 500
+  error: 800
+function_body_length:
+  warning: 150
+  error: 250
+cyclomatic_complexity:
+  warning: 20
+  error: 30
+nesting:
+  type_level: 4
+large_tuple:
+  warning: 4
+  error: 6
+type_name:
+  min_length:
+    warning: 3
+    error: 2
+
+# Keep the codebase's existing idioms rather than SwiftLint's generic preferences.
+nsobject_prefer_isequal: false
+for_where: false
+implicitly_unwrapped_optional: false
+non_optional_string_data_conversion: false

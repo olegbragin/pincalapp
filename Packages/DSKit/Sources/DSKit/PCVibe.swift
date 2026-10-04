@@ -206,15 +206,8 @@ public extension PCColorOption {
     }
 }
 
-private struct PCVibeKey: EnvironmentKey {
-    static let defaultValue: PCVibe = .default
-}
-
 public extension EnvironmentValues {
-    var pcVibe: PCVibe {
-        get { self[PCVibeKey.self] }
-        set { self[PCVibeKey.self] = newValue }
-    }
+    @Entry var pcVibe: PCVibe = .default
 }
 
 public extension View {

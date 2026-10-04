@@ -31,7 +31,6 @@
 import XCTest
 
 final class EditorBackNavigationTests: XCTestCase {
-
     override func setUpWithError() throws {
         continueAfterFailure = false
     }
@@ -64,7 +63,7 @@ final class EditorBackNavigationTests: XCTestCase {
 
     /// The visible one. Back out of the event editor, then use the batch editor.
     @MainActor
-    func testBackOutOfEventEditorLeavesTheBatchEditorUsable() throws {
+    func testBackOutOfEventEditorLeavesTheBatchEditorUsable() {
         let app = openBatchEditor()
 
         // Into the event editor.
@@ -111,7 +110,7 @@ final class EditorBackNavigationTests: XCTestCase {
     /// Navigation only. See the note at the top: nothing is gated on `.dayList`, so this
     /// guards the Back button itself rather than a failure mode.
     @MainActor
-    func testBackOutOfDayListReturnsToTheCalendar() throws {
+    func testBackOutOfDayListReturnsToTheCalendar() {
         let app = KeyboardAvoidanceTestSupport.launchSeededApp()
         KeyboardAvoidanceTestSupport.openCalendarDetail(app, named: "UI Test Calendar")
 

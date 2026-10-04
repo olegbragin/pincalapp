@@ -5,11 +5,11 @@
 //  Created by Oleg Bragin on 07.07.2026.
 //
 
-import Testing
 import Foundation
+import Testing
+import CoreDomain
 import CorePersistence
 import DSKit
-import CoreDomain
 @testable import SingleCalendarFeature
 
 /// Batch flows end to end: do the thing, then assert what the calendar now holds.
@@ -30,7 +30,6 @@ import CoreDomain
 @MainActor
 @Suite("Batch flows end to end")
 struct SingleCalendarModelObjectBoxIntegrationTests {
-
     // MARK: - Helpers
 
     private func day(_ d: Int, month: Int = 6, year: Int = 2026) -> Date {
@@ -322,8 +321,8 @@ struct SingleCalendarModelObjectBoxIntegrationTests {
         _ = await context.persistence.waitForWrites(before + 1)
 
         // A fresh model over the same storage sees the edit.
-        let fresh = Fixture.makeStore(
-            batches: await context.persistence.storedBatches(calendarID: 42),
+        let fresh = await Fixture.makeStore(
+            batches: context.persistence.storedBatches(calendarID: 42),
             persistence: context.persistence
         )
         #expect(fresh.state.batches.first?.name == "Swimming")
@@ -397,7 +396,6 @@ struct SingleCalendarModelObjectBoxIntegrationTests {
 @MainActor
 @Suite("§16 — removing three of four days")
 struct RemovingThreeOfFourDaysTests {
-
     private func day(_ d: Int, month: Int = 6, year: Int = 2026) -> Date {
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = TimeZone(identifier: "UTC")!

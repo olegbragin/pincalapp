@@ -13,6 +13,8 @@ Paths below are relative to this file, which is the repository root.
   `CoreDomain` holds types, `CorePersistence` holds storage, `DSKit` holds shared UI,
   `SingleCalendarFeature` holds the batch-assembly feature.
 - `Packages/AutoTestRunner` — runs the whole suite on a simulator.
+- `.swiftformat` / `.swiftlint.yml` / `scripts/sort_imports.py` — the formatting setup. See
+  **Style → Formatting** before changing whitespace or import order by hand.
 - `TEST_BASELINE.md` — the project's testing history and conventions.
 
 ## Building and testing
@@ -137,6 +139,94 @@ Pass these so runs are deterministic; all seeded launches should set the first o
   next scheduler pass instead of 250 ms later
 
 ## Style
+
+### Formatting is a tool, not a habit
+
+`SwiftFormat` owns formatting; `SwiftLint` reports everything else. Both are **global
+Homebrew installs** (`brew install swiftformat swiftlint`), deliberately not vendored, so
+nothing pins the version. Verify with `swiftformat --version` / `swiftlint version` before
+trusting a diff — a `brew upgrade` can change output and produce churn that is not yours.
+
+Config is committed, so read these two before hand-formatting anything:
+
+- `.swiftformat` — formatting. Every value was measured against this codebase.
+- `.swiftlint.yml` — 50 rules disabled, all of them rules that autocorrect whitespace or
+  tokens SwiftFormat also moves.
+
+```
+swiftformat .                          # apply formatting
+swiftformat --lint .                   # check only: prints "N/182 files require formatting"
+python3 scripts/sort_imports.py .      # apply import order
+python3 scripts/sort_imports.py --check .
+swiftlint lint --quiet                 # report; 44 pre-existing violations, not a gate yet
+```
+
+The two writers (`swiftformat`, `sort_imports.py`) are idempotent and do not step on each
+other. **Run both** — running only one is how you get a half-formatted tree. `swiftlint` only
+reports, so it never conflicts with anything.
+
+#### The two tools fight unless the config stops them
+
+This is the thing to know before changing either config. Where both believe they own a line,
+they rewrite it into two different forms, permanently, and the symptom is a formatting commit
+that keeps reappearing in review. Three SwiftFormat rules are disabled for exactly this:
+
+| disabled | what it would do |
+| --- | --- |
+| `sortImports` | re-sorts the block and loses the system/app grouping |
+| `blankLinesBetweenImports` | deletes the separator between the groups |
+| `blankLineAfterImports` | reads a comment *inside* the block as the block's end |
+
+The 50 disabled SwiftLint rules are the same idea from the other side. Note the selection
+criterion is **not** SwiftLint's `kind` column: `comment_spacing` and `mark` are labelled
+`kind: lint` and still reported 4377 violations against SwiftFormat's own normalisation.
+Filter on "does autocorrect move whitespace", not on `kind == style`.
+
+#### What the formatter is not allowed to do
+
+Both of these **broke the build** when enabled. They are off deliberately; do not re-enable
+them without running the tests.
+
+- `redundantSelf` (`--self remove`). Stripped `self.` from 61 sites, every one inside an
+  OSLog string interpolation — an autoclosure context where the compiler *requires* explicit
+  `self.`. `--self init-only` is not safe either; it still hit 17, because `didSet` counts as
+  initialisation. Explicit `self.` is the prevailing style here, so there is nothing to gain.
+- `preferKeyPath`. Rewrote `allSatisfy { $0.colorName.isEmpty }` as `allSatisfy(\.colorName.isEmpty)`.
+  `allSatisfy` takes a *throwing* closure and a key-path-as-function cannot carry `throws`, so
+  the compiler picks the throwing overload and reports the call unhandled. The rule is
+  `preferKeyPath`, **not** `redundantClosure` — disabling the latter changes nothing.
+
+#### Imports
+
+`--import-grouping` cannot express "system first, then application". It only accepts `alpha`,
+`access-control`, `length`, `testable-first`, `testable-last`, and all of them collapse the
+block into one alphabetical run. Apple's `swift-format` does not reorder imports at all. So
+`scripts/sort_imports.py` owns it, and SwiftFormat stays out of the block. The order carries
+the grouping — there is no blank line between the groups, so nothing marks the boundary to a
+reader:
+
+```swift
+import Foundation      // system
+import SwiftUI
+import CoreDomain      // application
+import DSKit
+@testable import SingleCalendarFeatureTests
+```
+
+First-party modules are discovered from `Packages/*/Package.swift`, so a new package needs no
+script change. It bails out on `#if`-wrapped imports, and on any manifest whose
+`// swift-tools-version:` it would displace — that comment is only valid on line 1.
+
+#### Never format generated or vendored code
+
+Roughly 2100 files under `Packages/*/.build` are third-party SPM checkouts, and two source
+files are generated. `--exclude` and `excluded:` match path **prefixes**, so a bare `.build`
+does not reach `Packages/DSKit/.build` — the glob `**/.build/**` is required. That one detail
+was worth 6202 phantom violations before it was fixed.
+
+- `**/generated/**` — ObjectBox entity code. Already carries `// swiftlint:disable all`.
+- `**/LocalizedStringKeyExtension.swift` — regenerated by `GenerateLocalization` on any build
+  that touches the string catalog, so it never converges. Its only diff is a timestamp.
 
 ### Declaration order inside a type
 
@@ -339,6 +429,12 @@ These are load-bearing. Each was arrived at by fixing a bug, and the reasoning i
 ## Before you claim something works
 
 - Re-read the diff. Generated-file churn and stray indentation accumulate silently.
+- Run `swiftformat --lint .` and `scripts/sort_imports.py --check .` before reporting done.
+  Both should print zero. If either wants to change something, the tree is not formatted, and
+  a half-applied run is worse than either extreme.
+- If you touched both tools at once, confirm they still agree: run
+  `swiftformat . && scripts/sort_imports.py .` twice and check the second run is a no-op.
+  Identical hashes across the two runs is the only proof they are not fighting.
 - Report the number you actually measured, and say when it is stale. A green run before three
   phases of changes is not a green run.
 - Distinguish "builds" from "verified". A toast with no test exercising it builds; it is not

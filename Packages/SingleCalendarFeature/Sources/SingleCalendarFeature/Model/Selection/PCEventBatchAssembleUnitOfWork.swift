@@ -42,7 +42,9 @@ public struct PCEventBatchAssembleUnitOfWork: Equatable, Sendable {
         case existing(pendingID: UUID)
     }
 
-    public var isNew: Bool { origin == .new }
+    public var isNew: Bool {
+        origin == .new
+    }
 
     /// The key this assembly's row answers to, *including* an id it has adopted.
     ///
@@ -293,6 +295,7 @@ public struct PCEventBatchAssembleUnitOfWork: Equatable, Sendable {
     }
 
     // MARK: Defaults
+
     //
     // Display strings, in a domain type, which is the one layering compromise here and is
     // worth naming rather than hiding: a new batch's *name* has to be born somewhere, and

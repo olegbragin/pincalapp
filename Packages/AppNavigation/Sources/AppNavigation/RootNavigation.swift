@@ -1,7 +1,7 @@
 //
- //  RootNavigation.swift
- //  PinCalApp
- //
+//  RootNavigation.swift
+//  PinCalApp
+//
 
 import Foundation
 import Observation
@@ -42,7 +42,9 @@ public class RootNavigation {
         }
     }
 
-    public var isAtRoot: Bool { path.isEmpty }
+    public var isAtRoot: Bool {
+        path.isEmpty
+    }
 
     /// Pops the top of the navigation stack, if there is one.
     ///
@@ -183,7 +185,7 @@ public class RootNavigation {
         await willLeaveCurrentCalendar?()
         goTo(.calendar(id, toRoot: true))
     }
-    
+
     /// Currently presented sheet
     public private(set) var presentedSheet: AppRoute?
 
@@ -193,13 +195,15 @@ public class RootNavigation {
         navLog.debug("goTo \(String(describing: route)) detailCalendarID=\(String(describing: self.detailCalendarID)) category=\(String(describing: self.selectedSidebarCategory))")
         switch route {
         // MARK: - Sidebar category selection (changes content column)
-        case .sidebar(let category):
+
+        case let .sidebar(category):
             selectedSidebarCategory = category
             // detailCalendarID intentionally left untouched: the detail column is a peer of the
             // content column, so switching category does not dismiss the detail.
-            
+
         // MARK: - Open (split-view detail column replacement)
-        case .calendar(let id, let toRoot):
+
+        case let .calendar(id, toRoot):
             if toRoot {
                 popToRoot()
             }
@@ -213,26 +217,30 @@ public class RootNavigation {
             detailCalendarID = id
             preferredCompactColumn = .detail
             presentedSheet = nil
-            
+
         // MARK: - Push (navigation stack)
+
         case .dayBatches:
             path.append(route)
+
         case .batchEditor:
             path.append(route)
+
         case .eventEditor:
             path.append(route)
-            
+
         // MARK: - Present (sheet)
+
         case .addCalendar:
             presentedSheet = route
         }
     }
-    
+
     /// Dismiss presented sheet
     public func dismissSheet() {
         presentedSheet = nil
     }
-    
+
     /// Clear navigation stack (pop to root). Only callable internally — callers
     /// should use `goTo(.calendar(id, toRoot: true))` to open a calendar and
     /// return to its root in one step.

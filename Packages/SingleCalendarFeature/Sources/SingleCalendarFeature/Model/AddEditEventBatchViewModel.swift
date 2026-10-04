@@ -6,9 +6,9 @@
 //
 
 import Foundation
+import SwiftUI
 import CoreDomain
 import DSKit
-import SwiftUI
 
 /// A projection facade over the store for the batch editor.
 ///
@@ -32,11 +32,21 @@ public struct AddEditEventBatchViewModel {
 
     // MARK: - Projections
 
-    private var batch: CalendarEventBatch? { store.state.assembly?.batch }
+    private var batch: CalendarEventBatch? {
+        store.state.assembly?.batch
+    }
 
-    var name: String { batch?.name ?? "" }
-    var events: [CalendarEvent] { batch?.events ?? [] }
-    var isEmpty: Bool { events.isEmpty }
+    var name: String {
+        batch?.name ?? ""
+    }
+
+    var events: [CalendarEvent] {
+        batch?.events ?? []
+    }
+
+    var isEmpty: Bool {
+        events.isEmpty
+    }
 
     /// The colour the picker opens on: the batch's own, or failing that its first event's,
     /// so a batch built from multi-selected days does not open on a colour that
@@ -50,10 +60,17 @@ public struct AddEditEventBatchViewModel {
 
     /// The editor's calendar. A render target projected from the state by the store, not a
     /// copy of it — the day-model instances here are the ones the views bind to.
-    var yearModel: PCCalendarYearModel { store.yearModel }
+    var yearModel: PCCalendarYearModel {
+        store.yearModel
+    }
 
-    var preferredTitle: String? { title(compact: false) }
-    var compactTitle: String? { title(compact: true) }
+    var preferredTitle: String? {
+        title(compact: false)
+    }
+
+    var compactTitle: String? {
+        title(compact: true)
+    }
 
     // MARK: - Two-way controls
 
@@ -106,7 +123,8 @@ public struct AddEditEventBatchViewModel {
         let startDay = start.formatted(.dateTime.day())
         let endDay = end.formatted(.dateTime.day())
         if calendar.component(.month, from: start) == calendar.component(.month, from: end),
-           calendar.component(.year, from: start) == calendar.component(.year, from: end) {
+           calendar.component(.year, from: start) == calendar.component(.year, from: end)
+        {
             return "\(startDay)-\(endDay) \(end.formatted(.dateTime.month(.abbreviated).year()))"
         }
         return "\(startDay) \(start.formatted(.dateTime.month(.abbreviated))) - \(endDay) \(end.formatted(.dateTime.month(.abbreviated).year()))"

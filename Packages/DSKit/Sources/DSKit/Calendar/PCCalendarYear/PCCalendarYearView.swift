@@ -1,5 +1,5 @@
 //
-//  USCalendarYear.swift
+//  PCCalendarYearView.swift
 //  USkateAppV2
 //
 //  Created by Oleg Bragin on 25.01.2026.
@@ -14,18 +14,18 @@ public struct PCCalendarYearView: View {
     @GestureState private var tempMagnification: CGFloat = 1.0
     @Environment(\.pcVibe) private var vibe
     @State private var isYearPickerPresented = false
-    
+
     var onLongPress: (() -> Void)?
     /// Invoked when the user picks a year. The feature layer rebuilds the month
     /// matrix for the chosen year and writes it into the model.
     var onYearSelect: ((Int) -> Void)?
-    
+
     public static let yearRange: ClosedRange<Int> = 2000...2100
-    
+
     private static let monthColumnSpacing: CGFloat = 8
     private static let minMonthCellSize: CGFloat = 28
     private static let minMonthWidth: CGFloat = minMonthCellSize * 7
-    
+
     private static func maxColumns(forWidth width: CGFloat) -> Int {
         // Allow the column count to scale down with the available width. The
         // previous hard `3` floor forced tiny, hard-to-tap day cells (≈17pt)
@@ -34,9 +34,9 @@ public struct PCCalendarYearView: View {
         // regions — making day taps land on the wrong (adjacent-month) cell.
         max(3, Int(floor(width / minMonthWidth)))
     }
-    
+
     private static var columnsCache: [Int: [GridItem]] = [:]
-    
+
     private var gridColumns: [GridItem] {
         let count = viewModel.numberOfColumns
         if let cached = Self.columnsCache[count] {
@@ -46,13 +46,13 @@ public struct PCCalendarYearView: View {
         Self.columnsCache[count] = columns
         return columns
     }
-    
+
     public init(viewModel: PCCalendarYearModel, onLongPress: (() -> Void)? = nil, onYearSelect: ((Int) -> Void)? = nil) {
         self.viewModel = viewModel
         self.onLongPress = onLongPress
         self.onYearSelect = onYearSelect
     }
-    
+
     public var body: some View {
         VStack(spacing: 0) {
             yearHeader
@@ -141,7 +141,7 @@ public struct PCCalendarYearView: View {
             }
         }
     }
-    
+
     private var yearHeader: some View {
         HStack {
             Spacer()
@@ -171,7 +171,7 @@ public struct PCCalendarYearView: View {
             )
         }
     }
-    
+
     private func scrollToTargetMonth(using proxy: ScrollViewProxy) {
         guard let target = viewModel.targetMonthIndex else { return }
         proxy.scrollTo(target, anchor: .top)

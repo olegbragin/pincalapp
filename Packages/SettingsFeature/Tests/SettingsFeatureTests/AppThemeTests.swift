@@ -1,10 +1,10 @@
-import Testing
+
 import SwiftUI
+import Testing
 import SettingsFeature
 
 @Suite("AppTheme Tests")
 struct AppThemeTests {
-
     @Test("titles match the expected labels")
     func titles() {
         #expect(AppTheme.system.title == "System")

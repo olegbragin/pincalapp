@@ -5,23 +5,41 @@
 //  Created by Oleg Bragin on 04.08.2026.
 //
 
-import Testing
 import Foundation
-import ObjectBox
-import DSKit
+import Testing
 import CoreDomain
+import DSKit
+import ObjectBox
 @testable import CorePersistence
 @testable import SingleCalendarFeature
 
 private struct NoopCalendarRepository: CalendarRepository {
-    func getCalendar(id: Int64) async throws -> CalendarDataSource? { nil }
+    func getCalendar(id: Int64) async throws -> CalendarDataSource? {
+        nil
+    }
+
     @discardableResult
-    func saveCalendar(_ calendar: CalendarDataSource) async throws -> Int64 { 0 }
+    func saveCalendar(_ calendar: CalendarDataSource) async throws -> Int64 {
+        0
+    }
+
     @discardableResult
-    func deleteCalendar(_ calendarId: Int64) async throws -> Int64 { calendarId }
-    func getAllCalendars() async throws -> [CalendarDataSource] { [] }
-    func getActiveCalendars() async throws -> [CalendarDataSource] { [] }
-    func getArchivedCalendars() async throws -> [CalendarDataSource] { [] }
+    func deleteCalendar(_ calendarId: Int64) async throws -> Int64 {
+        calendarId
+    }
+
+    func getAllCalendars() async throws -> [CalendarDataSource] {
+        []
+    }
+
+    func getActiveCalendars() async throws -> [CalendarDataSource] {
+        []
+    }
+
+    func getArchivedCalendars() async throws -> [CalendarDataSource] {
+        []
+    }
+
     func archiveCalendar(_ calendarId: Int64) async throws {}
     func restoreCalendar(_ calendarId: Int64) async throws {}
     func removeEvents(_ eventIds: [Int64], calendarId: Int64) async throws {}
@@ -29,9 +47,8 @@ private struct NoopCalendarRepository: CalendarRepository {
 
 @MainActor
 struct EventBatchCreationTests {
-    
     // MARK: - Helpers
-    
+
     private func date(year: Int, month: Int, day: Int) -> Date {
         var components = DateComponents()
         components.year = year
@@ -39,35 +56,37 @@ struct EventBatchCreationTests {
         components.day = day
         return Calendar.current.date(from: components)!
     }
-    
+
     private func event(_ name: String = "Event1", day: Int, color: String = "eventColorOption1", timestamp: UUID? = nil) -> EventDataSource {
         .init(name: name, date: date(year: 2026, month: 6, day: day), color: color, timestamp: timestamp)
     }
-    
+
     private func waitForBatchCount(_ expected: Int, in store: Store, timeout: TimeInterval = 10) async throws -> Bool {
         let batchBox = store.box(for: PPEventBatch.self)
         let deadline = Date().addingTimeInterval(timeout)
         while Date() < deadline {
-            if try batchBox.all().count >= expected { return true }
+            if try batchBox.all().count >= expected {
+                return true
+            }
             try await Task.sleep(for: .milliseconds(50))
         }
         return try batchBox.all().count >= expected
     }
-    
+
     // MARK: - The event list, projected from the store
 
-    // These four used to test `prepare(with:)` and `apply(with:)` on the list view model.
-    // Neither method survives: staging is `PCEventBatchAssembleUnitOfWork.new` and applying an edited
-    // event is `persistEventDraft` in the reducer, both already covered there.
-    // What the tests were really guarding is kept, because it is still a live invariant —
-    // a batch with two events sharing a `pendingID` could not be told apart.
+    /// These four used to test `prepare(with:)` and `apply(with:)` on the list view model.
+    /// Neither method survives: staging is `PCEventBatchAssembleUnitOfWork.new` and applying an edited
+    /// event is `persistEventDraft` in the reducer, both already covered there.
+    /// What the tests were really guarding is kept, because it is still a live invariant —
+    /// a batch with two events sharing a `pendingID` could not be told apart.
     @MainActor
-    @Test func theAssemblyMintsUniqueIDsAndSortsByDate() {
+    @Test func theAssemblyMintsUniqueIDsAndSortsByDate() throws {
         let store = Fixture.makeStore(persistence: InMemoryCalendarPersisting())
         store.send(.startNewBatch(on: Fixture.day(15)))
         store.send(.toggleDay(Fixture.day(3)))
 
-        let events = store.state.assembly!.batch.events
+        let events = try #require(store.state.assembly?.batch.events)
         #expect(events.count == 2)
         // Placeholders carry the default name (§5.4) — the user names the batch, not each
         // day, and the name only has to be distinct enough to tell the rows apart, which
@@ -81,17 +100,17 @@ struct EventBatchCreationTests {
     }
 
     @MainActor
-    @Test func editingAnEventRewritesItInPlaceRatherThanAppending() {
+    @Test func editingAnEventRewritesItInPlaceRatherThanAppending() throws {
         let store = Fixture.makeStore(persistence: InMemoryCalendarPersisting())
         store.send(.startNewBatch(on: Fixture.day(3)))
         store.send(.toggleDay(Fixture.day(4)))
-        let target = store.state.assembly!.batch.events[0]
+        let target = try #require(store.state.assembly?.batch.events[0])
 
         store.send(.openEvent(pendingID: target.pendingID))
         store.send(.setEventName("Swim"))
         store.send(.setEventColor(.option3))
 
-        let events = store.state.assembly!.batch.events
+        let events = try #require(store.state.assembly?.batch.events)
         #expect(
             store.state.stage != .idle,
             "still in the event editor: the batch was rewritten by the keystroke, not by leaving"

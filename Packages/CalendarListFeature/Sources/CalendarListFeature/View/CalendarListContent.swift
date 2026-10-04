@@ -1,3 +1,4 @@
+
 import SwiftUI
 import CoreDomain
 import DSKit
@@ -41,14 +42,14 @@ public struct CalendarListContent: View {
         self.selectedCalendarID = selectedCalendarID
         self.onSelectCalendar = onSelectCalendar
     }
-    
+
     private var columns: [GridItem] {
         switch displayMode {
         case .list: return [GridItem(.flexible(), spacing: 12)]
         case .grid: return [GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12)]
         }
     }
-    
+
     public var body: some View {
         if calendars.isEmpty {
             CalendarEmptyStateView(isArchived: isArchived)
@@ -131,7 +132,7 @@ public struct CalendarListContent: View {
     CalendarListContent(
         calendars: [
             PinCalendar(id: 1, name: "My Calendar", year: 2026, numberOfColumns: 3),
-            PinCalendar(id: 2, name: "Work", year: 2026, numberOfColumns: 2)
+            PinCalendar(id: 2, name: "Work", year: 2026, numberOfColumns: 2),
         ],
         displayMode: .grid,
         isArchived: false,

@@ -10,9 +10,9 @@ import SwiftUI
 public struct PCCalendarDayView: View {
     @Environment(\.pcVibe) private var vibe
     @Bindable var model: PCCalendarDayModel
-    
+
     var cellSize: CGFloat
-    
+
     public var body: some View {
         ZStack {
             PCCalendarDayEventView(

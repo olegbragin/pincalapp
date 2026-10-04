@@ -26,7 +26,9 @@ public enum PCEventSelectionStage: Equatable {
     /// reporting something adjacent, so a test that means "the list for this day" cannot
     /// quietly pass against a state that is not a day list.
     public var asDayList: Date? {
-        if case .dayList(let day) = self { return day }
+        if case let .dayList(day) = self {
+            return day
+        }
         return nil
     }
 }

@@ -25,7 +25,6 @@ import DSKit
 @MainActor
 @Suite("Editing an event then leaving its batch does not duplicate the batch")
 struct EventEditorThenBatchSaveDuplicateTests {
-
     @Test func editingEventThenLeavingBatchDoesNotDuplicateNewBatch() {
         let persistence = InMemoryCalendarPersisting()
         let store = Fixture.makeStore(persistence: persistence)

@@ -19,7 +19,6 @@ import DSKit
 @MainActor
 @Suite("AddEditEventBatchViewModel")
 struct AddEditEventBatchViewModelTests {
-
     private func makeContext(
         batches: [CalendarEventBatch] = []
     ) -> (AddEditEventBatchViewModel, PCEventSelectionManager, InMemoryCalendarPersisting) {

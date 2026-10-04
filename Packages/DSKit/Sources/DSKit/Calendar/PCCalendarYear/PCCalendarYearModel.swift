@@ -5,15 +5,15 @@
 //  Created by Oleg Bragin on 01.02.2026.
 //
 
+import CoreGraphics
 import Foundation
 import Observation
-import CoreGraphics
 
 @MainActor
 @Observable
 public final class PCCalendarYearModel {
     public var numberOfColumns: Int = 3
-    
+
     public var maximumNumberOfColumns: Int = 3 {
         didSet {
             guard maximumNumberOfColumns != oldValue else { return }
@@ -23,17 +23,17 @@ public final class PCCalendarYearModel {
             }
         }
     }
-    
+
     public var numberOfCurrentMonth: Int = 0
     /// The month (1...12) the calendar should scroll to. Set by the feature layer,
     /// which owns the calendar/date logic; the view just reads `targetMonthIndex`.
     public var scrollTargetMonth: Int?
-    
+
     /// The year the month matrix was built for.
     public var year: Int
-    
+
     public var indexOfCurrentMonth: Int? {
-        return months.firstIndex { $0.number == numberOfCurrentMonth }
+        months.firstIndex { $0.number == numberOfCurrentMonth }
     }
 
     /// The index of the month to scroll to: the explicitly-set target month, or
@@ -50,7 +50,7 @@ public final class PCCalendarYearModel {
     /// recomputed) because the day models inside are mutated in place to reflect
     /// event colors, so the views keep binding to the same instances.
     public var months: [PCCalendarMonthModel]
-    
+
     public init(
         numberOfCurrentMonth: Int = 0,
         numberOfColumns: Int = 3,

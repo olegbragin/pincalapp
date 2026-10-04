@@ -19,7 +19,6 @@
 import XCTest
 
 final class BatchEditorKnownBugTests: XCTestCase {
-
     override func setUpWithError() throws {
         continueAfterFailure = false
     }
@@ -34,7 +33,7 @@ final class BatchEditorKnownBugTests: XCTestCase {
     private let batchName = "Window"
 
     @MainActor
-    func testRemovingThreeOfFourDaysLeavesTheBatchWithTheFourth() throws {
+    func testRemovingThreeOfFourDaysLeavesTheBatchWithTheFourth() {
         let app = KeyboardAvoidanceTestSupport.launchSeededApp()
         KeyboardAvoidanceTestSupport.openCalendarDetail(app, named: "UI Test Calendar")
 

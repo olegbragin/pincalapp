@@ -7,16 +7,9 @@
 
 import SwiftUI
 
-private struct CalendarCacheEnvironmentKey: EnvironmentKey {
-    static let defaultValue: CalendarCache? = nil
-}
-
-extension EnvironmentValues {
+public extension EnvironmentValues {
     /// The app-wide calendar cache. Injected once at the app root so views (and
     /// the view models they construct) can read it from `@Environment` instead
     /// of threading it through every initializer.
-    public var calendarCache: CalendarCache? {
-        get { self[CalendarCacheEnvironmentKey.self] }
-        set { self[CalendarCacheEnvironmentKey.self] = newValue }
-    }
+    @Entry var calendarCache: CalendarCache?
 }

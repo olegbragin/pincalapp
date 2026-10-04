@@ -8,7 +8,7 @@ let package = Package(
         .library(
             name: "AppNavigation",
             targets: ["AppNavigation"]
-        )
+        ),
     ],
     dependencies: [],
     targets: [
@@ -21,7 +21,7 @@ let package = Package(
             name: "AppNavigationTests",
             dependencies: ["AppNavigation"],
             path: "Tests/AppNavigationTests"
-        )
+        ),
     ],
-    swiftLanguageModes: [.v6],
+    swiftLanguageModes: [.v6]
 )

@@ -8,12 +8,11 @@
 import Foundation
 import ObjectBox
 
-public struct ObjectBoxFactory {
+public enum ObjectBoxFactory {
     /// Creates a persistent store for production use
     public static func makePersistentStore() -> Store {
         let dbPath = try! getDatabasePath().path
-        let store = try! Store(directoryPath: dbPath)
-        return store
+        return try! Store(directoryPath: dbPath)
     }
 
     /// In-memory store for tests/previews — uses ObjectBox `memory:` prefix (no disk I/O)
@@ -28,8 +27,9 @@ public struct ObjectBoxFactory {
             for: .applicationSupportDirectory,
             in: .userDomainMask,
             appropriateFor: nil,
-            create: true)
-            .appendingPathComponent(bundleIdentifier)
+            create: true
+        )
+        .appendingPathComponent(bundleIdentifier)
         let directory = appSupport.appendingPathComponent(databaseName)
         try FileManager.default.createDirectory(
             at: directory,

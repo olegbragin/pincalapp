@@ -1,11 +1,11 @@
-import Testing
+
 import Foundation
+import Testing
 import DSKit
 
 @MainActor
 @Suite("PCTimeoutProgress Tests")
 struct PCTimeoutProgressTests {
-
     @Test("Completes after the duration and reports completion")
     func completesAfterDuration() async {
         let progress = PCTimeoutProgress(duration: 0.05)

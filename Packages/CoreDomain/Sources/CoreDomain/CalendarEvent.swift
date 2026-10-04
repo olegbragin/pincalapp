@@ -34,8 +34,13 @@ public struct CalendarEvent: Identifiable, Hashable, Sendable {
     public var date: Date
     public var colorName: String
 
-    public var id: UUID { pendingID }
-    public var isPersisted: Bool { persistedID != nil }
+    public var id: UUID {
+        pendingID
+    }
+
+    public var isPersisted: Bool {
+        persistedID != nil
+    }
 
     public init(
         pendingID: UUID = UUID(),

@@ -19,7 +19,6 @@ import SwiftUI
 /// toast did. Tapping elsewhere does nothing — dismissal is the action button's business,
 /// not a side effect of touching the screen.
 struct PCToastStackModifier: ViewModifier {
-
     let stack: PCTostStack
     let position: PCToastPosition
     let backgroundColor: Color
@@ -50,7 +49,6 @@ struct PCToastStackModifier: ViewModifier {
 /// A single row. Separated from the stack so the existing one-toast presentation can be
 /// expressed in terms of it rather than duplicated.
 struct PCTostView: View {
-
     let toast: PCTost
     let backgroundColor: Color
     let onDismiss: () -> Void
@@ -116,7 +114,6 @@ struct PCTostView: View {
 /// by the stack's own scheduled removal and a second timer would be a second source of truth
 /// for when the toast goes away.
 private struct PCTostCountdownBar: View {
-
     let duration: Duration
     @State private var startedAt: Date?
 

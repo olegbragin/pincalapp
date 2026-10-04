@@ -8,7 +8,7 @@
 import Foundation
 import ObjectBox
 
-struct TestDataSeeder {
+enum TestDataSeeder {
     static func seedUITestData(into store: Store) {
         let calendarBox = store.box(for: PPCalendar.self)
         let batchBox = store.box(for: PPEventBatch.self)
@@ -40,7 +40,7 @@ struct TestDataSeeder {
         // the suite agree on the clock and need agree on nothing else.
         let events1 = [
             PPEvent(name: "Event1", color: "eventColorOption1", date: date(year: year, month: month, day: 1)),
-            PPEvent(name: "Event1", color: "eventColorOption1", date: date(year: year, month: month, day: 2))
+            PPEvent(name: "Event1", color: "eventColorOption1", date: date(year: year, month: month, day: 2)),
         ]
         try? eventBox.put(events1)
         batch1.events.replace(events1)

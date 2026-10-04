@@ -22,7 +22,9 @@ public enum PCColorOption: CaseIterable, Equatable, Hashable {
     /// the picker offers" is a product decision that has exactly one answer and several
     /// places that need it. Before this existed a new batch had *no* colour, so its Save was
     /// disabled and the user had to go looking for the picker to do anything at all.
-    public static var firstAvailable: PCColorOption { .option1 }
+    public static var firstAvailable: PCColorOption {
+        .option1
+    }
 
     public var colorName: String {
         switch self {

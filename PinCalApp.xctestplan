@@ -1,85 +1,87 @@
 {
-  "configurations": [
+  "configurations" : [
     {
-      "id": "2C88478D-7087-4B2C-AF59-2897C113FDF7",
-      "name": "Test Scheme Action",
-      "options": {}
+      "id" : "2C88478D-7087-4B2C-AF59-2897C113FDF7",
+      "name" : "Test Scheme Action",
+      "options" : {
+
+      }
     }
   ],
-  "defaultOptions": {
-    "performanceAntipatternCheckerEnabled": true,
-    "targetForVariableExpansion": {
-      "containerPath": "container:PinCalApp.xcodeproj",
-      "identifier": "D7B935782FA90E7A00E5A62D",
-      "name": "PinCalApp"
+  "defaultOptions" : {
+    "performanceAntipatternCheckerEnabled" : true,
+    "targetForVariableExpansion" : {
+      "containerPath" : "container:PinCalApp.xcodeproj",
+      "identifier" : "D7B935782FA90E7A00E5A62D",
+      "name" : "PinCalApp"
     }
   },
-  "testTargets": [
+  "testTargets" : [
     {
-      "parallelizable": false,
-      "target": {
-        "containerPath": "container:PinCalApp.xcodeproj",
-        "identifier": "D7B935852FA90E7C00E5A62D",
-        "name": "PinCalAppTests"
+      "parallelizable" : true,
+      "target" : {
+        "containerPath" : "container:PinCalApp.xcodeproj",
+        "identifier" : "D7B935852FA90E7C00E5A62D",
+        "name" : "PinCalAppTests"
       }
     },
     {
-      "target": {
-        "containerPath": "container:PinCalApp.xcodeproj",
-        "identifier": "D7B9358F2FA90E7C00E5A62D",
-        "name": "PinCalAppUITests"
+      "target" : {
+        "containerPath" : "container:PinCalApp.xcodeproj",
+        "identifier" : "D7B9358F2FA90E7C00E5A62D",
+        "name" : "PinCalAppUITests"
       }
     },
     {
-      "parallelizable": true,
-      "target": {
-        "containerPath": "container:Packages/AppNavigation",
-        "identifier": "AppNavigationTests",
-        "name": "AppNavigationTests"
+      "parallelizable" : true,
+      "target" : {
+        "containerPath" : "container:Packages\/AppNavigation",
+        "identifier" : "AppNavigationTests",
+        "name" : "AppNavigationTests"
       }
     },
     {
-      "target": {
-        "containerPath": "container:Packages/CalendarListFeature",
-        "identifier": "CalendarListFeatureTests",
-        "name": "CalendarListFeatureTests"
+      "target" : {
+        "containerPath" : "container:Packages\/CalendarListFeature",
+        "identifier" : "CalendarListFeatureTests",
+        "name" : "CalendarListFeatureTests"
       }
     },
     {
-      "target": {
-        "containerPath": "container:Packages/CoreDomain",
-        "identifier": "CoreDomainTests",
-        "name": "CoreDomainTests"
+      "target" : {
+        "containerPath" : "container:Packages\/CoreDomain",
+        "identifier" : "CoreDomainTests",
+        "name" : "CoreDomainTests"
       }
     },
     {
-      "target": {
-        "containerPath": "container:Packages/SingleCalendarFeature",
-        "identifier": "SingleCalendarFeatureTests",
-        "name": "SingleCalendarFeatureTests"
+      "target" : {
+        "containerPath" : "container:Packages\/SingleCalendarFeature",
+        "identifier" : "SingleCalendarFeatureTests",
+        "name" : "SingleCalendarFeatureTests"
       }
     },
     {
-      "target": {
-        "containerPath": "container:Packages/SettingsFeature",
-        "identifier": "SettingsFeatureTests",
-        "name": "SettingsFeatureTests"
+      "target" : {
+        "containerPath" : "container:Packages\/SettingsFeature",
+        "identifier" : "SettingsFeatureTests",
+        "name" : "SettingsFeatureTests"
       }
     },
     {
-      "target": {
-        "containerPath": "container:Packages/DSKit",
-        "identifier": "DSKitTests",
-        "name": "DSKitTests"
+      "target" : {
+        "containerPath" : "container:Packages\/DSKit",
+        "identifier" : "DSKitTests",
+        "name" : "DSKitTests"
       }
     },
     {
-      "target": {
-        "containerPath": "container:Packages/CorePersistence",
-        "identifier": "CorePersistenceTests",
-        "name": "CorePersistenceTests"
+      "target" : {
+        "containerPath" : "container:Packages\/CorePersistence",
+        "identifier" : "CorePersistenceTests",
+        "name" : "CorePersistenceTests"
       }
     }
   ],
-  "version": 1
+  "version" : 1
 }

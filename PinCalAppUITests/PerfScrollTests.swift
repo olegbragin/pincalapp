@@ -8,9 +8,8 @@
 import XCTest
 
 final class PerfScrollTests: XCTestCase {
-
     @MainActor
-    func testScrollYearCalendarAndBatchEditor() throws {
+    func testScrollYearCalendarAndBatchEditor() {
         let app = KeyboardAvoidanceTestSupport.launchSeededApp()
         KeyboardAvoidanceTestSupport.openCalendarDetail(app, named: "UI Test Calendar")
 

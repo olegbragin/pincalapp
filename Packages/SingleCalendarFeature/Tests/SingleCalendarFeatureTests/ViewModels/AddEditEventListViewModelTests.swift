@@ -14,7 +14,6 @@ import DSKit
 @MainActor
 @Suite("AddEditEventListViewModel")
 struct AddEditEventListViewModelTests {
-
     private func makeContext() -> (AddEditEventListViewModel, PCEventSelectionManager) {
         let store = Fixture.makeStore(persistence: InMemoryCalendarPersisting())
         return (AddEditEventListViewModel(store: store), store)
@@ -69,7 +68,7 @@ struct AddEditEventListViewModelTests {
     }
 
     @Test("open dispatches openEvent and stages a draft")
-    func openDispatches() {
+    func openDispatches() throws {
         let (vm, store) = makeContext()
         store.send(.startNewBatch(on: Fixture.day(4)))
         let target = vm.events[0]
@@ -77,6 +76,6 @@ struct AddEditEventListViewModelTests {
         vm.open(target)
 
         #expect(store.state.eventDraft == target)
-        #expect(store.state.stage == .eventEditor(batchPendingID: store.state.assembly!.batch.pendingID, eventPendingID: target.pendingID))
+        #expect(try store.state.stage == .eventEditor(batchPendingID: #require(store.state.assembly?.batch.pendingID), eventPendingID: target.pendingID))
     }
 }

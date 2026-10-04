@@ -9,4 +9,4 @@ import Testing
 @testable import PinCalApp
 
 @MainActor
-struct PinCalAppTests { }
+struct PinCalAppTests {}

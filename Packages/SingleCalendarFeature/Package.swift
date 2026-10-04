@@ -8,9 +8,9 @@ let package = Package(
         .library(
             name: "SingleCalendarFeature",
             targets: [
-                "SingleCalendarFeature"
+                "SingleCalendarFeature",
             ]
-        )
+        ),
     ],
     dependencies: [
         .package(
@@ -28,7 +28,7 @@ let package = Package(
         .package(
             url: "https://github.com/objectbox/objectbox-swift-spm",
             from: "5.3.0"
-        )
+        ),
     ],
     targets: [
         .target(
@@ -38,11 +38,11 @@ let package = Package(
             dependencies: [
                 "DSKit",
                 "CoreDomain",
-                "AppNavigation"
+                "AppNavigation",
             ],
             path: "Sources/SingleCalendarFeature",
             resources: [
-                .process("Resources")
+                .process("Resources"),
             ]
         ),
         .testTarget(
@@ -53,10 +53,10 @@ let package = Package(
                 "DSKit",
                 "CoreDomain",
                 "AppNavigation",
-                .product(name: "ObjectBox.xcframework", package: "objectbox-swift-spm")
+                .product(name: "ObjectBox.xcframework", package: "objectbox-swift-spm"),
             ],
             path: "Tests/SingleCalendarFeatureTests"
-        )
+        ),
     ],
-    swiftLanguageModes: [.v6],
+    swiftLanguageModes: [.v6]
 )

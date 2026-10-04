@@ -1,7 +1,7 @@
+
 import XCTest
 
 final class PinCalAppUITests: XCTestCase {
-
     override func setUpWithError() throws {
         continueAfterFailure = false
     }
@@ -13,7 +13,7 @@ final class PinCalAppUITests: XCTestCase {
     }
 
     @MainActor
-    func testExample() throws {
+    func testExample() {
         let app = XCUIApplication()
         app.launch()
     }
@@ -40,7 +40,7 @@ final class PinCalAppUITests: XCTestCase {
     }
 
     @MainActor
-    func testNavigationToCalendarAndBack() throws {
+    func testNavigationToCalendarAndBack() {
         let app = XCUIApplication()
         app.launchArguments = ["-UITestSeedData", "-UITestColumns", "1", "-UITestNameAutosaveSeconds", "0"]
         app.launch()
@@ -70,7 +70,7 @@ final class PinCalAppUITests: XCTestCase {
     }
 
     @MainActor
-    func testiPadSidebarSelectsDetailCalendar() throws {
+    func testiPadSidebarSelectsDetailCalendar() {
         let app = XCUIApplication()
         app.launchArguments = ["-UITestSeedData", "-UITestColumns", "1", "-UITestNameAutosaveSeconds", "0"]
         app.launch()
@@ -81,7 +81,8 @@ final class PinCalAppUITests: XCTestCase {
         let firstCalendar = app.staticTexts["UI Test Calendar"].firstMatch
         let secondCalendar = app.staticTexts["Second Calendar"].firstMatch
         guard firstCalendar.waitForExistence(timeout: 5),
-              secondCalendar.waitForExistence(timeout: 3) else {
+              secondCalendar.waitForExistence(timeout: 3)
+        else {
             return
         }
 
@@ -131,7 +132,7 @@ final class PinCalAppUITests: XCTestCase {
     /// stays on the calendar root, so the test never has to unwind an editor before switching,
     /// and the switch happens from the screen the user is actually on.
     @MainActor
-    func testEachCalendarShowsOnlyItsOwnBatches() throws {
+    func testEachCalendarShowsOnlyItsOwnBatches() {
         let app = KeyboardAvoidanceTestSupport.launchSeededApp()
         KeyboardAvoidanceTestSupport.openCalendarDetail(app, named: "UI Test Calendar")
 
@@ -202,7 +203,7 @@ final class PinCalAppUITests: XCTestCase {
     /// The session is left deliberately open: no Confirm, no Cancel, no Back. That is the state
     /// the switch has to clean up.
     @MainActor
-    func testSwitchingCalendarEndsAMultiselectSession() throws {
+    func testSwitchingCalendarEndsAMultiselectSession() {
         let app = KeyboardAvoidanceTestSupport.launchSeededApp()
         KeyboardAvoidanceTestSupport.openCalendarDetail(app, named: "UI Test Calendar")
 
@@ -240,14 +241,14 @@ final class PinCalAppUITests: XCTestCase {
     }
 
     @MainActor
-    func testLaunchPerformance() throws {
+    func testLaunchPerformance() {
         measure(metrics: [XCTApplicationLaunchMetric()]) {
             XCUIApplication().launch()
         }
     }
 
     @MainActor
-    func testCalendarNameEditingKeyboardScroll() throws {
+    func testCalendarNameEditingKeyboardScroll() {
         let app = XCUIApplication()
         app.launchArguments = ["-UITestSeedData", "-UITestColumns", "1", "-UITestNameAutosaveSeconds", "0"]
         app.launch()
@@ -336,7 +337,7 @@ final class PinCalAppUITests: XCTestCase {
     }
 
     @MainActor
-    func testEditingBatchRemovesToggledOffEventsFromCalendar() throws {
+    func testEditingBatchRemovesToggledOffEventsFromCalendar() {
         let app = KeyboardAvoidanceTestSupport.launchSeededApp()
         KeyboardAvoidanceTestSupport.openCalendarDetail(app, named: "UI Test Calendar")
 
@@ -361,23 +362,31 @@ final class PinCalAppUITests: XCTestCase {
         // survives every removal, so a mis-tap on the final day is still undoable by tapping
         // it again. The app returns straight to the single calendar view.
         editorBack.tap()
-        XCTAssertTrue(editorBack.waitForNonExistence(timeout: 3),
-                      "Batch editor should dismiss after Back")
+        XCTAssertTrue(
+            editorBack.waitForNonExistence(timeout: 3),
+            "Batch editor should dismiss after Back"
+        )
 
         // Removed events must not reopen the batch list.
-        XCTAssertFalse(app.staticTexts["Women Cycle"].waitForExistence(timeout: 2),
-                       "Removed events must not reopen the batch list")
+        XCTAssertFalse(
+            app.staticTexts["Women Cycle"].waitForExistence(timeout: 2),
+            "Removed events must not reopen the batch list"
+        )
 
         // Back on the single calendar, tapping the day must NOT show the batch list again.
         KeyboardAvoidanceTestSupport.tapDay(day: 1, in: app)
-        XCTAssertTrue(app.buttons["batch-editor-back-button"].waitForExistence(timeout: 5),
-                      "Tapping an empty day should open the batch editor directly")
-        XCTAssertFalse(app.staticTexts["Women Cycle"].waitForExistence(timeout: 2),
-                       "Removed events must not reopen the batch list")
+        XCTAssertTrue(
+            app.buttons["batch-editor-back-button"].waitForExistence(timeout: 5),
+            "Tapping an empty day should open the batch editor directly"
+        )
+        XCTAssertFalse(
+            app.staticTexts["Women Cycle"].waitForExistence(timeout: 2),
+            "Removed events must not reopen the batch list"
+        )
     }
 
     @MainActor
-    func testBatchListStillShowsBatchAfterRemovingAnchorDay() throws {
+    func testBatchListStillShowsBatchAfterRemovingAnchorDay() {
         let app = KeyboardAvoidanceTestSupport.launchSeededApp()
         KeyboardAvoidanceTestSupport.openCalendarDetail(app, named: "UI Test Calendar")
 
@@ -418,8 +427,10 @@ final class PinCalAppUITests: XCTestCase {
         // disabled (the batch had no colour), so all three events survived, the batch still
         // occurred on day 11, and the assertion was satisfied by a batch nobody had
         // modified. Nothing gates on a colour now, so the trap is gone with the button.
-        XCTAssertTrue(cycle.waitForExistence(timeout: 5),
-                      "After removing the anchor day, the save returns to the surviving day's list, which must contain the batch")
+        XCTAssertTrue(
+            cycle.waitForExistence(timeout: 5),
+            "After removing the anchor day, the save returns to the surviving day's list, which must contain the batch"
+        )
         XCTAssertEqual(
             app.staticTexts.matching(identifier: "Cycle").count, 1,
             "and that list must hold exactly one batch, not two and not none"
@@ -427,7 +438,7 @@ final class PinCalAppUITests: XCTestCase {
     }
 
     @MainActor
-    func testRemovingAnchorDayUncolorsItOnCalendar() throws {
+    func testRemovingAnchorDayUncolorsItOnCalendar() {
         let app = KeyboardAvoidanceTestSupport.launchSeededApp()
         KeyboardAvoidanceTestSupport.openCalendarDetail(app, named: "UI Test Calendar")
 
@@ -442,8 +453,10 @@ final class PinCalAppUITests: XCTestCase {
         // The anchor day is marked right after creation (it has the placeholder event).
         let dayEl = app.descendants(matching: .any).matching(identifier: anchorDay).firstMatch
         XCTAssertTrue(dayEl.waitForExistence(timeout: 5), "Anchor day should be visible on the calendar")
-        XCTAssertTrue(dayEl.label.lowercased().contains("event"),
-                      "Anchor day should be marked after creation; label = \(dayEl.label)")
+        XCTAssertTrue(
+            dayEl.label.lowercased().contains("event"),
+            "Anchor day should be marked after creation; label = \(dayEl.label)"
+        )
 
         // Open the batch, remove the anchor day's event, save.
         XCTAssertTrue(
@@ -465,18 +478,22 @@ final class PinCalAppUITests: XCTestCase {
         // The anchor day must no longer be marked (its event was removed).
         let dayAfter = app.descendants(matching: .any).matching(identifier: anchorDay).firstMatch
         XCTAssertTrue(dayAfter.waitForExistence(timeout: 5), "Anchor day should still be visible")
-        XCTAssertFalse(dayAfter.label.lowercased().contains("event"),
-                       "Anchor day must NOT be marked after removing its event; label = \(dayAfter.label)")
+        XCTAssertFalse(
+            dayAfter.label.lowercased().contains("event"),
+            "Anchor day must NOT be marked after removing its event; label = \(dayAfter.label)"
+        )
 
         // Days that still have events must remain marked.
         let day2 = app.descendants(matching: .any).matching(identifier: addDay1).firstMatch
         XCTAssertTrue(day2.waitForExistence(timeout: 5))
-        XCTAssertTrue(day2.label.lowercased().contains("event"),
-                      "Day 2 should remain marked; label = \(day2.label)")
+        XCTAssertTrue(
+            day2.label.lowercased().contains("event"),
+            "Day 2 should remain marked; label = \(day2.label)"
+        )
     }
 
     @MainActor
-    func testRemovingAllBatchesReturnsToSingleCalendar() throws {
+    func testRemovingAllBatchesReturnsToSingleCalendar() {
         let app = KeyboardAvoidanceTestSupport.launchSeededApp()
         KeyboardAvoidanceTestSupport.openCalendarDetail(app, named: "UI Test Calendar")
 
@@ -505,13 +522,15 @@ final class PinCalAppUITests: XCTestCase {
         // Back on the single calendar view, the batch is deleted and the day is unmarked.
         let dayAfter = app.descendants(matching: .any).matching(identifier: anchorDay).firstMatch
         XCTAssertTrue(dayAfter.waitForExistence(timeout: 5), "Should be back on the single calendar view")
-        XCTAssertFalse(dayAfter.label.lowercased().contains("event"),
-                       "Batch should be deleted and the day unmarked; label = \(dayAfter.label)")
+        XCTAssertFalse(
+            dayAfter.label.lowercased().contains("event"),
+            "Batch should be deleted and the day unmarked; label = \(dayAfter.label)"
+        )
         XCTAssertFalse(app.staticTexts["Cycle"].waitForExistence(timeout: 2), "Batch list should be gone")
     }
 
     @MainActor
-    func testRemovingAllEventsFromBatchDeletesItAndReturnsToCalendar() throws {
+    func testRemovingAllEventsFromBatchDeletesItAndReturnsToCalendar() {
         let app = KeyboardAvoidanceTestSupport.launchSeededApp()
         KeyboardAvoidanceTestSupport.openCalendarDetail(app, named: "UI Test Calendar")
 
@@ -533,12 +552,14 @@ final class PinCalAppUITests: XCTestCase {
         // Back on the single calendar view: the batch is deleted and day 1 unmarked.
         let dayAfter = app.descendants(matching: .any).matching(identifier: day1).firstMatch
         XCTAssertTrue(dayAfter.waitForExistence(timeout: 5), "Should be back on the single calendar view")
-        XCTAssertFalse(dayAfter.label.lowercased().contains("event"),
-                       "Batch should be deleted and day 1 unmarked; label = \(dayAfter.label)")
+        XCTAssertFalse(
+            dayAfter.label.lowercased().contains("event"),
+            "Batch should be deleted and day 1 unmarked; label = \(dayAfter.label)"
+        )
     }
 
     @MainActor
-    func testDeletingAllEventsFromBatchEditorListDeletesBatch() throws {
+    func testDeletingAllEventsFromBatchEditorListDeletesBatch() {
         let app = KeyboardAvoidanceTestSupport.launchSeededApp()
         KeyboardAvoidanceTestSupport.openCalendarDetail(app, named: "UI Test Calendar")
 
@@ -575,13 +596,17 @@ final class PinCalAppUITests: XCTestCase {
         // goes when the user does, so a mis-tap on the last day is still recoverable.
         XCTAssertTrue(editorBack.isEnabled, "An emptied batch must still be leaveable — leaving is the delete")
         editorBack.tap()
-        XCTAssertTrue(editorBack.waitForNonExistence(timeout: 3),
-                      "Leaving an emptied batch deletes it and dismisses the editor")
+        XCTAssertTrue(
+            editorBack.waitForNonExistence(timeout: 3),
+            "Leaving an emptied batch deletes it and dismisses the editor"
+        )
 
         let dayAfter = app.descendants(matching: .any).matching(identifier: day1).firstMatch
         XCTAssertTrue(dayAfter.waitForExistence(timeout: 5), "Should be back on the single calendar view")
-        XCTAssertFalse(dayAfter.label.lowercased().contains("event"),
-                       "Batch deleted via the events list should leave day 1 unmarked; label = \(dayAfter.label)")
+        XCTAssertFalse(
+            dayAfter.label.lowercased().contains("event"),
+            "Batch deleted via the events list should leave day 1 unmarked; label = \(dayAfter.label)"
+        )
     }
 
     // MARK: - Leaving the calendar in multiselect mode resets on reopen
@@ -590,7 +615,7 @@ final class PinCalAppUITests: XCTestCase {
     /// calendar. It must be back in single-select mode (the toolbar button shows
     /// "Multiselect", not "Save").
     @MainActor
-    func testLeavingCalendarInMultiselectModeResetsOnReopen() throws {
+    func testLeavingCalendarInMultiselectModeResetsOnReopen() {
         let app = KeyboardAvoidanceTestSupport.launchSeededApp()
         KeyboardAvoidanceTestSupport.openCalendarDetail(app, named: "UI Test Calendar")
 
@@ -607,10 +632,12 @@ final class PinCalAppUITests: XCTestCase {
         // Must be in single-select mode: "Multiselect" button, no "Save".
         XCTAssertTrue(
             KeyboardAvoidanceTestSupport.waitForToolbarAction("Multiselect", in: app),
-            "After reopening, the calendar should be in single-select mode")
+            "After reopening, the calendar should be in single-select mode"
+        )
         XCTAssertFalse(
             KeyboardAvoidanceTestSupport.toolbarActionExists("Save", in: app),
-            "Save button indicates multiselect mode; should be single")
+            "Save button indicates multiselect mode; should be single"
+        )
     }
 
     // MARK: - Stage 11: the multi-day scenario
@@ -626,7 +653,7 @@ final class PinCalAppUITests: XCTestCase {
     /// STR: multiselect -> pick a colour -> tap two days -> confirm -> save -> re-open each
     /// day and find the same single batch on both.
     @MainActor
-    func testMultiselectTwoDaysProducesOneBatchWithBothDays() throws {
+    func testMultiselectTwoDaysProducesOneBatchWithBothDays() {
         let app = KeyboardAvoidanceTestSupport.launchSeededApp()
         KeyboardAvoidanceTestSupport.openCalendarDetail(app, named: "UI Test Calendar")
 
@@ -639,8 +666,10 @@ final class PinCalAppUITests: XCTestCase {
         // declines `confirmMultiSelectTapped` without one, so the toolbar Save would be a
         // no-op and the test would fail later for the wrong reason.
         let colourOption = app.buttons["color-option-eventColorOption3"]
-        XCTAssertTrue(colourOption.waitForExistence(timeout: 5),
-                      "The expanded colour picker should be visible in a multi-select session")
+        XCTAssertTrue(
+            colourOption.waitForExistence(timeout: 5),
+            "The expanded colour picker should be visible in a multi-select session"
+        )
         colourOption.tap()
 
         // Two empty days. Both must be clear of the seed, which only uses 10 and 12.
@@ -670,8 +699,10 @@ final class PinCalAppUITests: XCTestCase {
                 .matching(identifier: KeyboardAvoidanceTestSupport.dayIdentifier(day: day))
                 .firstMatch
             XCTAssertTrue(cell.waitForExistence(timeout: 5), "Day \(day) should be on the calendar")
-            XCTAssertTrue(cell.label.lowercased().contains("event"),
-                          "Day \(day) should be marked; label = \(cell.label)")
+            XCTAssertTrue(
+                cell.label.lowercased().contains("event"),
+                "Day \(day) should be marked; label = \(cell.label)"
+            )
         }
 
         // The shape assertion. A batch is listed on *every* day it holds an event on, so if
@@ -680,8 +711,11 @@ final class PinCalAppUITests: XCTestCase {
         KeyboardAvoidanceTestSupport.tapDay(day: 17, in: app)
         let card = app.staticTexts[batchName]
         XCTAssertTrue(card.waitForExistence(timeout: 5), "Day 17's list should contain the batch")
-        XCTAssertEqual(app.staticTexts.matching(identifier: batchName).count, 1,
-                       "Day 17's list must hold exactly one batch, not one per day")
+        XCTAssertEqual(
+            app.staticTexts.matching(identifier: batchName).count,
+            1,
+            "Day 17's list must hold exactly one batch, not one per day"
+        )
         card.tap()
 
         // The authoritative check on the shape: one batch, two events.
@@ -692,21 +726,26 @@ final class PinCalAppUITests: XCTestCase {
         batchEditorBack.tap()
 
         KeyboardAvoidanceTestSupport.leaveCurrentScreen(in: app)
-// Leaving dismisses the calendar, so re-open it before tapping a day.
-// On the iPhone the calendar stayed selected and this was not needed, which is
-// why it went unnoticed; on the iPad the leave returns to the *list* and there is
-// no day cell to tap.
+        // Leaving dismisses the calendar, so re-open it before tapping a day.
+        // On the iPhone the calendar stayed selected and this was not needed, which is
+        // why it went unnoticed; on the iPad the leave returns to the *list* and there is
+        // no day cell to tap.
         KeyboardAvoidanceTestSupport.openCalendarDetail(app, named: "UI Test Calendar")
         KeyboardAvoidanceTestSupport.tapDay(day: 18, in: app)
         let sameCard = app.staticTexts[batchName]
-        XCTAssertTrue(sameCard.waitForExistence(timeout: 5),
-                      "Day 18 must list the same single batch, not a second one")
-        XCTAssertEqual(app.staticTexts.matching(identifier: batchName).count, 1,
-                       "Day 18's list must also hold exactly one batch")
+        XCTAssertTrue(
+            sameCard.waitForExistence(timeout: 5),
+            "Day 18 must list the same single batch, not a second one"
+        )
+        XCTAssertEqual(
+            app.staticTexts.matching(identifier: batchName).count,
+            1,
+            "Day 18's list must also hold exactly one batch"
+        )
     }
 
     @MainActor
-    func testEditingEventInBatchPersists() throws {
+    func testEditingEventInBatchPersists() {
         let app = XCUIApplication()
         app.launchArguments = ["-UITestSeedData", "-UITestNameAutosaveSeconds", "0"]
         app.launch()
@@ -766,7 +805,7 @@ final class PinCalAppUITests: XCTestCase {
     }
 
     @MainActor
-    func testTappingExistingEventOpensEditor() throws {
+    func testTappingExistingEventOpensEditor() {
         let app = XCUIApplication()
         app.launchArguments = ["-UITestSeedData", "-UITestNameAutosaveSeconds", "0"]
         app.launch()

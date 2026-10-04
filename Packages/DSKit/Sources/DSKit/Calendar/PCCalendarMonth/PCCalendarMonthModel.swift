@@ -17,7 +17,7 @@ public final class PCCalendarMonthModel: Identifiable {
     public let weekDaySymbols: [String]
     public let weekHeaderModel: PCCalendarWeekHeaderModel
     public let weeks: [PCCalendarWeekModel]
-    
+
     public init(number: Int, label: String, weekDaySymbols: [String], weeks: [PCCalendarWeekModel]) {
         self.id = number
         self.label = label
@@ -29,15 +29,15 @@ public final class PCCalendarMonthModel: Identifiable {
 }
 
 extension PCCalendarMonthModel: Equatable {
-    nonisolated public static func == (lhs: PCCalendarMonthModel, rhs: PCCalendarMonthModel) -> Bool {
+    public nonisolated static func == (lhs: PCCalendarMonthModel, rhs: PCCalendarMonthModel) -> Bool {
         lhs.id == rhs.id &&
-        lhs.label == rhs.label &&
-        lhs.number == rhs.number
+            lhs.label == rhs.label &&
+            lhs.number == rhs.number
     }
 }
 
 extension PCCalendarMonthModel: Hashable {
-    nonisolated public func hash(into hasher: inout Hasher) {
+    public nonisolated func hash(into hasher: inout Hasher) {
         hasher.combine(id)
         hasher.combine(label)
         hasher.combine(number)

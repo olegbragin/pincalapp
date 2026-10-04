@@ -27,7 +27,7 @@ import DSKit
 public final class AddEditEventBatchListViewModel {
     private let store: PCEventSelectionManager
 
-    // View-scoped only — permitted by the "no domain state in a view model" rule.
+    /// View-scoped only — permitted by the "no domain state in a view model" rule.
     var pendingDeletion: [CalendarEventBatch] = []
 
     init(store: PCEventSelectionManager) {
@@ -36,8 +36,13 @@ public final class AddEditEventBatchListViewModel {
 
     // MARK: - Projections
 
-    var eventBatches: [CalendarEventBatch] { store.state.dayBatches }
-    var selectedDay: Date? { store.state.day }
+    var eventBatches: [CalendarEventBatch] {
+        store.state.dayBatches
+    }
+
+    var selectedDay: Date? {
+        store.state.day
+    }
 
     // MARK: - Commands
 

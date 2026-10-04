@@ -12,15 +12,15 @@ class PPEventBatch: Entity {
     var id: Id = 0
     var title: String = ""
     var color: String = ""
-    var date: Date? = nil
-    
+    var date: Date?
+
     var events: ToMany<PPEvent> = nil
-    
+
     // objectbox: backlink = "eventBatches"
     var calendars: ToMany<PPCalendar> = nil
-    
-    init() { }
-    
+
+    init() {}
+
     init(
         id: Id = 0,
         title: String,

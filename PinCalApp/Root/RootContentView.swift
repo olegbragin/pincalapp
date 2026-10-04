@@ -1,7 +1,8 @@
+
 import SwiftUI
+import AppNavigation
 import CalendarListFeature
 import SettingsFeature
-import AppNavigation
 
 struct RootContentView: View {
     @Environment(RootNavigation.self) var navigation

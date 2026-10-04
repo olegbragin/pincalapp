@@ -18,7 +18,6 @@ import DSKit
 /// in the middle of each write means any two writes that overlap will interleave in
 /// `log`, which is exactly the bug `writeChain` exists to make unrepresentable.
 actor RecordingCalendarPersisting: CalendarPersisting {
-
     enum Entry: Equatable {
         case begin(columns: Int, calendarID: Int64)
         case end(columns: Int, calendarID: Int64)
@@ -46,9 +45,13 @@ actor RecordingCalendarPersisting: CalendarPersisting {
         log.append(.end(columns: numberOfColumns, calendarID: id))
     }
 
-    func calendar(id: Int64) async throws -> PinCalendar? { nil }
+    func calendar(id: Int64) async throws -> PinCalendar? {
+        nil
+    }
 
-    func eventBatches(calendarID: Int64) async throws -> [CalendarEventBatch] { [] }
+    func eventBatches(calendarID: Int64) async throws -> [CalendarEventBatch] {
+        []
+    }
 
     /// The deepest nesting ever reached, which is 1 exactly when no two writes overlapped.
     var maximumOverlap: Int {
@@ -66,7 +69,9 @@ actor RecordingCalendarPersisting: CalendarPersisting {
 
     var writtenColumns: [Int] {
         log.compactMap { entry in
-            if case .end(let columns, _) = entry { return columns }
+            if case let .end(columns, _) = entry {
+                return columns
+            }
             return nil
         }
     }
@@ -74,7 +79,6 @@ actor RecordingCalendarPersisting: CalendarPersisting {
 
 @MainActor
 extension RecordingCalendarPersisting {
-
     /// Waits until `expected` writes have landed, or the deadline passes.
     ///
     /// A fixed sleep is the wrong tool here and was a real flake: the write chain is
@@ -86,7 +90,9 @@ extension RecordingCalendarPersisting {
         let deadline = ContinuousClock.now + timeout
         while ContinuousClock.now < deadline {
             let columns = await writtenColumns
-            if columns.count >= expected { return columns }
+            if columns.count >= expected {
+                return columns
+            }
             try? await Task.sleep(for: .milliseconds(10))
         }
         return await writtenColumns
@@ -98,8 +104,13 @@ actor FailingCalendarPersisting: CalendarPersisting {
     private(set) var attempts: [(columns: Int, calendarID: Int64)] = []
     private var shouldFail = false
 
-    func failFromNowOn() { shouldFail = true }
-    func succeedFromNowOn() { shouldFail = false }
+    func failFromNowOn() {
+        shouldFail = true
+    }
+
+    func succeedFromNowOn() {
+        shouldFail = false
+    }
 
     func save(numberOfColumns: Int, eventBatches: [CalendarEventBatch], forCalendar id: Int64) async throws {
         attempts.append((numberOfColumns, id))
@@ -108,10 +119,17 @@ actor FailingCalendarPersisting: CalendarPersisting {
         }
     }
 
-    func calendar(id: Int64) async throws -> PinCalendar? { nil }
-    func eventBatches(calendarID: Int64) async throws -> [CalendarEventBatch] { [] }
+    func calendar(id: Int64) async throws -> PinCalendar? {
+        nil
+    }
 
-    func attemptCount() -> Int { attempts.count }
+    func eventBatches(calendarID: Int64) async throws -> [CalendarEventBatch] {
+        []
+    }
+
+    func attemptCount() -> Int {
+        attempts.count
+    }
 }
 
 enum PersistenceStubError: Error {
@@ -124,7 +142,9 @@ extension FailingCalendarPersisting {
     func waitForAttempts(_ expected: Int, timeout: Duration = .seconds(5)) async {
         let deadline = ContinuousClock.now + timeout
         while ContinuousClock.now < deadline {
-            if await attemptCount() >= expected { return }
+            if await attemptCount() >= expected {
+                return
+            }
             try? await Task.sleep(for: .milliseconds(10))
         }
     }
@@ -133,7 +153,6 @@ extension FailingCalendarPersisting {
 @MainActor
 @Suite("PCEventSelectionManager")
 struct PCEventSelectionManagerTests {
-
     private let gregorian: Calendar = {
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = TimeZone(identifier: "UTC")!
@@ -245,7 +264,7 @@ struct PCEventSelectionManagerTests {
     // MARK: §12.3 — the reported duplicate-batch bug
 
     @Test("A staged batch that comes back under a real id is adopted, and leaving updates that row")
-    func syncAdoptsTheStagedBatch() async throws {
+    func syncAdoptsTheStagedBatch() throws {
         let persistence = RecordingCalendarPersisting()
         let store = makeStore(persistence: persistence)
 
@@ -266,7 +285,7 @@ struct PCEventSelectionManagerTests {
                     name: staged.events[0].name,
                     date: provider.startOfDay(for: day(2)),
                     colorName: staged.events[0].colorName
-                )
+                ),
             ]
         )
         store.send(.syncCalendar(calendarID: 42, batches: [reloaded]))
@@ -282,7 +301,7 @@ struct PCEventSelectionManagerTests {
     // MARK: §12.3 — write ordering
 
     @Test("Rapid column changes write sequentially and the last write is the final state")
-    func writesAreSequentialAndTheLastIsTheFinalState() async throws {
+    func writesAreSequentialAndTheLastIsTheFinalState() async {
         let persistence = RecordingCalendarPersisting()
         let store = makeStore(persistence: persistence)
 
@@ -324,7 +343,7 @@ struct PCEventSelectionManagerTests {
     // MARK: Failed writes
 
     @Test("A failed save is recorded instead of swallowed, and blocks the calendar switch")
-    func failedSaveIsRecordedAndBlocksSwitch() async {
+    func failedSaveIsRecordedAndBlocksSwitch() async throws {
         let persistence = FailingCalendarPersisting()
         let store = makeStore(calendarID: 42, persistence: persistence)
 
@@ -339,7 +358,7 @@ struct PCEventSelectionManagerTests {
             try? await Task.sleep(for: .milliseconds(10))
         }
 
-        let failure = try! #require(store.failedSave)
+        let failure = try #require(store.failedSave)
         #expect(failure.calendarID == 42)
         #expect(failure.numberOfColumns == 6, "the payload that failed is what gets retried")
         #expect(!store.canSwitchCalendar, "an unsaved write must not be switchable-away-from")
@@ -401,8 +420,10 @@ struct PCEventSelectionManagerTests {
 
         // The colour write is the last one, and it must carry the name.
         let written = await persistence.names
-        #expect(written.last == "Swimming",
-                "the colour write superseded the name write but kept the name: \(written)")
+        #expect(
+            written.last == "Swimming",
+            "the colour write superseded the name write but kept the name: \(written)"
+        )
     }
 
     /// And the reverse order: a name write waiting when the user switches calendars must not
@@ -426,12 +447,14 @@ struct PCEventSelectionManagerTests {
 
         #expect(allowed, "a flush is not a failure")
         let written = await persistence.names
-        #expect(written.last == "Swimming",
-                "the last keystroke before a switch is the one most at risk of being lost")
+        #expect(
+            written.last == "Swimming",
+            "the last keystroke before a switch is the one most at risk of being lost"
+        )
     }
 
     @Test("In-flight writes do not block the calendar switch")
-    func inFlightWritesDoNotBlockSwitch() async {
+    func inFlightWritesDoNotBlockSwitch() {
         let persistence = RecordingCalendarPersisting()
         let store = makeStore(calendarID: 42, persistence: persistence)
 

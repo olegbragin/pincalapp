@@ -10,7 +10,7 @@ import SwiftUI
 private struct PCKeyboardInsetModifier: ViewModifier {
     @Environment(PCKeyboardState.self) private var keyboardState
 
-    public func body(content: Content) -> some View {
+    func body(content: Content) -> some View {
         content
             .ignoresSafeArea(.keyboard)
             .safeAreaInset(edge: .bottom, spacing: 0) {
@@ -23,7 +23,7 @@ private struct PCKeyboardInsetModifier: ViewModifier {
 private struct PCKeyboardScrollModifier<FocusedItem: Hashable>: ViewModifier {
     @Binding var focusedItem: FocusedItem?
 
-    public func body(content: Content) -> some View {
+    func body(content: Content) -> some View {
         ScrollViewReader { proxy in
             content
                 .modifier(PCKeyboardInsetModifier())
@@ -37,12 +37,11 @@ private struct PCKeyboardScrollModifier<FocusedItem: Hashable>: ViewModifier {
     }
 }
 
-extension View {
-
+public extension View {
     /// Lifts the content above the keyboard while it is visible.
     ///
     /// Use for static layouts (forms, panels) without scrollable content.
-    public func keyboardAvoidable() -> some View {
+    func keyboardAvoidable() -> some View {
         modifier(PCKeyboardInsetModifier())
     }
 
@@ -50,7 +49,7 @@ extension View {
     /// by ``focusedItem`` whenever it becomes non-nil.
     ///
     /// Tag scrollable items with `.id(item)` matching the bound value.
-    public func keyboardAvoidable<FocusedItem: Hashable>(focusedItem: Binding<FocusedItem?>) -> some View {
+    func keyboardAvoidable(focusedItem: Binding<(some Hashable)?>) -> some View {
         modifier(PCKeyboardScrollModifier(focusedItem: focusedItem))
     }
 }

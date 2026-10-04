@@ -1,10 +1,10 @@
-import Testing
+
 import SwiftUI
+import Testing
 import DSKit
 
 @Suite("PCVibe Tests")
 struct PCVibeTests {
-
     @Test("default vibe has the default id and name")
     func defaultIdentity() {
         #expect(PCVibe.default.id == "default")

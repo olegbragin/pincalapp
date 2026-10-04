@@ -6,8 +6,8 @@
 //
 
 import SwiftUI
-import DSKit
 import AppNavigation
+import DSKit
 
 /// The batch editor.
 ///

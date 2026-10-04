@@ -18,7 +18,6 @@ import DSKit
 /// places for the calendar to disagree with itself.
 @MainActor
 enum PCCalendarMarkerProjector {
-
     /// start-of-day → the colour names of the events on that day, in batch order.
     nonisolated static func colorsByDay(
         from batches: [CalendarEventBatch],

@@ -4,6 +4,6 @@ import PackageDescription
 let package = Package(
     name: "AutoTestRunner",
     targets: [
-        .executableTarget(name: "AutoTestRunner")
+        .executableTarget(name: "AutoTestRunner"),
     ]
 )

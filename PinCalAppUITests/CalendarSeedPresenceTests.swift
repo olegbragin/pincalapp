@@ -26,7 +26,6 @@ import XCTest
 
 @MainActor
 final class CalendarSeedPresenceTests: XCTestCase {
-
     override func setUpWithError() throws {
         continueAfterFailure = false
     }
@@ -98,9 +97,9 @@ final class CalendarSeedPresenceTests: XCTestCase {
 
         if emptyActiveList(in: app).waitForExistence(timeout: 5) {
             XCTFail("""
-                The active calendar list is EMPTY on this device, so no test that assumes a \
-                seeded calendar can pass here. `-UITestSeedData` is not reaching the store.
-                """)
+            The active calendar list is EMPTY on this device, so no test that assumes a \
+            seeded calendar can pass here. `-UITestSeedData` is not reaching the store.
+            """)
             return
         }
 
@@ -124,9 +123,9 @@ final class CalendarSeedPresenceTests: XCTestCase {
             let statics = app.staticTexts.allElementsBoundByIndex.prefix(12)
                 .map { $0.label }.joined(separator: " | ")
             XCTFail("""
-                Opening the seeded calendar rendered no day grid. dayCells=\(present.count). \
-                Visible text: \(statics)
-                """)
+            Opening the seeded calendar rendered no day grid. dayCells=\(present.count). \
+            Visible text: \(statics)
+            """)
             return
         }
         XCTAssertTrue(anyDay.exists, "The calendar should render its day grid once opened")

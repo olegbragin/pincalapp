@@ -7,8 +7,8 @@
 
 import SwiftUI
 import CoreDomain
-import SingleCalendarFeature
 import DSKit
+import SingleCalendarFeature
 
 /// One calendar's detail column.
 ///

@@ -1,5 +1,5 @@
 //
-//  Calendar.swift
+//  PPCalendar.swift
 //  USkateAppV2
 //
 //  Created by Oleg Bragin on 15.02.2026.
@@ -13,14 +13,14 @@ class PPCalendar: Entity {
     var year: Int = 0
     var numberOfColumns: Int = 0
     var isArchived: Bool = false
-    
+
     // objectbox: backlink = "calendars"
     var events: ToMany<PPEvent> = nil
-    
+
     var eventBatches: ToMany<PPEventBatch> = nil
-    
-    init() { }
-    
+
+    init() {}
+
     init(
         id: Id = 0,
         name: String,

@@ -1,3 +1,4 @@
+
 import Foundation
 
 let apiURL = ProcessInfo.processInfo.environment["LIBRETRANSLATE_URL"]
@@ -18,7 +19,7 @@ func findXcstrings(in directory: URL) -> [URL] {
     var files: [URL] = []
     if let enumerator = fm.enumerator(at: directory, includingPropertiesForKeys: nil) {
         for case let url as URL in enumerator {
-            if url.pathExtension == "xcstrings" && url.path.contains("Resources") {
+            if url.pathExtension == "xcstrings", url.path.contains("Resources") {
                 files.append(url)
             }
         }
@@ -43,7 +44,7 @@ func translate(text: String, to lang: String) -> String? {
     var result: String?
     URLSession.shared.dataTask(with: req) { data, response, _ in
         defer { sem.signal() }
-        guard let data = data,
+        guard let data,
               let http = response as? HTTPURLResponse,
               (200...299).contains(http.statusCode),
               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
@@ -67,14 +68,17 @@ func translateFile(at url: URL) throws {
               let su = enEntry["stringUnit"] as? [String: Any],
               let enValue = su["value"] as? String,
               !enValue.isEmpty,
-              enValue != "%@" && enValue != "%lld" else { continue }
+              enValue != "%@", enValue != "%lld" else { continue }
 
         var needsTranslation: [String] = []
         for lang in targetLanguages {
             if let existing = localizations[lang] as? [String: Any],
                let s = existing["stringUnit"] as? [String: Any],
                let state = s["state"] as? String,
-               state == "translated" || state == "new" { continue }
+               state == "translated" || state == "new"
+            {
+                continue
+            }
             needsTranslation.append(lang)
         }
         guard !needsTranslation.isEmpty else { continue }
@@ -82,7 +86,7 @@ func translateFile(at url: URL) throws {
         for lang in needsTranslation {
             if let translated = translate(text: enValue, to: lang) {
                 localizations[lang] = [
-                    "stringUnit": ["state": "translated", "value": translated]
+                    "stringUnit": ["state": "translated", "value": translated],
                 ]
                 count += 1
                 print("  \(key) → \(lang): \(translated)")

@@ -13,9 +13,9 @@ import DSKit
 @Observable
 public final class SettingsViewModel {
     /// The UserDefaults key backing the theme preference.
-    nonisolated public static let themeKey = "appTheme"
+    public nonisolated static let themeKey = "appTheme"
     /// The UserDefaults key backing the selected vibe.
-    nonisolated public static let vibeKey = "appVibe"
+    public nonisolated static let vibeKey = "appVibe"
 
     public var theme: AppTheme {
         didSet { defaults.set(theme.rawValue, forKey: Self.themeKey) }

@@ -7,8 +7,8 @@
 
 import Foundation
 import Observation
-import CorePersistence
 import CoreDomain
+import CorePersistence
 import DSKit
 import SingleCalendarFeature
 
@@ -129,7 +129,9 @@ final class PCCalendarSession {
     /// dropping it. A store is cheap — a state value, a year model, a write chain — and the
     /// number of calendars a person has is small, so an unbounded cache is not worth bounding.
     func eventSelection(for calendarID: Int64) -> PCEventSelectionManager {
-        if let existing = eventSelections[calendarID] { return existing }
+        if let existing = eventSelections[calendarID] {
+            return existing
+        }
         let store = makeEventSelection(calendarID)
         eventSelections[calendarID] = store
         return store

@@ -9,10 +9,10 @@ import SwiftUI
 
 public struct PCColorOptionSheet: View {
     @Binding var selectedColor: PCColorOption?
-    var defaultColor: PCColorOption? = nil
+    var defaultColor: PCColorOption?
     @Environment(\.pcVibe) private var vibe
     @Environment(\.dismiss) private var dismiss
-    
+
     public var body: some View {
         NavigationStack {
             List(PCColorOption.allCases, id: \.self) { colorOption in
@@ -24,12 +24,12 @@ public struct PCColorOptionSheet: View {
                         Circle()
                             .fill(vibe.eventColor(for: colorOption))
                             .frame(width: 28, height: 28)
-                        
+
                         Text(colorOption.name)
                             .foregroundColor(.primary)
-                        
+
                         Spacer()
-                        
+
                         if selectedColor == colorOption {
                             Image(systemName: "checkmark")
                                 .foregroundColor(.accentColor)

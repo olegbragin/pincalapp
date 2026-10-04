@@ -5,8 +5,8 @@
 //  Created by Oleg Bragin on 19.02.2026.
 //
 
-import Observation
 import Foundation
+import Observation
 import SwiftUI
 import CoreDomain
 import DSKit
@@ -58,7 +58,9 @@ public final class CalendarListViewModel {
     var pendingArchive: PinCalendar?
     var isArchiveToastPresented = false
     var archiveToastMessage = ""
-    var archiveToastProgress: Double { archiveCountdown.progress }
+    var archiveToastProgress: Double {
+        archiveCountdown.progress
+    }
 
     /// How long the undo toast stays up.
     ///
@@ -247,11 +249,11 @@ public final class CalendarListViewModel {
     /// which list the store happened to have loaded.
     private func applyChange(_ change: PinCalendarChange) {
         switch change {
-        case .refreshed(let list):
+        case let .refreshed(list):
             withAnimation(.spring(response: 0.4, dampingFraction: 0.75)) {
                 calendars = list.filter(isVisible)
             }
-        case .added(let item), .changed(let item):
+        case let .added(item), let .changed(item):
             withAnimation(.spring(response: 0.4, dampingFraction: 0.75)) {
                 if isVisible(item) {
                     if let idx = calendars.firstIndex(where: { $0.id == item.id }) {
@@ -263,7 +265,7 @@ public final class CalendarListViewModel {
                     calendars.removeAll { $0.id == item.id }
                 }
             }
-        case .removed(let item):
+        case let .removed(item):
             withAnimation(.spring(response: 0.4, dampingFraction: 0.75)) {
                 calendars.removeAll { $0.id == item.id }
             }

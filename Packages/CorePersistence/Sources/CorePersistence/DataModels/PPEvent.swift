@@ -1,5 +1,5 @@
 //
-//  Event.swift
+//  PPEvent.swift
 //  USkateAppV2
 //
 //  Created by Oleg Bragin on 15.02.2026.
@@ -12,12 +12,12 @@ class PPEvent: Entity {
     var id: Id = 0
     var name: String = ""
     var color: String = ""
-    var date: Date = Date()
-    
+    var date: Date = .init()
+
     var calendars: ToMany<PPCalendar> = nil
-    
-    init() { }
-    
+
+    init() {}
+
     init(
         id: Id = 0,
         name: String,

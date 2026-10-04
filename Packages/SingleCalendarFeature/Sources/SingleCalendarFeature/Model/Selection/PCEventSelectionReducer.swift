@@ -39,14 +39,13 @@ public func pcEventSelectionReducer(
     let provider = state.dataProvider
 
     switch action {
-
     // MARK: Entry
 
     case .ensureAssemblyStarted:
         // No change, by design. See the action's declaration.
         break
 
-    case .dayTappedInCalendar(let day):
+    case let .dayTappedInCalendar(day):
         if state.multiSelectMode {
             // No colour, no batch — and this check sits *above* the selection, not below it.
             //
@@ -133,7 +132,7 @@ public func pcEventSelectionReducer(
             requesting(&next, .pushBatchEditor)
         }
 
-    case .startNewBatch(on: let day):
+    case let .startNewBatch(on: day):
         next.day = day
         next.assembly = PCEventBatchAssembleUnitOfWork.new(anchor: day, using: provider)
         // Same as a tapped day: the plus button already carries the day the batch list is
@@ -146,7 +145,7 @@ public func pcEventSelectionReducer(
         next.scrollAnchor = day
         requesting(&next, .pushBatchEditor)
 
-    case .openBatch(let id):
+    case let .openBatch(id):
         guard let batch = state.batches.first(where: { $0.mergeKey == id }) else { break }
         next.day = batch.date
         next.assembly = PCEventBatchAssembleUnitOfWork.existing(batch)
@@ -159,7 +158,6 @@ public func pcEventSelectionReducer(
         // "the markers describe the batches plus whatever is staged", and holding it in one
         // place is cheaper than reasoning about which actions happen to satisfy it.
         requesting(&next, .pushBatchEditor)
-
 
     // MARK: Stage transitions
 
@@ -256,25 +254,25 @@ public func pcEventSelectionReducer(
 
     // MARK: Batch editor
 
-    case .setBatchName(let name):
+    case let .setBatchName(name):
         // Staged in the assembly, merged into `batches`, but marked not-persisted: the store
         // holds the actual write back so consecutive keystrokes coalesce into one. See
         // `PCEventSelectionState.persistsAsTyped`.
         editing(state, &next, persistsAsTyped: true) { $0.renaming(name) }
 
-    case .setBatchColor(let color):
+    case let .setBatchColor(color):
         editing(state, &next) { $0.recoloring(color) }
 
-    case .toggleDay(let day):
+    case let .toggleDay(day):
         guard state.stage == .batchEditor else { break }
         editing(state, &next) { $0.toggling(day: day, using: provider) }
 
-    case .removeEvent(let pendingID):
+    case let .removeEvent(pendingID):
         editing(state, &next) { $0.removingEvent(pendingID: pendingID) }
 
     // MARK: Event editor
 
-    case .openEvent(let pendingID):
+    case let .openEvent(pendingID):
         guard
             let assembly = state.assembly,
             let event = assembly.batch.events.first(where: { $0.pendingID == pendingID })
@@ -286,19 +284,19 @@ public func pcEventSelectionReducer(
         )
         requesting(&next, .pushEventEditor)
 
-    case .setEventName(let name):
+    case let .setEventName(name):
         guard let draft = state.eventDraft else { break }
         next.eventDraft = draft.with(name: name)
         // Debounced for the same reason as `setBatchName`: typing is one edit, not five
         // writes.
         persistEventDraft(state, &next, draft.with(name: name), persistsAsTyped: true)
 
-    case .setEventDate(let date):
+    case let .setEventDate(date):
         guard let draft = state.eventDraft else { break }
         next.eventDraft = draft.with(date: date)
         persistEventDraft(state, &next, draft.with(date: date))
 
-    case .setEventColor(let color):
+    case let .setEventColor(color):
         guard let draft = state.eventDraft else { break }
         let edited = draft.with(colorName: color?.colorName ?? "")
         next.eventDraft = edited
@@ -309,7 +307,7 @@ public func pcEventSelectionReducer(
         next.stage = .batchEditor
         requesting(&next, .pop)
 
-    case .deleteBatches(let list):
+    case let .deleteBatches(list):
         let keys = Set(list.map(\.mergeKey))
         next.batches = state.batches.filter { !keys.contains($0.mergeKey) }
         // Nothing left on the day the user was looking at, so the day-list has nothing to
@@ -318,7 +316,7 @@ public func pcEventSelectionReducer(
             requesting(&next, .popToCalendarRoot)
         }
 
-    case .syncCalendar(let calendarID, let incoming):
+    case let .syncCalendar(calendarID, incoming):
         // The first sync establishes which calendar this store is about; a *different* one is
         // ignored. Guarding on equality alone would reject the very first sync, since
         // `calendarID` starts at 0.
@@ -371,7 +369,7 @@ public func pcEventSelectionReducer(
 
     // MARK: Main calendar
 
-    case .setMultiSelectMode(let on):
+    case let .setMultiSelectMode(on):
         next.multiSelectMode = on
         if !on {
             next.multiSelectDays = []
@@ -383,7 +381,7 @@ public func pcEventSelectionReducer(
             // stay marked until something else happens to rebuild the payload.
         }
 
-    case .setMultiSelectColor(let color):
+    case let .setMultiSelectColor(color):
         next.multiSelectColor = color
         // Repaints a session that already has a batch. The days alone cannot reach here: a
         // tap needs a colour to be accepted at all, so a session that has days has had a
@@ -421,13 +419,13 @@ public func pcEventSelectionReducer(
         guard state.multiSelectMode else { break }
         endingMultiSelectSession(state, &next, stagingBatch: false)
 
-    case .setNumberOfColumns(let columns):
+    case let .setNumberOfColumns(columns):
         next.numberOfColumns = columns
 
-    case .setEditorYear(let year):
+    case let .setEditorYear(year):
         next.editorYear = year
 
-    case .setScrollAnchor(let anchor):
+    case let .setScrollAnchor(anchor):
         next.scrollAnchor = anchor
     }
 
@@ -464,7 +462,6 @@ private func requesting(_ state: inout PCEventSelectionState, _ target: Navigati
 }
 
 extension PCEventSelectionState {
-
     /// The marker payload this state implies: committed batches, the staged assembly folded
     /// in, and a live multi-select session projected on top.
     ///

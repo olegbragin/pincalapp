@@ -9,7 +9,7 @@ import SwiftUI
 
 private struct DeviceOrientationViewModifier: ViewModifier {
     @Binding var isLandscape: Bool
-    
+
     func body(content: Content) -> some View {
         content
             .background(

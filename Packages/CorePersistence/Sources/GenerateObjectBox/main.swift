@@ -1,3 +1,4 @@
+
 import Foundation
 
 let targetName = CommandLine.arguments.count > 1
@@ -10,7 +11,7 @@ process.arguments = [
     "package", "plugin", "objectbox-generator",
     "--allow-writing-to-package-directory",
     "--allow-network-connections", "all",
-    "--target", targetName
+    "--target", targetName,
 ]
 
 let outPipe = Pipe()
@@ -26,8 +27,13 @@ process.waitUntilExit()
 let out = String(data: outPipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
 let err = String(data: errPipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
 
-if !out.isEmpty { print(out) }
-if !err.isEmpty { print(err) }
+if !out.isEmpty {
+    print(out)
+}
+
+if !err.isEmpty {
+    print(err)
+}
 
 if process.terminationStatus == 0 {
     print("Done.")

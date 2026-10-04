@@ -28,7 +28,6 @@
 import XCTest
 
 final class BatchEditorCalendarScopeTests: XCTestCase {
-
     override func setUpWithError() throws {
         continueAfterFailure = false
     }
@@ -87,7 +86,7 @@ final class BatchEditorCalendarScopeTests: XCTestCase {
     }
 
     @MainActor
-    func testTheEditorsCalendarShowsOnlyTheBatchBeingEdited() throws {
+    func testTheEditorsCalendarShowsOnlyTheBatchBeingEdited() {
         let app = openSeededCalendar()
 
         // Well clear of the 1st and 2nd, which the seed data occupies.

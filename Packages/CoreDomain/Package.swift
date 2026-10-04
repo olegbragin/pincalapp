@@ -8,9 +8,9 @@ let package = Package(
         .library(
             name: "CoreDomain",
             targets: [
-                "CoreDomain"
+                "CoreDomain",
             ]
-        )
+        ),
     ],
     targets: [
         .target(
@@ -20,10 +20,10 @@ let package = Package(
         .testTarget(
             name: "CoreDomainTests",
             dependencies: [
-                "CoreDomain"
+                "CoreDomain",
             ],
             path: "Tests/CoreDomainTests"
-        )
+        ),
     ],
-    swiftLanguageModes: [.v6],
+    swiftLanguageModes: [.v6]
 )

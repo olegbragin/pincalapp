@@ -12,8 +12,13 @@ public enum PCToastPosition {
     case top
     case bottom
 
-    var alignment: Alignment { self == .top ? .top : .bottom }
-    var edge: Edge { self == .top ? .top : .bottom }
+    var alignment: Alignment {
+        self == .top ? .top : .bottom
+    }
+
+    var edge: Edge {
+        self == .top ? .top : .bottom
+    }
 }
 
 /// A reusable toast. It owns its placement (top/bottom) and renders a message,

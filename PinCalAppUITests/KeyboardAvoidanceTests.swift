@@ -8,13 +8,12 @@
 import XCTest
 
 final class KeyboardAvoidanceTests: XCTestCase {
-
     override func setUpWithError() throws {
         continueAfterFailure = false
     }
 
     @MainActor
-    func testEditedFieldStaysAboveKeyboardInPortrait() throws {
+    func testEditedFieldStaysAboveKeyboardInPortrait() {
         let app = KeyboardAvoidanceTestSupport.launchSeededApp()
         KeyboardAvoidanceTestSupport.openCalendarsList(app)
 
@@ -25,7 +24,7 @@ final class KeyboardAvoidanceTests: XCTestCase {
     }
 
     @MainActor
-    func testGridModeKeepsEditedFieldAboveKeyboard() throws {
+    func testGridModeKeepsEditedFieldAboveKeyboard() {
         let app = KeyboardAvoidanceTestSupport.launchSeededApp()
         KeyboardAvoidanceTestSupport.openCalendarsList(app)
 
@@ -40,7 +39,7 @@ final class KeyboardAvoidanceTests: XCTestCase {
     }
 
     @MainActor
-    func testReturnKeyCommitsRenameWhileKeyboardVisible() throws {
+    func testReturnKeyCommitsRenameWhileKeyboardVisible() {
         let app = KeyboardAvoidanceTestSupport.launchSeededApp()
         KeyboardAvoidanceTestSupport.openCalendarsList(app)
 

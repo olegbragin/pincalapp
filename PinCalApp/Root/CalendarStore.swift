@@ -77,15 +77,14 @@ public nonisolated struct CalendarStore: CalendarPersisting, CalendarManaging {
 
 // MARK: - CalendarManaging
 
-extension CalendarStore {
-
+public extension CalendarStore {
     /// Bridges the cache's DTO-typed feed into the domain feed, translating each
     /// operation as it arrives.
     ///
     /// Stateless on purpose: the subscriber's own task drives the bridge, so there is no
     /// continuation bookkeeping here and no state to keep in sync. Whoever asks for the
     /// stream owns it for as long as they iterate.
-    public nonisolated func changes() async -> AsyncStream<PinCalendarChange> {
+    nonisolated func changes() async -> AsyncStream<PinCalendarChange> {
         let cache = cache
         let mapper = mapper
         // Awaited out here rather than inside the builder closure: `cache.changes()`
@@ -110,24 +109,24 @@ extension CalendarStore {
         using mapper: any EntityMappable
     ) -> PinCalendarChange? {
         switch operation {
-        case .add(let dto): return .added(mapper.calendar(from: dto))
-        case .delete(let dto): return .removed(mapper.calendar(from: dto))
-        case .change(let dto): return .changed(mapper.calendar(from: dto))
-        case .refresh(let dtos): return .refreshed(dtos.map(mapper.calendar(from:)))
+        case let .add(dto): return .added(mapper.calendar(from: dto))
+        case let .delete(dto): return .removed(mapper.calendar(from: dto))
+        case let .change(dto): return .changed(mapper.calendar(from: dto))
+        case let .refresh(dtos): return .refreshed(dtos.map(mapper.calendar(from:)))
         }
     }
 
-    public nonisolated func loadActive() async -> [PinCalendar] {
+    nonisolated func loadActive() async -> [PinCalendar] {
         await cache.loadActive()
         return await calendarSnapshot()
     }
 
-    public nonisolated func loadArchived() async -> [PinCalendar] {
+    nonisolated func loadArchived() async -> [PinCalendar] {
         await cache.loadArchived()
         return await calendarSnapshot()
     }
 
-    public nonisolated func createCalendar(name: String, year: Int, numberOfColumns: Int) async throws {
+    nonisolated func createCalendar(name: String, year: Int, numberOfColumns: Int) async throws {
         try await cache.createCalendar(name: name, year: year, numberOfColumns: numberOfColumns)
     }
 
@@ -137,7 +136,7 @@ extension CalendarStore {
     /// event graph, so mapping one back onto the DTO wholesale would write an empty
     /// `eventBatches` and delete every batch on the calendar. The DTO is re-read and
     /// only the five management fields are touched, leaving the relation alone.
-    public nonisolated func updateCalendar(_ calendar: PinCalendar) async throws {
+    nonisolated func updateCalendar(_ calendar: PinCalendar) async throws {
         guard var dto = try await cache.getCalendar(id: calendar.id) else { return }
         dto.name = calendar.name
         dto.year = calendar.year
@@ -146,17 +145,17 @@ extension CalendarStore {
         try await cache.updateCalendar(dto)
     }
 
-    public nonisolated func archiveCalendar(id: Int64) async throws {
+    nonisolated func archiveCalendar(id: Int64) async throws {
         guard let dto = try await cache.getCalendar(id: id) else { return }
         try await cache.archiveCalendar(dto)
     }
 
-    public nonisolated func restoreCalendar(id: Int64) async throws {
+    nonisolated func restoreCalendar(id: Int64) async throws {
         guard let dto = try await cache.getCalendar(id: id) else { return }
         try await cache.restoreCalendar(dto)
     }
 
-    public nonisolated func permanentlyDeleteCalendar(id: Int64) async throws {
+    nonisolated func permanentlyDeleteCalendar(id: Int64) async throws {
         guard let dto = try await cache.getCalendar(id: id) else { return }
         try await cache.permanentlyDeleteCalendar(dto)
     }

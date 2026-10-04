@@ -7,8 +7,8 @@
 
 import Foundation
 import Testing
-import CorePersistence
 import CoreDomain
+import CorePersistence
 import DSKit
 @testable import SingleCalendarFeature
 
@@ -21,12 +21,12 @@ import DSKit
 @MainActor
 @Suite("Two single-day batches")
 struct TwoSingleDayBatchesReproTests {
-
     private func dayModel(_ dayOfMonth: Int, in yearModel: PCCalendarYearModel) -> PCCalendarDayModel? {
         for month in yearModel.months {
             for week in month.weeks {
                 for day in week.days
-                where day.isInCurrentMonth && day.date.map({ $0.formatted(.dateTime.day()) == String(dayOfMonth) }) == true {
+                    where day.isInCurrentMonth && day.date.map({ $0.formatted(.dateTime.day()) == String(dayOfMonth) }) == true
+                {
                     return day
                 }
             }

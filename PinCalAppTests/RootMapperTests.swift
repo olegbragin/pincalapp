@@ -5,16 +5,15 @@
 //  Created by Oleg Bragin on 28.09.2026.
 //
 
-import Testing
 import Foundation
-@testable import PinCalApp
+import Testing
+import CoreDomain
 // `@testable` for the internal `PP*` entities, which this suite asserts are untouched.
 @testable import CorePersistence
-import CoreDomain
+@testable import PinCalApp
 
 @MainActor
 struct RootMapperTests {
-
     private let day = Date(timeIntervalSince1970: 1_780_000_000)
     private let mapper = RootMapper()
 
@@ -77,7 +76,7 @@ struct RootMapperTests {
             name: "Staged",
             events: [
                 EventDataSource(id: 0, name: "A", date: day, color: "eventColorOption1"),
-                EventDataSource(id: 0, name: "B", date: day.addingTimeInterval(3600), color: "eventColorOption1")
+                EventDataSource(id: 0, name: "B", date: day.addingTimeInterval(3600), color: "eventColorOption1"),
             ]
         )
 
@@ -127,7 +126,7 @@ struct RootMapperTests {
             colorName: "eventColorOption1",
             events: [
                 CalendarEvent(persistedID: 1, name: "A", date: day, colorName: "eventColorOption1"),
-                CalendarEvent(persistedID: 2, name: "B", date: day.addingTimeInterval(3600), colorName: "eventColorOption1")
+                CalendarEvent(persistedID: 2, name: "B", date: day.addingTimeInterval(3600), colorName: "eventColorOption1"),
             ]
         )
 

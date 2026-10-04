@@ -1,12 +1,6 @@
-import CoreDomain
-//
-//  AddEditCalendarViewModel.swift
-//  USkateAppV2
-//
-//  Created by Oleg Bragin on 18.03.2026.
-//
 
 import Observation
+import CoreDomain
 
 @Observable
 public final class AddEditCalendarViewModel {
@@ -19,11 +13,10 @@ public final class AddEditCalendarViewModel {
         calendar = PinCalendar(id: id, name: label, year: 2026, numberOfColumns: 1)
         return true
     }
-    
+
     func reset() {
         id = 0
         label = ""
         calendar = nil
     }
 }
-

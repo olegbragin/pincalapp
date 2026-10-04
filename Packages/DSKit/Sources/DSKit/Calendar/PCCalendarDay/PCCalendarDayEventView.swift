@@ -1,3 +1,4 @@
+
 import SwiftUI
 
 public struct PCCalendarDayEventView: View {
@@ -16,6 +17,6 @@ public struct PCCalendarDayEventView: View {
 
 #Preview {
     PCCalendarDayEventView(events: [
-        .red, .green, .blue
+        .red, .green, .blue,
     ])
 }

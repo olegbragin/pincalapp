@@ -8,7 +8,6 @@
 import XCTest
 
 final class KeyboardAvoidanceLandscapeTests: XCTestCase {
-
     override func setUpWithError() throws {
         continueAfterFailure = false
     }
@@ -20,7 +19,7 @@ final class KeyboardAvoidanceLandscapeTests: XCTestCase {
     }
 
     @MainActor
-    func testEditedFieldStaysAboveKeyboardInLandscape() throws {
+    func testEditedFieldStaysAboveKeyboardInLandscape() {
         XCUIDevice.shared.orientation = .landscapeLeft
         Thread.sleep(forTimeInterval: 1.0)
 

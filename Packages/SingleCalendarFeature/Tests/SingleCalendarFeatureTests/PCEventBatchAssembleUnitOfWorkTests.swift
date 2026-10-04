@@ -7,15 +7,14 @@
 //  the original count, and that applying an event onto an occupied day moves it.
 //
 
-import Testing
 import Foundation
+import Testing
 import CoreDomain
 import DSKit
 @testable import SingleCalendarFeature
 
 @Suite("PCEventBatchAssembleUnitOfWork Tests")
 struct PCEventBatchAssembleUnitOfWorkTests {
-
     /// The domain layer's only `Foundation.Calendar` owner, used for every day
     /// comparison here.
     ///
@@ -223,13 +222,13 @@ struct PCEventBatchAssembleUnitOfWorkTests {
     }
 
     @Test("toggling treats times on the same day as the same day")
-    func toggleIsDayGranular() {
+    func toggleIsDayGranular() throws {
         let assembler = namedAssembler()
         // 6pm is a different instant from the seeded midday, but the same day, so this
         // is a toggle *off* of the existing event rather than a second event beside it.
-        let lateEvening = gregorian.date(
+        let lateEvening = try #require(gregorian.date(
             bySettingHour: 18, minute: 0, second: 0, of: day(6, 1)
-        )!
+        ))
         #expect(provider.isSameDay(lateEvening, assembler.batch.events[0].date))
 
         let toggled = assembler.toggling(day: lateEvening, using: provider)
@@ -251,7 +250,7 @@ struct PCEventBatchAssembleUnitOfWorkTests {
     // MARK: - applying
 
     @Test("applying onto an occupied day moves the event rather than duplicating it")
-    func applyingOntoOccupiedDayMoves() {
+    func applyingOntoOccupiedDayMoves() throws {
         let assembler = namedAssembler()
         // Two distinct days occupied.
         let two = assembler
@@ -259,7 +258,7 @@ struct PCEventBatchAssembleUnitOfWorkTests {
         #expect(two.batch.events.count == 2)
 
         // Move the event on the 2nd onto the 3rd, as an event editor would.
-        let moving = two.batch.events.first { provider.isSameDay($0.date, day(6, 2)) }!
+        let moving = try #require(two.batch.events.first { provider.isSameDay($0.date, day(6, 2)) })
         let applied = two.applying(moving.with(name: "Moved").with(date: day(6, 3)), using: provider)
 
         #expect(applied.batch.events.count == 2, "not appended: the occupied day was vacated")
@@ -268,10 +267,10 @@ struct PCEventBatchAssembleUnitOfWorkTests {
     }
 
     @Test("applying an event whose date changes onto a taken day still holds one per day")
-    func applyingReplacingOntoTakenDay() {
+    func applyingReplacingOntoTakenDay() throws {
         let two = namedAssembler().toggling(day: day(6, 2), using: provider)
         // The seeded event, edited to land on the day the *other* event occupies.
-        let seeded = two.batch.events.first { provider.isSameDay($0.date, day(6, 1)) }!
+        let seeded = try #require(two.batch.events.first { provider.isSameDay($0.date, day(6, 1)) })
         let applied = two.applying(seeded.with(name: "Collided").with(date: day(6, 2)), using: provider)
 
         #expect(applied.batch.events.count == 1, "the occupied event lost, not duplicated")

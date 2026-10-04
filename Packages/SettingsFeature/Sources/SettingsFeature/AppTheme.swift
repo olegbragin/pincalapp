@@ -13,7 +13,9 @@ public enum AppTheme: String, CaseIterable, Identifiable {
     case light
     case dark
 
-    public var id: String { rawValue }
+    public var id: String {
+        rawValue
+    }
 
     /// The `ColorScheme` to force, or `nil` to follow the system.
     public var colorScheme: ColorScheme? {

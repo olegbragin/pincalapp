@@ -20,7 +20,6 @@ import AppNavigation
 /// target that is not a destination — it removes the top of the stack.
 @MainActor
 public enum PCEventSelectionNavigator {
-
     /// Carries out `request`, then acknowledges it.
     ///
     /// The acknowledgement is not optional bookkeeping. A request's `id` is derived from

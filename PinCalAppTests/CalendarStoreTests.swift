@@ -7,17 +7,16 @@
 //  end: a staged batch goes in with no id, and comes back with a real one.
 //
 
-import Testing
 import Foundation
-import ObjectBox
-@testable import PinCalApp
+import Testing
 import CoreDomain
+import ObjectBox
 // `@testable` for the internal `PP*` entities the assertions inspect directly.
 @testable import CorePersistence
+@testable import PinCalApp
 
 @MainActor
 struct CalendarStoreTests {
-
     private let day = Date(timeIntervalSince1970: 1_780_000_000)
 
     private func makeStore() throws -> Store {
@@ -254,7 +253,7 @@ struct CalendarStoreTests {
         let four = (0..<4).map { index in
             CalendarEvent(
                 name: "Event",
-                date: day.addingTimeInterval(Double(index) * 86_400),
+                date: day.addingTimeInterval(Double(index) * 86400),
                 colorName: "eventColorOption1"
             )
         }
@@ -327,7 +326,7 @@ struct CalendarStoreTests {
         let four = (0..<4).map { index in
             CalendarEvent(
                 name: "Event",
-                date: day.addingTimeInterval(Double(index) * 86_400),
+                date: day.addingTimeInterval(Double(index) * 86400),
                 colorName: "eventColorOption1"
             )
         }
@@ -402,7 +401,7 @@ struct CalendarStoreTests {
         let four = (0..<4).map { index in
             CalendarEvent(
                 name: "Event",
-                date: day.addingTimeInterval(Double(index) * 86_400),
+                date: day.addingTimeInterval(Double(index) * 86400),
                 colorName: "eventColorOption1"
             )
         }
@@ -445,7 +444,6 @@ struct CalendarStoreTests {
 /// plus the change feed it reacts to.
 @MainActor
 struct CalendarStoreManagingTests {
-
     private func makeStore() throws -> Store {
         try ObjectBoxFactory.makeInMemoryStore(named: "managing-\(UUID().uuidString)")
     }
@@ -505,7 +503,7 @@ struct CalendarStoreManagingTests {
                     name: "morning",
                     colorName: "eventColorOption1",
                     events: [CalendarEvent(name: "Event", date: Date(timeIntervalSince1970: 1_780_000_000), colorName: "eventColorOption1")]
-                )
+                ),
             ],
             forCalendar: id
         )
@@ -555,7 +553,9 @@ struct CalendarStoreManagingTests {
         // A subscriber parked in the stream before the writes, since a feed with no
         // registered consumer drops what it is handed.
         let collector = ChangeCollector()
-        let consumer = Task { for await change in stream { collector.append(change) } }
+        let consumer = Task { for await change in stream {
+            collector.append(change)
+        } }
         try await Task.sleep(for: .milliseconds(100))
 
         let id = try await createCalendar(fixture.cache, name: "Work")
@@ -644,4 +644,3 @@ private struct UppercasingMapper: EntityMappable {
         batches.map(eventBatchDataSource(from:))
     }
 }
-

@@ -8,12 +8,12 @@ let package = Package(
         .library(
             name: "CalendarListFeature",
             targets: ["CalendarListFeature"]
-        )
+        ),
     ],
     dependencies: [
         .package(path: "../CoreDomain"),
         .package(path: "../DSKit"),
-        .package(path: "../AppNavigation")
+        .package(path: "../AppNavigation"),
     ],
     targets: [
         .target(
@@ -21,7 +21,7 @@ let package = Package(
             dependencies: [
                 "CoreDomain",
                 "DSKit",
-                "AppNavigation"
+                "AppNavigation",
             ],
             path: "Sources/CalendarListFeature"
         ),
@@ -29,10 +29,10 @@ let package = Package(
             name: "CalendarListFeatureTests",
             dependencies: [
                 "CalendarListFeature",
-                "CoreDomain"
+                "CoreDomain",
             ],
             path: "Tests/CalendarListFeatureTests"
-        )
+        ),
     ],
-    swiftLanguageModes: [.v6],
+    swiftLanguageModes: [.v6]
 )

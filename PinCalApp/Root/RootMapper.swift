@@ -25,7 +25,6 @@ import CorePersistence
 /// Opts out of the app target's `SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor`.
 /// Value-to-value conversion has no shared state and no business on the main actor.
 public nonisolated struct RootMapper: EntityMappable {
-
     public init() {}
 
     // MARK: - DTO -> domain

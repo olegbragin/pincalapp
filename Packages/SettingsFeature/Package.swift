@@ -8,12 +8,12 @@ let package = Package(
         .library(
             name: "SettingsFeature",
             targets: ["SettingsFeature"]
-        )
+        ),
     ],
     dependencies: [
         .package(
             path: "../DSKit"
-        )
+        ),
     ],
     targets: [
         .target(
@@ -25,7 +25,7 @@ let package = Package(
             name: "SettingsFeatureTests",
             dependencies: ["SettingsFeature", "DSKit"],
             path: "Tests/SettingsFeatureTests"
-        )
+        ),
     ],
     swiftLanguageModes: [.v6]
 )

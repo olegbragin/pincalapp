@@ -1,10 +1,10 @@
+
 import Foundation
 import Testing
 import CoreDomain
 
 @Suite("Calendar Data Source Models Tests")
 struct PCCalendarDataSourceTests {
-
     private var calendar: Calendar {
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = .current
@@ -12,8 +12,8 @@ struct PCCalendarDataSourceTests {
     }
 
     @Test("Day data source stores its values")
-    func dayDataSource() {
-        let date = calendar.date(from: DateComponents(year: 2026, month: 3, day: 5))!
+    func dayDataSource() throws {
+        let date = try #require(calendar.date(from: DateComponents(year: 2026, month: 3, day: 5)))
 
         let day = PCCalendarDayDataSource(date: date, number: 5, isInCurrentMonth: true, isToday: false)
 
@@ -61,8 +61,8 @@ struct PCCalendarDataSourceTests {
     }
 
     @Test("Day data source equality matches field-by-field values")
-    func dayDataSourceEquals() {
-        let date = calendar.date(from: DateComponents(year: 2026, month: 1, day: 1))!
+    func dayDataSourceEquals() throws {
+        let date = try #require(calendar.date(from: DateComponents(year: 2026, month: 1, day: 1)))
         let a = PCCalendarDayDataSource(date: date, number: 1, isInCurrentMonth: true, isToday: false)
         let b = PCCalendarDayDataSource(date: date, number: 1, isInCurrentMonth: true, isToday: false)
         let c = PCCalendarDayDataSource(date: date, number: 2, isInCurrentMonth: true, isToday: false)

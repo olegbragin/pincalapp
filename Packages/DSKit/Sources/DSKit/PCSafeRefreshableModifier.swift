@@ -19,51 +19,51 @@ public struct PCSafeRefreshableModifier: ViewModifier {
 
     public func body(content: Content) -> some View {
         #if os(iOS)
-        if #available(iOS 26, *) {
-            content
-                .offset(y: dragOffset)
-                .overlay(alignment: .top) {
-                    ProgressView()
-                        .frame(height: 50)
-                        .frame(maxWidth: .infinity)
-                        .opacity(isRefreshing ? 1 : min(1, dragOffset / 30))
-                        .animation(.easeOut(duration: 0.15), value: dragOffset)
-                }
-                .simultaneousGesture(
-                    DragGesture(minimumDistance: 12, coordinateSpace: .local)
-                        .onChanged { value in
-                            guard !isRefreshing else { return }
-                            let vertical = value.translation.height
-                            let horizontal = value.translation.width
-                            guard vertical > 0, vertical > abs(horizontal) else { return }
-                            withAnimation(.easeOut(duration: 0.15)) {
-                                dragOffset = vertical * 0.5
+            if #available(iOS 26, *) {
+                content
+                    .offset(y: dragOffset)
+                    .overlay(alignment: .top) {
+                        ProgressView()
+                            .frame(height: 50)
+                            .frame(maxWidth: .infinity)
+                            .opacity(isRefreshing ? 1 : min(1, dragOffset / 30))
+                            .animation(.easeOut(duration: 0.15), value: dragOffset)
+                    }
+                    .simultaneousGesture(
+                        DragGesture(minimumDistance: 12, coordinateSpace: .local)
+                            .onChanged { value in
+                                guard !isRefreshing else { return }
+                                let vertical = value.translation.height
+                                let horizontal = value.translation.width
+                                guard vertical > 0, vertical > abs(horizontal) else { return }
+                                withAnimation(.easeOut(duration: 0.15)) {
+                                    dragOffset = vertical * 0.5
+                                }
                             }
-                        }
-                        .onEnded { value in
-                            guard !isRefreshing else { return }
-                            let vertical = value.translation.height
-                            let horizontal = value.translation.width
-                            guard vertical > 0, vertical > abs(horizontal) else {
-                                if dragOffset > 0 {
+                            .onEnded { value in
+                                guard !isRefreshing else { return }
+                                let vertical = value.translation.height
+                                let horizontal = value.translation.width
+                                guard vertical > 0, vertical > abs(horizontal) else {
+                                    if dragOffset > 0 {
+                                        withAnimation(.spring(response: 0.35)) { dragOffset = 0 }
+                                    }
+                                    return
+                                }
+                                if dragOffset > 10 {
+                                    Task { await triggerRefresh() }
+                                } else {
                                     withAnimation(.spring(response: 0.35)) { dragOffset = 0 }
                                 }
-                                return
                             }
-                            if dragOffset > 10 {
-                                Task { await triggerRefresh() }
-                            } else {
-                                withAnimation(.spring(response: 0.35)) { dragOffset = 0 }
-                            }
-                        }
-                )
-        } else {
+                    )
+            } else {
+                content
+                    .refreshable { await refreshAction() }
+            }
+        #else
             content
                 .refreshable { await refreshAction() }
-        }
-        #else
-        content
-            .refreshable { await refreshAction() }
         #endif
     }
 
@@ -82,7 +82,7 @@ public struct PCSafeRefreshableModifier: ViewModifier {
     }
 }
 
-extension View {
+public extension View {
     /// Adds pull-to-refresh behavior. On iOS 26+, uses a custom implementation
     /// to work around a SwiftUI `.refreshable` bug. On older iOS versions, uses
     /// the standard `.refreshable`.
@@ -91,7 +91,7 @@ extension View {
     /// `.refreshable` on a `ScrollView` is what triggers the contentOffset jump on
     /// iOS 26+, and the workaround is worth reaching for by default rather than
     /// per-screen.
-    public func safeRefreshable(action: @escaping @Sendable () async -> Void) -> some View {
+    func safeRefreshable(action: @escaping @Sendable () async -> Void) -> some View {
         modifier(PCSafeRefreshableModifier(refreshAction: action))
     }
 }

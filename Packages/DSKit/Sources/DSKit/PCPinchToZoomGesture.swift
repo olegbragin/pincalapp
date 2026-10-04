@@ -1,9 +1,9 @@
 //
- //  PCPinchToZoomGesture.swift
- //  PinCalApp
- //
- //  Created by Oleg Bragin on 26.03.2026.
- //
+//  PCPinchToZoomGesture.swift
+//  PinCalApp
+//
+//  Created by Oleg Bragin on 26.03.2026.
+//
 
 import SwiftUI
 

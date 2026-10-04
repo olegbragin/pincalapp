@@ -20,7 +20,6 @@
 import XCTest
 
 final class SaveFailedToastTests: XCTestCase {
-
     override func setUpWithError() throws {
         continueAfterFailure = false
     }
@@ -43,7 +42,9 @@ final class SaveFailedToastTests: XCTestCase {
         for day in candidates {
             let cell = KeyboardAvoidanceTestSupport.dayCell(day: day, in: app)
             guard cell.waitForExistence(timeout: 2) else { continue }
-            if !cell.label.lowercased().contains("event") { return day }
+            if !cell.label.lowercased().contains("event") {
+                return day
+            }
         }
         XCTFail("None of the candidate days \(candidates) was empty; the seed data changed")
         throw XCTSkip("no empty day available")

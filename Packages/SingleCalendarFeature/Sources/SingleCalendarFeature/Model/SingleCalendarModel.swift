@@ -8,16 +8,8 @@
 import Foundation
 import Observation
 import SwiftUI
-// No `CorePersistence`. This model used to hold a `CalendarCache` for one thing only —
-// the calendar's own metadata change feed, i.e. its name, year, archived flag and column
-// count. That is not batch state, so it never belonged to the batch port, and it is not
-// storage either, so it does not belong to the feature importing the storage vocabulary.
-// It is calendar *management*, which is what `CalendarManaging` is for: the reads go
-// through `CalendarPersisting.calendar(id:)`, the feed through
-// `CalendarManaging.changes()`. Both are domain ports, and the package is off
-// `CorePersistence` for good.
-import CoreDomain
 import AppNavigation
+import CoreDomain
 import DSKit
 
 /// The main calendar panel.
@@ -32,6 +24,15 @@ import DSKit
 /// return an `AppRoute` — a second implementation of the assembly line, with its own
 /// notion of what a day tap means and its own idea of what to persist. All of that is
 /// `PCEventSelectionState` now, and this model dispatches instead of deciding.
+///
+/// No `CorePersistence` either, and that is deliberate. This model used to hold a
+/// `CalendarCache` for one thing only — the calendar's own metadata change feed, i.e.
+/// its name, year, archived flag and column count. That is not batch state, so it never
+/// belonged to the batch port, and it is not storage either, so it does not belong to
+/// the feature importing the storage vocabulary. It is calendar *management*, which is
+/// what `CalendarManaging` is for: the reads go through
+/// `CalendarPersisting.calendar(id:)`, the feed through `CalendarManaging.changes()`.
+/// Both are domain ports, and the package is off `CorePersistence` for good.
 @MainActor
 @Observable
 public final class SingleCalendarModel {
@@ -125,9 +126,9 @@ public final class SingleCalendarModel {
     /// rather than leave a stale calendar on screen.
     private static func touchedIDs(in change: PinCalendarChange) -> Set<Int64> {
         switch change {
-        case .added(let calendar), .changed(let calendar), .removed(let calendar):
+        case let .added(calendar), let .changed(calendar), let .removed(calendar):
             return [calendar.id]
-        case .refreshed(let calendars):
+        case let .refreshed(calendars):
             return Set(calendars.map(\.id))
         }
     }
@@ -136,9 +137,13 @@ public final class SingleCalendarModel {
 
     /// The colour the main calendar's picker shows during a multi-select session. Lives
     /// in the store, because confirming the session needs the same value.
-    public var selectedColor: PCColorOption? { store.state.multiSelectColor }
+    public var selectedColor: PCColorOption? {
+        store.state.multiSelectColor
+    }
 
-    public var isMultiSelectMode: Bool { store.state.multiSelectMode }
+    public var isMultiSelectMode: Bool {
+        store.state.multiSelectMode
+    }
 
     public var isColorPickerDisabled: Bool {
         store.state.multiSelectMode
@@ -243,7 +248,7 @@ public final class SingleCalendarModel {
         }
 
         // The registry is the store's; this only tells it what was on disk.
-        let batches = (try? await persistence.eventBatches(calendarID: calendarid)) ?? []
+        let batches = await (try? persistence.eventBatches(calendarID: calendarid)) ?? []
         store.send(.syncCalendar(calendarID: calendarid, batches: batches))
         projectMarkers()
         state = .content

@@ -6,6 +6,7 @@
 //
 
 import Foundation
+
 @preconcurrency import ObjectBox
 
 public class ObjectBoxCalendarStorage: CalendarRepository, @unchecked Sendable {
@@ -41,25 +42,25 @@ public class ObjectBoxCalendarStorage: CalendarRepository, @unchecked Sendable {
             //
             // `runInTransaction` rethrows, so the `catch` below still reports it.
             return try store.runInTransaction {
-                        let calendarid = try calendarEntityBox.put(
-                        .init(
-                            id: UInt64(calendar.id),
-                            name: calendar.name,
-                            year: calendar.year,
-                            numberOfColumns: calendar.numberOfColumns,
-                            isArchived: calendar.isArchived
-                        )
+                let calendarid = try calendarEntityBox.put(
+                    .init(
+                        id: UInt64(calendar.id),
+                        name: calendar.name,
+                        year: calendar.year,
+                        numberOfColumns: calendar.numberOfColumns,
+                        isArchived: calendar.isArchived
                     )
-                    guard let ppcalendar = try calendarEntityBox.get(calendarid) else { return -1 }
+                )
+                guard let ppcalendar = try calendarEntityBox.get(calendarid) else { return -1 }
 
-                    let batchEntityBox = store.box(for: PPEventBatch.self)
+                let batchEntityBox = store.box(for: PPEventBatch.self)
 
-                    let desiredBatchIDs = Set(calendar.eventBatches.map(\.id))
-                    let orphanedBatches = ppcalendar.eventBatches.filter { !desiredBatchIDs.contains(Int64($0.id)) }
-                    for oldBatch in orphanedBatches {
-                        let eventIDsToRemove = oldBatch.events.map(\.id)
-                        try batchEntityBox.remove(oldBatch)
-                        try eventEntityBox.remove(eventIDsToRemove)
+                let desiredBatchIDs = Set(calendar.eventBatches.map(\.id))
+                let orphanedBatches = ppcalendar.eventBatches.filter { !desiredBatchIDs.contains(Int64($0.id)) }
+                for oldBatch in orphanedBatches {
+                    let eventIDsToRemove = oldBatch.events.map(\.id)
+                    try batchEntityBox.remove(oldBatch)
+                    try eventEntityBox.remove(eventIDsToRemove)
                 }
 
                 for batch in calendar.eventBatches {
@@ -103,14 +104,14 @@ public class ObjectBoxCalendarStorage: CalendarRepository, @unchecked Sendable {
                     }
                 }
 
-                    ppcalendar.events.removeAll()
-                    try ppcalendar.eventBatches.applyToDb()
-                    try ppcalendar.events.applyToDb()
-                    return Int64(ppcalendar.id)
-                }
-            } catch {
-                print(error)
-                throw error
+                ppcalendar.events.removeAll()
+                try ppcalendar.eventBatches.applyToDb()
+                try ppcalendar.events.applyToDb()
+                return Int64(ppcalendar.id)
+            }
+        } catch {
+            print(error)
+            throw error
         }
     }
 
@@ -140,8 +141,8 @@ public class ObjectBoxCalendarStorage: CalendarRepository, @unchecked Sendable {
     @discardableResult
     public func deleteCalendar(_ calendarId: Int64) async throws -> Int64 {
         guard try calendarEntityBox.contains(UInt64(calendarId)) else { return 0 }
-        return Int64(
-            try calendarEntityBox.remove(calendarId)
+        return try Int64(
+            calendarEntityBox.remove(calendarId)
         )
     }
 

@@ -1,5 +1,5 @@
 //
-//  SwiftUIView.swift
+//  PCCalendarWeekView.swift
 //  USkateAppV2
 //
 //  Created by Oleg Bragin on 25.01.2026.
@@ -10,7 +10,7 @@ import SwiftUI
 public struct PCCalendarWeekView: View {
     @Bindable var viewModel: PCCalendarWeekModel
     var cellSize: CGFloat
-    
+
     public var body: some View {
         GridRow {
             ForEach(viewModel.days, id: \.id) { day in

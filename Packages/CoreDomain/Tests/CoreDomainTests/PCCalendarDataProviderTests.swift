@@ -1,10 +1,10 @@
+
 import Foundation
 import Testing
 import CoreDomain
 
 @Suite("PCCalendarDataProvider Tests")
 struct PCCalendarDataProviderTests {
-
     private var calendar: Calendar {
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = .current
@@ -74,24 +74,24 @@ struct PCCalendarDataProviderTests {
     }
 
     @Test("Every week starts on the calendar first weekday")
-    func weeksStartOnFirstWeekday() {
+    func weeksStartOnFirstWeekday() throws {
         let provider = PCCalendarDataProvider(calendar: calendar)
 
         for month in provider.months(forYear: 2026) {
             for week in month.weeks {
-                let weekday = calendar.component(.weekday, from: week.days.first!.date)
+                let weekday = try calendar.component(.weekday, from: #require(week.days.first?.date))
                 #expect(weekday == calendar.firstWeekday)
             }
         }
     }
 
     @Test("Days marked as in current month match the month length")
-    func inCurrentMonthMatchesMonthLength() {
+    func inCurrentMonthMatchesMonthLength() throws {
         let provider = PCCalendarDataProvider(calendar: calendar)
 
         for year in [2026, 2027, 2028] {
             for month in provider.months(forYear: year) {
-                let monthLength = calendar.range(of: .day, in: .month, for: day(year, month.number, 1))!.count
+                let monthLength = try #require(calendar.range(of: .day, in: .month, for: day(year, month.number, 1))?.count)
                 let inMonthDays = month.weeks.flatMap(\.days).filter(\.isInCurrentMonth)
                 #expect(inMonthDays.count == monthLength)
             }
@@ -99,10 +99,10 @@ struct PCCalendarDataProviderTests {
     }
 
     @Test("Leap year February contains 29 in-month days")
-    func leapYearFebruary() {
+    func leapYearFebruary() throws {
         let provider = PCCalendarDataProvider(calendar: calendar)
 
-        let february = provider.months(forYear: 2028).first { $0.number == 2 }!
+        let february = try #require(provider.months(forYear: 2028).first { $0.number == 2 })
 
         #expect(february.weeks.flatMap(\.days).filter(\.isInCurrentMonth).count == 29)
     }
@@ -121,15 +121,15 @@ struct PCCalendarDataProviderTests {
     }
 
     @Test("Today flag follows the current month/day in the selected year")
-    func todayFollowsSelectedYear() {
+    func todayFollowsSelectedYear() throws {
         let provider = PCCalendarDataProvider(calendar: calendar)
         let todayComponents = calendar.dateComponents([.month, .day], from: Date())
         let currentYear = calendar.component(.year, from: Date())
         let otherYear = currentYear == 2010 ? 2011 : 2010
 
-        let month = todayComponents.month!
-        let day = todayComponents.day!
-        let monthData = provider.months(forYear: otherYear).first { $0.number == month }!
+        let month = try #require(todayComponents.month)
+        let day = try #require(todayComponents.day)
+        let monthData = try #require(provider.months(forYear: otherYear).first { $0.number == month })
         let todayDay = monthData.weeks
             .flatMap(\.days)
             .first { $0.number == day && $0.isInCurrentMonth }

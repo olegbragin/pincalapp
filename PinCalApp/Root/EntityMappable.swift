@@ -32,7 +32,6 @@ import CorePersistence
 /// requirements to the main actor and make the protocol unusable from
 /// `CalendarPersisting`'s nonisolated methods.
 public nonisolated protocol EntityMappable: Sendable {
-
     // MARK: - DTO -> domain
 
     func calendar(from dto: CalendarDataSource) -> PinCalendar

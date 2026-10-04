@@ -19,17 +19,17 @@ public enum PCTitleDisplayMode {
 public extension View {
     func pcNavigationBarTitleDisplayMode(_ mode: PCTitleDisplayMode = .inline) -> some View {
         #if os(iOS)
-        switch mode {
-        case .automatic: return navigationBarTitleDisplayMode(.automatic)
-        case .inline: return navigationBarTitleDisplayMode(.inline)
-        }
+            switch mode {
+            case .automatic: return navigationBarTitleDisplayMode(.automatic)
+            case .inline: return navigationBarTitleDisplayMode(.inline)
+            }
         #elseif os(macOS)
-        switch mode {
-        case .automatic: return toolbarTitleDisplayMode(.automatic)
-        case .inline: return toolbarTitleDisplayMode(.inline)
-        }
+            switch mode {
+            case .automatic: return toolbarTitleDisplayMode(.automatic)
+            case .inline: return toolbarTitleDisplayMode(.inline)
+            }
         #else
-        return self
+            return self
         #endif
     }
 }

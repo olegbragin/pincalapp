@@ -8,21 +8,21 @@ let package = Package(
         .library(
             name: "CorePersistence",
             targets: [
-                "CorePersistence"
+                "CorePersistence",
             ]
-        )
+        ),
     ],
     dependencies: [
         .package(
             url: "https://github.com/objectbox/objectbox-swift-spm",
             from: "5.3.0"
-        )
+        ),
     ],
     targets: [
         .target(
             name: "CorePersistence",
             dependencies: [
-                .product(name: "ObjectBox.xcframework", package: "objectbox-swift-spm")
+                .product(name: "ObjectBox.xcframework", package: "objectbox-swift-spm"),
             ],
             path: "Sources/CorePersistence"
         ),
@@ -30,10 +30,10 @@ let package = Package(
             name: "CorePersistenceTests",
             dependencies: [
                 "CorePersistence",
-                .product(name: "ObjectBox.xcframework", package: "objectbox-swift-spm")
+                .product(name: "ObjectBox.xcframework", package: "objectbox-swift-spm"),
             ],
             path: "Tests/CorePersistenceTests"
-        )
+        ),
     ],
-    swiftLanguageModes: [.v6],
+    swiftLanguageModes: [.v6]
 )

@@ -31,7 +31,6 @@ import XCTest
 
 @MainActor
 final class ClosingTheSelectedCalendarTests: XCTestCase {
-
     /// The seeded calendar. Id 1 — see `TestDataSeeder`.
     private let calendarID: Int64 = 1
     private let calendarName = "UI Test Calendar"

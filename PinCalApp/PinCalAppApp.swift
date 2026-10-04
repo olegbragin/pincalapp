@@ -1,9 +1,10 @@
+
 import SwiftUI
-import CorePersistence
+import CalendarListFeature
 import CoreDomain
+import CorePersistence
 import DSKit
 import SingleCalendarFeature
-import CalendarListFeature
 
 @main
 struct PinCalAppApp: App {
@@ -22,8 +23,8 @@ struct PinCalAppApp: App {
 
     init() {
         #if os(iOS)
-        UITableView.appearance().backgroundColor = .clear
-        UITableViewCell.appearance().backgroundColor = .clear
+            UITableView.appearance().backgroundColor = .clear
+            UITableViewCell.appearance().backgroundColor = .clear
         #endif
 
         // The composition root. Everything the session holds is built here, in the

@@ -14,27 +14,31 @@ import DSKit
 @MainActor
 @Suite("AddEditEventBatchListViewModel")
 struct AddEditEventBatchListViewModelTests {
-
     /// Two batches on the *same* day.
     ///
     /// It has to be the same day: a batch's day comes from its first event, so batches
     /// anchored on different days belong to different days and the list for any one day
     /// would only ever hold one of them.
-    private var dayOne: Date { Fixture.day(1) }
-    private var rows: [CalendarEventBatch] { [
-        CalendarEventBatch(
-            persistedID: 1,
-            name: "Evening",
-            colorName: "eventColorOption2",
-            events: [Fixture.event("Dinner", on: 1, color: "eventColorOption2")]
-        ),
-        CalendarEventBatch(
-            persistedID: 2,
-            name: "Morning",
-            colorName: "eventColorOption1",
-            events: [Fixture.event("Swim", on: 1, color: "eventColorOption1")]
-        )
-    ] }
+    private var dayOne: Date {
+        Fixture.day(1)
+    }
+
+    private var rows: [CalendarEventBatch] {
+        [
+            CalendarEventBatch(
+                persistedID: 1,
+                name: "Evening",
+                colorName: "eventColorOption2",
+                events: [Fixture.event("Dinner", on: 1, color: "eventColorOption2")]
+            ),
+            CalendarEventBatch(
+                persistedID: 2,
+                name: "Morning",
+                colorName: "eventColorOption1",
+                events: [Fixture.event("Swim", on: 1, color: "eventColorOption1")]
+            ),
+        ]
+    }
 
     /// A store opened on `rows`, scrolled to the day that holds them.
     private func makeContext(day: Date? = nil) -> (

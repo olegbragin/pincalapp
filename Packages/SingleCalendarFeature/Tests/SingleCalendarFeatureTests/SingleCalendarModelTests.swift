@@ -7,8 +7,8 @@
 
 import Foundation
 import Testing
-import DSKit
 import CoreDomain
+import DSKit
 @testable import SingleCalendarFeature
 
 /// The model, the store it dispatches to, and the management port that feeds it metadata.
@@ -79,7 +79,6 @@ private func waitUntil(
 @MainActor
 @Suite("SingleCalendarModel Tests")
 struct SingleCalendarModelTests {
-
     @Test("Initial state is empty with no content")
     func initialStateIsEmpty() {
         let (_, _, _, model) = makeFixture(calendar: makeCalendar())
@@ -188,7 +187,7 @@ struct SingleCalendarModelTests {
     }
 
     @Test("hasEvents reads the store's registry")
-    func hasEventsReadsTheStore() async {
+    func hasEventsReadsTheStore() {
         let (_, _, store, model) = makeFixture(calendar: makeCalendar())
         let day = Fixture.day(4)
         #expect(!model.hasEvents(on: day))

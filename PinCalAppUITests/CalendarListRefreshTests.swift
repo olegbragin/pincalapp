@@ -23,7 +23,6 @@ import XCTest
 
 @MainActor
 final class CalendarListRefreshTests: XCTestCase {
-
     private let seededNames = ["UI Test Calendar", "Second Calendar", "Third Calendar"]
 
     /// Ids of `seededNames`, in the order `TestDataSeeder` creates them. Paired with the
@@ -167,13 +166,19 @@ final class CalendarListRefreshTests: XCTestCase {
         archive(seededCalendarIDs[0], in: app)
 
         await waitUntil { self.copies(of: self.seededNames[0], in: app) == 0 }
-        XCTAssertEqual(copies(of: seededNames[0], in: app), 0,
-                       "Archiving should remove the card from the active list")
+        XCTAssertEqual(
+            copies(of: seededNames[0], in: app),
+            0,
+            "Archiving should remove the card from the active list"
+        )
 
         pullToRefresh(app)
 
-        XCTAssertEqual(copies(of: seededNames[0], in: app), 0,
-                       "A refresh must not bring an archived calendar back into the active list")
+        XCTAssertEqual(
+            copies(of: seededNames[0], in: app),
+            0,
+            "A refresh must not bring an archived calendar back into the active list"
+        )
         XCTAssertEqual(copies(of: seededNames[1], in: app), 1)
         XCTAssertEqual(copies(of: seededNames[2], in: app), 1)
     }

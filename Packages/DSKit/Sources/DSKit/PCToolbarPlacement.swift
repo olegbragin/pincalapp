@@ -12,11 +12,11 @@ public extension ToolbarPlacement {
     /// toolbar on macOS.
     static var pcNavigationBar: ToolbarPlacement {
         #if os(iOS)
-        return .navigationBar
+            return .navigationBar
         #elseif os(macOS)
-        return .windowToolbar
+            return .windowToolbar
         #else
-        return .automatic
+            return .automatic
         #endif
     }
 }
@@ -29,11 +29,11 @@ public extension ToolbarItemPlacement {
     /// the system's — see `AddEditEventBatchScreen` for why the system's cannot be used.
     static var pcLeading: ToolbarItemPlacement {
         #if os(iOS)
-        return .topBarLeading
+            return .topBarLeading
         #elseif os(macOS)
-        return .automatic
+            return .automatic
         #else
-        return .automatic
+            return .automatic
         #endif
     }
 
@@ -41,11 +41,11 @@ public extension ToolbarItemPlacement {
     /// the navigation-bar trailing position on iOS, the window toolbar on macOS.
     static var pcTrailing: ToolbarItemPlacement {
         #if os(iOS)
-        return .topBarTrailing
+            return .topBarTrailing
         #elseif os(macOS)
-        return .automatic
+            return .automatic
         #else
-        return .automatic
+            return .automatic
         #endif
     }
 
@@ -53,11 +53,11 @@ public extension ToolbarItemPlacement {
     /// (centered) toolbar position on macOS.
     static var pcTitle: ToolbarItemPlacement {
         #if os(iOS)
-        return .title
+            return .title
         #elseif os(macOS)
-        return .principal
+            return .principal
         #else
-        return .principal
+            return .principal
         #endif
     }
 }

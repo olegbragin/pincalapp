@@ -13,7 +13,7 @@ public struct CalendarDataSource: Identifiable, Hashable, Sendable {
     public var isArchived: Bool
     public var events: [EventDataSource]
     public var eventBatches: [EventBatchDataSource]
-    
+
     public init(
         id: Int64 = 0,
         name: String,
@@ -31,7 +31,7 @@ public struct CalendarDataSource: Identifiable, Hashable, Sendable {
         self.events = events
         self.eventBatches = eventBatches
     }
-    
+
     init?(_ dto: PPCalendar?) {
         guard let dto else { return nil }
         self.id = Int64(dto.id)

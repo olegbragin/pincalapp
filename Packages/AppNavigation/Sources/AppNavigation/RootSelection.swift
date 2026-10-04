@@ -1,9 +1,9 @@
 //
- //  RootSelection.swift
- //  USkateAppV2
- //
- //  Created by Oleg Bragin on 19.02.2026.
- //
+//  RootSelection.swift
+//  USkateAppV2
+//
+//  Created by Oleg Bragin on 19.02.2026.
+//
 
 import Foundation
 import Observation
@@ -29,24 +29,24 @@ public enum SidebarCategory: Equatable, Hashable {
 /// screen cannot be handed a different event than the store says is open, because there
 /// is no longer a way to hand it one.
 public enum AppRoute: Hashable {
-    // Sidebar category selection
+    /// Sidebar category selection
     case sidebar(SidebarCategory)
-    
-    // Split-view detail column replacements (open)
+
+    /// Split-view detail column replacements (open)
     case calendar(Int64, toRoot: Bool)
-    
+
     // Navigation stack pushes
     case dayBatches
     case batchEditor
     case eventEditor
-    
-    // Sheets
+
+    /// Sheets
     case addCalendar
-    
+
     var navigationStyle: NavigationStyle {
         switch self {
         case .sidebar:
-            return .open  // Changes split-view content column
+            return .open // Changes split-view content column
         case .calendar:
             return .open
         case .dayBatches, .batchEditor, .eventEditor:

@@ -7,8 +7,8 @@
 
 import SwiftUI
 import AppNavigation
-import DSKit
 import CoreDomain
+import DSKit
 
 /// The batches on one day.
 ///
@@ -50,9 +50,9 @@ public struct AddEditEventBatchListView: View {
         }
     }
 
-    // A ScrollView + LazyVStack (rather than a List) so the cards animate
-    // their collapse/expand height smoothly; List snaps its row heights and
-    // would make the toggle jump.
+    /// A ScrollView + LazyVStack (rather than a List) so the cards animate
+    /// their collapse/expand height smoothly; List snaps its row heights and
+    /// would make the toggle jump.
     private func content(_ viewModel: AddEditEventBatchListViewModel) -> some View {
         ScrollView {
             LazyVStack(spacing: 12) {
@@ -116,7 +116,6 @@ public struct AddEditEventBatchListView: View {
             }
         }
     }
-
 }
 
 /// A single batch card in the list. It shows the batch name and the events it
@@ -134,53 +133,55 @@ private struct BatchEventCard: View {
 
     private let collapsedMaxHeight: CGFloat = 150
 
-    private var showsToggle: Bool { naturalHeight > collapsedMaxHeight }
+    private var showsToggle: Bool {
+        naturalHeight > collapsedMaxHeight
+    }
 
     var body: some View {
         ZStack {
             VStack(alignment: .leading, spacing: 0) {
+                header
+                eventRows
+            }
+            .padding()
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .frame(maxHeight: isExpanded ? nil : collapsedMaxHeight, alignment: .top)
+            .clipped()
+            .contentShape(Rectangle())
+            .onTapGesture { onOpen() }
+            .background(
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .fill(batchColor)
+            )
+            // The toggle sits at the bottom of the card, full width, with a
+            // gradient (card color at the bottom -> transparent upward) so it
+            // looks like it slightly covers the content behind it.
+            .overlay(alignment: .bottom) {
+                if showsToggle {
+                    toggleButton
+                }
+            }
+            // Clip everything (including the toggle) to the card's rounded shape
+            // so the toggle fully corresponds with the card bounds.
+            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+            // Measures the natural (un-capped) height of the padded content so we
+            // know whether it overflows the collapsed limit.
+            .overlay(alignment: .top) {
+                VStack(alignment: .leading, spacing: 0) {
                     header
                     eventRows
                 }
                 .padding()
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .frame(maxHeight: isExpanded ? nil : collapsedMaxHeight, alignment: .top)
-                .clipped()
-                .contentShape(Rectangle())
-                .onTapGesture { onOpen() }
+                .fixedSize(horizontal: false, vertical: true)
+                .hidden()
                 .background(
-                    RoundedRectangle(cornerRadius: 16, style: .continuous)
-                        .fill(batchColor)
+                    GeometryReader { proxy in
+                        Color.clear.preference(key: BatchCardHeightKey.self, value: proxy.size.height)
+                    }
                 )
-                // The toggle sits at the bottom of the card, full width, with a
-                // gradient (card color at the bottom -> transparent upward) so it
-                // looks like it slightly covers the content behind it.
-                .overlay(alignment: .bottom) {
-                    if showsToggle {
-                        toggleButton
-                    }
-                }
-                // Clip everything (including the toggle) to the card's rounded shape
-                // so the toggle fully corresponds with the card bounds.
-                .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-                // Measures the natural (un-capped) height of the padded content so we
-                // know whether it overflows the collapsed limit.
-                .overlay(alignment: .top) {
-                    VStack(alignment: .leading, spacing: 0) {
-                        header
-                        eventRows
-                    }
-                    .padding()
-                    .fixedSize(horizontal: false, vertical: true)
-                    .hidden()
-                    .background(
-                        GeometryReader { proxy in
-                            Color.clear.preference(key: BatchCardHeightKey.self, value: proxy.size.height)
-                        }
-                    )
-                }
-                .onPreferenceChange(BatchCardHeightKey.self) { naturalHeight = $0 }
-                .animation(.easeInOut(duration: 0.25), value: isExpanded)
+            }
+            .onPreferenceChange(BatchCardHeightKey.self) { naturalHeight = $0 }
+            .animation(.easeInOut(duration: 0.25), value: isExpanded)
         }
     }
 

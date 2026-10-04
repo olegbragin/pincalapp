@@ -5,8 +5,8 @@
 //  Created by Oleg Bragin on 02.10.2026.
 //
 
-import SwiftUI
 import Observation
+import SwiftUI
 
 /// One toast: a message, an optional action, and how long it lives.
 ///
@@ -14,7 +14,6 @@ import Observation
 /// closure rather than a route because the two toasts that exist want different things —
 /// Undo replays a delete, Retry replays a write — and neither is expressible as a destination.
 public struct PCTost: Identifiable, Equatable {
-
     /// Identity. Stable for the toast's life, so stacking and removal animate correctly and a
     /// re-presented toast is not mistaken for the same one.
     public let id: UUID
@@ -77,7 +76,6 @@ public struct PCTost: Identifiable, Equatable {
 @MainActor
 @Observable
 public final class PCTostStack {
-
     /// The pending toasts, oldest first — the order they are drawn in, so the newest is
     /// closest to the edge the user looks at last.
     public private(set) var toasts: [PCTost] = []
@@ -121,5 +119,7 @@ public final class PCTostStack {
     }
 
     /// Whether any toast is showing, for a test or a layout decision.
-    public var isEmpty: Bool { toasts.isEmpty }
+    public var isEmpty: Bool {
+        toasts.isEmpty
+    }
 }

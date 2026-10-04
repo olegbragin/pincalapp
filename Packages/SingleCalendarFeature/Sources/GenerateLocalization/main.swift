@@ -1,3 +1,4 @@
+
 import Foundation
 
 func makeMethodName(from key: String) -> String {
@@ -16,12 +17,13 @@ func countPercentSpecifiers(_ value: String) -> (at: Int, lld: Int) {
     let chars = Array(value)
     var i = 0
     while i < chars.count {
-        if chars[i] == "%" && i + 1 < chars.count {
+        if chars[i] == "%", i + 1 < chars.count {
             if chars[i + 1] == "@" {
                 at += 1
                 i += 1
-            } else if chars[i + 1] == "l" && i + 3 < chars.count
-                        && chars[i + 2] == "l" && chars[i + 3] == "d" {
+            } else if chars[i + 1] == "l", i + 3 < chars.count,
+                      chars[i + 2] == "l", chars[i + 3] == "d"
+            {
                 lld += 1
                 i += 3
             }
@@ -91,7 +93,7 @@ var lines = [
     "",
     "import SwiftUI",
     "",
-    "extension LocalizedStringKey {"
+    "extension LocalizedStringKey {",
 ]
 var usedNames = Set<String>()
 
@@ -123,9 +125,15 @@ for key in strings.keys.sorted() {
     } else {
         var argNames: [String] = []
         if let comment = (entry["comment"] as? String)?.lowercased() {
-            if comment.contains("name") || comment.contains("calendar") { argNames.append("name") }
-            if comment.contains("time") || comment.contains("date") { argNames.append("time") }
-            if comment.contains("number") || comment.contains("count") || comment.contains("column") { argNames.append("count") }
+            if comment.contains("name") || comment.contains("calendar") {
+                argNames.append("name")
+            }
+            if comment.contains("time") || comment.contains("date") {
+                argNames.append("time")
+            }
+            if comment.contains("number") || comment.contains("count") || comment.contains("column") {
+                argNames.append("count")
+            }
         }
         while argNames.count < numArgs {
             argNames.append("arg\(argNames.count)")

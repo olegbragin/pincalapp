@@ -10,9 +10,9 @@ import SwiftUI
 public struct PCCalendarWeekHeaderView: View {
     @Environment(\.pcVibe) private var vibe
     @Bindable var viewModel: PCCalendarWeekHeaderModel
-    
+
     var cellSize: CGFloat
-    
+
     public var body: some View {
         GridRow {
             ForEach(viewModel.weekSymbols, id: \.id) { symbol in
@@ -20,7 +20,7 @@ public struct PCCalendarWeekHeaderView: View {
                     RoundedRectangle(cornerRadius: 8)
                         .fill(.clear)
                         .padding(2)
-                    
+
                     Text(symbol.name)
                         .font(vibe.font(for: viewModel.fontRole))
                         .foregroundColor(vibe.color(for: viewModel.textColorRole))
@@ -36,7 +36,7 @@ public struct PCCalendarWeekHeaderView: View {
     Grid {
         PCCalendarWeekHeaderView(
             viewModel: .init(weekSymbols: [
-                "S", "T"
+                "S", "T",
             ]),
             cellSize: 50
         )

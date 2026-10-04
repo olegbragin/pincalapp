@@ -15,6 +15,7 @@ public struct SingleCalendarView: View {
     public init(viewModel: SingleCalendarModel) {
         self.viewModel = viewModel
     }
+
     @Environment(RootNavigation.self) var navigation
     @Environment(PCEventSelectionManager.self) private var store
     @Environment(\.pcVibe) private var vibe
@@ -24,7 +25,7 @@ public struct SingleCalendarView: View {
     /// for a save that still has not landed. The store clears `failedSave` itself when a
     /// write succeeds, and this follows it down.
     @State private var isSaveFailedToastPresented = false
-    
+
     public var body: some View {
         ZStack {
             SingleCalendarStateView(state: viewModel.state) {
@@ -150,7 +151,7 @@ public struct SingleCalendarView: View {
     private var saveFailureMessage: String {
         store.failedSave == nil ? "" : "Couldn't save changes. Retry to keep them."
     }
-    
+
     @ToolbarContentBuilder
     private var toolbarContent: some ToolbarContent {
         if navigation.isAtRoot, !viewModel.isArchived {

@@ -6,10 +6,11 @@
 //
 
 import SwiftUI
+
 #if os(iOS)
-import UIKit
+    import UIKit
 #elseif os(macOS)
-import AppKit
+    import AppKit
 #endif
 
 /// Central place for system colors that differ between platforms, so views never
@@ -19,22 +20,22 @@ public enum PCSystemColor {
     /// The standard secondary system background (grouped list background).
     public static var secondarySystemBackground: Color {
         #if os(iOS)
-        return Color(uiColor: .secondarySystemBackground)
+            return Color(uiColor: .secondarySystemBackground)
         #elseif os(macOS)
-        return Color(nsColor: .underPageBackgroundColor)
+            return Color(nsColor: .underPageBackgroundColor)
         #else
-        return Color.gray.opacity(0.12)
+            return Color.gray.opacity(0.12)
         #endif
     }
 
     /// The standard grouped system background.
     public static var systemGroupedBackground: Color {
         #if os(iOS)
-        return Color(uiColor: .systemGroupedBackground)
+            return Color(uiColor: .systemGroupedBackground)
         #elseif os(macOS)
-        return Color(nsColor: .underPageBackgroundColor)
+            return Color(nsColor: .underPageBackgroundColor)
         #else
-        return Color.gray.opacity(0.12)
+            return Color.gray.opacity(0.12)
         #endif
     }
 }

@@ -8,34 +8,34 @@ let package = Package(
         .library(
             name: "DSKit",
             targets: [
-                "DSKit"
+                "DSKit",
             ]
-        )
+        ),
     ],
     dependencies: [
         .package(
             url: "https://github.com/apple/swift-collections.git",
             from: "1.5.0"
-        )
+        ),
     ],
     targets: [
         .target(
             name: "DSKit",
             dependencies: [
-                .product(name: "OrderedCollections", package: "swift-collections")
+                .product(name: "OrderedCollections", package: "swift-collections"),
             ],
             path: "Sources/DSKit",
             resources: [
-                .process("Resources")
+                .process("Resources"),
             ]
         ),
         .testTarget(
             name: "DSKitTests",
             dependencies: [
-                "DSKit"
+                "DSKit",
             ],
             path: "Tests/DSKitTests"
-        )
+        ),
     ],
-    swiftLanguageModes: [.v6],
+    swiftLanguageModes: [.v6]
 )

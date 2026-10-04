@@ -9,7 +9,7 @@ import SwiftUI
 
 public struct CalendarEmptyStateView: View {
     var isArchived: Bool = false
-    
+
     public var body: some View {
         VStack(spacing: 12) {
             Image(systemName: isArchived ? "archivebox" : "calendar")

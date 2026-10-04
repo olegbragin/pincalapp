@@ -8,7 +8,6 @@
 import XCTest
 
 final class BatchEditCommitTests: XCTestCase {
-
     override func setUpWithError() throws {
         continueAfterFailure = false
     }
@@ -16,13 +15,13 @@ final class BatchEditCommitTests: XCTestCase {
     /// STR regression: edit a batch (add an event), leave the editor, go back to the
     /// calendar. The newly selected day must immediately behave as a day with
     /// events (opens the batch list, not a new-batch editor).
-    @MainActor
     /// **Premise changed.** This was "saving the batch from the editor updates the calendar",
     /// and the Save checkmark was the step under test. It no longer is: the day was added by
     /// `toggleDay`, which merged and wrote the row at the moment it was tapped. The test now
     /// leaves with Back and asserts the same visible outcome — the day holds a batch and
     /// tapping it opens the batch list rather than a new-batch editor.
-    func testLeavingBatchEditorUpdatesCalendarWithoutReachingRoot() throws {
+    @MainActor
+    func testLeavingBatchEditorUpdatesCalendarWithoutReachingRoot() {
         let app = KeyboardAvoidanceTestSupport.launchSeededApp()
         KeyboardAvoidanceTestSupport.openCalendarDetail(app, named: "UI Test Calendar")
 
@@ -67,7 +66,7 @@ final class BatchEditCommitTests: XCTestCase {
     /// pre-fill the event name.  Saving the event then the batch must persist
     /// the change so that reopening the same event shows the updated name.
     @MainActor
-    func testEditingExistingEventShowsPreFilledNameAndPersistsChanges() throws {
+    func testEditingExistingEventShowsPreFilledNameAndPersistsChanges() {
         let app = KeyboardAvoidanceTestSupport.launchSeededApp()
         KeyboardAvoidanceTestSupport.openCalendarDetail(app, named: "UI Test Calendar")
 
@@ -109,10 +108,10 @@ final class BatchEditCommitTests: XCTestCase {
         KeyboardAvoidanceTestSupport.leaveCurrentScreen(in: app)
 
         // Re-open the same batch: tap day 1 again.
-// Leaving dismisses the calendar, so re-open it before tapping a day.
-// On the iPhone the calendar stayed selected and this was not needed, which is
-// why it went unnoticed; on the iPad the leave returns to the *list* and there is
-// no day cell to tap.
+        // Leaving dismisses the calendar, so re-open it before tapping a day.
+        // On the iPhone the calendar stayed selected and this was not needed, which is
+        // why it went unnoticed; on the iPad the leave returns to the *list* and there is
+        // no day cell to tap.
         KeyboardAvoidanceTestSupport.openCalendarDetail(app, named: "UI Test Calendar")
         KeyboardAvoidanceTestSupport.tapDay(day: 1, in: app)
         XCTAssertTrue(batchRow.waitForExistence(timeout: 5), "Batch list should appear again")
@@ -140,7 +139,7 @@ final class BatchEditCommitTests: XCTestCase {
     /// 6) Tap same batch again
     /// AB was old name; EB is renamed name persists without ever returning to the calendar root.
     @MainActor
-    func testRenamedEventPersistsWhenReopeningBatchImmediately() throws {
+    func testRenamedEventPersistsWhenReopeningBatchImmediately() {
         let app = KeyboardAvoidanceTestSupport.launchSeededApp()
         KeyboardAvoidanceTestSupport.openCalendarDetail(app, named: "UI Test Calendar")
 
@@ -207,7 +206,7 @@ final class BatchEditCommitTests: XCTestCase {
     /// 8) Tap the day again
     /// EB: exactly one batch in the list. AB: two batches with the same event.
     @MainActor
-    func testSavingEventThenSavingNewBatchDoesNotDuplicateIt() throws {
+    func testSavingEventThenSavingNewBatchDoesNotDuplicateIt() {
         let app = KeyboardAvoidanceTestSupport.launchSeededApp()
         KeyboardAvoidanceTestSupport.openCalendarDetail(app, named: "UI Test Calendar")
 
@@ -286,7 +285,9 @@ final class BatchEditCommitTests: XCTestCase {
 
         // Let a delayed duplicate (if any) surface before counting.
         let settleDeadline = Date().addingTimeInterval(3)
-        while Date() < settleDeadline { Thread.sleep(forTimeInterval: 0.2) }
+        while Date() < settleDeadline {
+            Thread.sleep(forTimeInterval: 0.2)
+        }
 
         XCTAssertEqual(
             batchNameMatches.count,
@@ -319,7 +320,7 @@ final class BatchEditCommitTests: XCTestCase {
     /// Changing the batch color (which is applied to, and rewrites, every event
     /// in the batch) must persist after leaving the batch editor and a calendar round-trip.
     @MainActor
-    func testChangingEventColorPersistsAfterLeavingBatchEditor() throws {
+    func testChangingEventColorPersistsAfterLeavingBatchEditor() {
         let app = KeyboardAvoidanceTestSupport.launchSeededApp()
         KeyboardAvoidanceTestSupport.openCalendarDetail(app, named: "UI Test Calendar")
 
@@ -360,7 +361,7 @@ final class BatchEditCommitTests: XCTestCase {
 
     /// Changing the batch color must also persist when reopening batch immediately without returning to calendar root.
     @MainActor
-    func testChangingEventColorPersistsWhenReopeningBatchImmediately() throws {
+    func testChangingEventColorPersistsWhenReopeningBatchImmediately() {
         let app = KeyboardAvoidanceTestSupport.launchSeededApp()
         KeyboardAvoidanceTestSupport.openCalendarDetail(app, named: "UI Test Calendar")
 
@@ -394,7 +395,7 @@ final class BatchEditCommitTests: XCTestCase {
     /// STR: deleting an event from the batch editor's events list must also
     /// unmark the corresponding day in the calendar shown at the top.
     @MainActor
-    func testDeletingEventFromBatchListUnmarksCalendar() throws {
+    func testDeletingEventFromBatchListUnmarksCalendar() {
         let app = KeyboardAvoidanceTestSupport.launchSeededApp()
         KeyboardAvoidanceTestSupport.openCalendarDetail(app, named: "UI Test Calendar")
 
@@ -428,13 +429,16 @@ final class BatchEditCommitTests: XCTestCase {
         var day1Marked = true
         while Date() < deadline {
             if day1Query.firstMatch.exists,
-               !day1Query.firstMatch.label.lowercased().contains("events") {
+               !day1Query.firstMatch.label.lowercased().contains("events")
+            {
                 day1Marked = false
                 break
             }
             Thread.sleep(forTimeInterval: 0.2)
         }
-        XCTAssertFalse(day1Marked,
-                       "Day 1 should be unmarked after its event was deleted")
+        XCTAssertFalse(
+            day1Marked,
+            "Day 1 should be unmarked after its event was deleted"
+        )
     }
 }

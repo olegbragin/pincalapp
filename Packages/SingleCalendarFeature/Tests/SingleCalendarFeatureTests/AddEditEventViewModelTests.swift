@@ -14,7 +14,6 @@ import DSKit
 @MainActor
 @Suite("AddEditEventViewModel")
 struct AddEditEventViewModelTests {
-
     private func makeContext() -> (AddEditEventViewModel, PCEventSelectionManager) {
         let store = Fixture.makeStore(persistence: InMemoryCalendarPersisting())
         store.send(.startNewBatch(on: Fixture.day(4)))
@@ -93,9 +92,9 @@ struct AddEditEventViewModelTests {
     }
 
     @Test("The title date is the draft's, falling back to the assembly's day")
-    func displayedDate() {
+    func displayedDate() throws {
         let (vm, store) = makeContext()
-        let draftDate = store.state.eventDraft!.date
+        let draftDate = try #require(store.state.eventDraft?.date)
         #expect(vm.displayedDate == draftDate)
 
         // Dropping the draft must not leave the title empty.
@@ -108,7 +107,7 @@ struct AddEditEventViewModelTests {
     /// one worth pinning — the old test asserted the draft was committed *by pressing Save*,
     /// which passed while the writes were already happening on every keystroke.
     @Test("The draft is written into the batch as it is typed, with no Save")
-    func editsReachTheBatchWithoutSaving() {
+    func editsReachTheBatchWithoutSaving() throws {
         let (vm, store) = makeContext()
         // The push from `openEvent` is still pending — the view layer has not reported back —
         // so "no new navigation" means this request, unchanged.
@@ -121,7 +120,7 @@ struct AddEditEventViewModelTests {
             "already in the batch, while the editor is still open"
         )
         #expect(store.state.assembly?.batch.events.first?.colorName == "eventColorOption2")
-        #expect(store.state.stage == .eventEditor(batchPendingID: store.state.assembly!.batch.pendingID, eventPendingID: store.state.eventDraft!.pendingID))
+        #expect(try store.state.stage == .eventEditor(batchPendingID: #require(store.state.assembly?.batch.pendingID), eventPendingID: #require(store.state.eventDraft?.pendingID)))
         #expect(
             store.state.navigationRequest == pendingOnEntry,
             "and nothing new navigated: there is nothing to commit"

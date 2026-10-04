@@ -9,7 +9,7 @@ import SwiftUI
 
 public struct PCExpandedColorPicker: View {
     @Binding var selectedColor: PCColorOption?
-    public var defaultColor: PCColorOption? = nil
+    public var defaultColor: PCColorOption?
     @Environment(\.pcVibe) private var vibe
     @Environment(\.isEnabled) private var isEnabled
 
@@ -30,9 +30,11 @@ public struct PCExpandedColorPicker: View {
                             .frame(width: 50, height: 50)
                             .overlay(
                                 Circle()
-                                    .stroke((selectedColor ?? defaultColor) == colorOption ?
+                                    .stroke(
+                                        (selectedColor ?? defaultColor) == colorOption ?
                                             Color.accentColor : Color.clear,
-                                            lineWidth: 3)
+                                        lineWidth: 3
+                                    )
                             )
 
                         Text(colorOption.name)

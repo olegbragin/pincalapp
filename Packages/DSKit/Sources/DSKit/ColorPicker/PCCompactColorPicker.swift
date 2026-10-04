@@ -9,7 +9,7 @@ import SwiftUI
 
 public struct PCCompactColorPicker: View {
     @Binding var selectedColor: PCColorOption?
-    public var defaultColor: PCColorOption? = nil
+    public var defaultColor: PCColorOption?
     @Environment(\.pcVibe) private var vibe
     @Environment(\.isEnabled) private var isEnabled
     @State private var isColorOptionsPresented = false

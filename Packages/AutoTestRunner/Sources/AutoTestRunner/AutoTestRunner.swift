@@ -1,3 +1,4 @@
+
 import Foundation
 
 private struct AutoTestSimulator {
@@ -22,7 +23,7 @@ private let autoTestSimulators: [(profile: String, simulator: AutoTestSimulator)
     ),
 ]
 
-    @main
+@main
 struct AutoTestRunner {
     static func main() {
         // Unbuffered stdout, before anything can print.
@@ -163,7 +164,9 @@ struct AutoTestRunner {
                     Thread.sleep(forTimeInterval: 2)
 
                     let status = run(["xcrun", "simctl", "erase", target], expectingSuccess: false)
-                    if status != 0 { pending.append(target) }
+                    if status != 0 {
+                        pending.append(target)
+                    }
                 }
                 if pending.isEmpty {
                     print("Reset complete (attempt \(attempt)).")
@@ -209,7 +212,7 @@ struct AutoTestRunner {
                 // string and reports `Unknown build action '["-parallel-testing-enabled","NO"]'`,
                 // so the serial flag silently never reached xcodebuild.
                 "--extra-args=-parallel-testing-enabled",
-                "--extra-args=NO"
+                "--extra-args=NO",
             ],
             expectingSuccess: true
         )
@@ -259,7 +262,9 @@ struct AutoTestRunner {
     private static func waitUntilShutdown(_ udid: String, timeout: Int) -> Bool {
         let deadline = Date().addingTimeInterval(TimeInterval(timeout))
         while Date() < deadline {
-            if !isBooted(udid) { return true }
+            if !isBooted(udid) {
+                return true
+            }
             Thread.sleep(forTimeInterval: 1)
         }
         return false
@@ -369,10 +374,18 @@ struct AutoTestRunner {
             }
             guard inDefaults else { continue }
 
-            if let value = value(of: "workspacePath", in: trimmed) { defaults.workspacePath = value }
-            if let value = value(of: "scheme", in: trimmed) { defaults.scheme = value }
-            if let value = value(of: "simulatorName", in: trimmed) { defaults.simulatorName = value }
-            if let value = value(of: "simulatorId", in: trimmed) { defaults.simulatorId = value }
+            if let value = value(of: "workspacePath", in: trimmed) {
+                defaults.workspacePath = value
+            }
+            if let value = value(of: "scheme", in: trimmed) {
+                defaults.scheme = value
+            }
+            if let value = value(of: "simulatorName", in: trimmed) {
+                defaults.simulatorName = value
+            }
+            if let value = value(of: "simulatorId", in: trimmed) {
+                defaults.simulatorId = value
+            }
         }
 
         guard defaults.workspacePath != nil || defaults.scheme != nil else {
@@ -447,7 +460,9 @@ struct AutoTestRunner {
 
     /// The absolute workspace path, resolving a relative one against `runDirectory`.
     private static func resolvedWorkspace(_ configured: String, in runDirectory: URL) -> URL {
-        if configured.hasPrefix("/") { return URL(fileURLWithPath: configured) }
+        if configured.hasPrefix("/") {
+            return URL(fileURLWithPath: configured)
+        }
         return runDirectory.appendingPathComponent(configured).standardizedFileURL
     }
 
@@ -462,7 +477,9 @@ struct AutoTestRunner {
                 return directory
             }
             let parent = directory.deletingLastPathComponent()
-            if parent == directory { break }
+            if parent == directory {
+                break
+            }
             directory = parent
         }
         return nil
@@ -484,7 +501,7 @@ struct AutoTestRunner {
         process.waitUntilExit()
 
         let status = process.terminationStatus
-        if expectingSuccess && status != 0 {
+        if expectingSuccess, status != 0 {
             fail("\(arguments.first ?? "Command") failed with exit code \(status).")
         }
         return status
@@ -517,7 +534,7 @@ struct AutoTestRunner {
 
         var description: String {
             switch self {
-            case .creationFailed(let name):
+            case let .creationFailed(name):
                 return "Failed to create simulator '\(name)' on any available iOS runtime."
             case .noRuntimeFound:
                 return "No available iOS runtimes found (xcrun simctl list runtimes)."
@@ -530,7 +547,7 @@ struct AutoTestRunner {
 
         var description: String {
             switch self {
-            case .noSessionDefaults(let path):
+            case let .noSessionDefaults(path):
                 return "No 'sessionDefaults:' block in \(path), so there is nothing to point at a profile."
             }
         }

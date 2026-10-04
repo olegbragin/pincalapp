@@ -21,8 +21,8 @@ public struct BatchEditorVerticalLayout: View {
                 viewModel: viewModel.yearModel,
                 onYearSelect: { viewModel.switchYear(to: $0) }
             )
-                .accessibilityIdentifier("batch-editor-calendar")
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .accessibilityIdentifier("batch-editor-calendar")
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
             AddEditEventBatchView()
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         }

@@ -17,14 +17,14 @@ public final class PCCalendarDayModel: Identifiable {
     public let isInCurrentMonth: Bool
     public let date: Date?
     public let accessibilityID: String
-    
+
     public var events: [String] = []
-    
+
     var accessibilityLabel: String {
         guard !events.isEmpty else { return text }
         return "\(text), \(events.count) events"
     }
-    
+
     var textColorRole: PCColorRole {
         switch (isToday, isInCurrentMonth) {
         case (true, _):
@@ -35,7 +35,7 @@ public final class PCCalendarDayModel: Identifiable {
             return .foregroundDisabled
         }
     }
-    
+
     var backgroundColorRole: PCColorRole {
         switch (isToday, isInCurrentMonth) {
         case (true, _), (false, true):
@@ -44,15 +44,15 @@ public final class PCCalendarDayModel: Identifiable {
             return .backgroundDisabled
         }
     }
-    
+
     var borderColorRole: PCColorRole? {
         isToday ? .accent : nil
     }
-    
+
     var fontRole: PCFontRole {
         isToday ? .todayDayNumber : .dayNumber
     }
-    
+
     public init(date: Date, number: Int, isInCurrentMonth: Bool, isToday: Bool, gridMonth: Int) {
         self.text = "\(number)"
         self.isToday = isToday
@@ -61,7 +61,7 @@ public final class PCCalendarDayModel: Identifiable {
         let dateString = Self.dayIDFormatter.string(from: date)
         self.accessibilityID = "day-\(String(format: "%02d", gridMonth))-\(dateString)"
     }
-    
+
     private static let dayIDFormatter: DateFormatter = {
         let formatter = DateFormatter()
         formatter.dateFormat = "yyyy-MM-dd"

@@ -1,5 +1,5 @@
 //
-//  USCalendarMonth.swift
+//  PCCalendarMonthView.swift
 //  USkateAppV2
 //
 //  Created by Oleg Bragin on 25.01.2026.
@@ -10,7 +10,7 @@ import SwiftUI
 public struct PCCalendarMonthView: View {
     @Bindable var viewModel: PCCalendarMonthModel
     var cellSize: CGFloat
-    
+
     public var body: some View {
         VStack(alignment: .leading, spacing: 2) {
             Text(viewModel.label)

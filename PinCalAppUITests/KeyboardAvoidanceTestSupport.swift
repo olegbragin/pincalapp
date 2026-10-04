@@ -9,7 +9,6 @@ import UIKit
 import XCTest
 
 enum KeyboardAvoidanceTestSupport {
-
     @MainActor
     static func launchSeededApp() -> XCUIApplication {
         let app = XCUIApplication()
@@ -76,8 +75,12 @@ enum KeyboardAvoidanceTestSupport {
     /// actually on screen.
     @MainActor
     static func isPad(_ app: XCUIApplication) -> Bool {
-        if app.buttons.matching(identifier: "Show Sidebar").count > 0 { return true }
-        if app.buttons.matching(identifier: "Hide Sidebar").count > 0 { return true }
+        if app.buttons.matching(identifier: "Show Sidebar").count > 0 {
+            return true
+        }
+        if app.buttons.matching(identifier: "Hide Sidebar").count > 0 {
+            return true
+        }
         return UIDevice.current.userInterfaceIdiom == .pad
     }
 
@@ -242,7 +245,9 @@ enum KeyboardAvoidanceTestSupport {
     @MainActor
     static func toolbarAction(_ name: String, in app: XCUIApplication) -> XCUIElement {
         let direct = app.buttons[name]
-        if direct.exists { return direct }
+        if direct.exists {
+            return direct
+        }
 
         let overflow = app.buttons["plus"]
         guard overflow.exists, overflow.isHittable else { return direct }
@@ -260,7 +265,9 @@ enum KeyboardAvoidanceTestSupport {
     @MainActor
     static func toolbarActionExists(_ name: String, in app: XCUIApplication, timeout: TimeInterval = 0) -> Bool {
         let direct = app.buttons[name]
-        if direct.waitForExistence(timeout: timeout) { return true }
+        if direct.waitForExistence(timeout: timeout) {
+            return true
+        }
 
         let overflow = app.buttons["plus"]
         guard overflow.exists, overflow.isHittable else { return false }
@@ -348,7 +355,8 @@ enum KeyboardAvoidanceTestSupport {
         dayCell(day: day, in: app).label.lowercased().contains("event")
     }
 
-    static func dayIdentifier(day: Int) -> String {        let calendar = Calendar.current
+    static func dayIdentifier(day: Int) -> String {
+        let calendar = Calendar.current
         let now = Date()
         let year = calendar.component(.year, from: now)
         let month = calendar.component(.month, from: now)
@@ -383,7 +391,9 @@ enum KeyboardAvoidanceTestSupport {
         var target: XCUIElement?
         while target == nil, Date() < deadline {
             target = picker.allElementsBoundByIndex.reversed().first { $0.isHittable }
-            if target == nil { Thread.sleep(forTimeInterval: 0.2) }
+            if target == nil {
+                Thread.sleep(forTimeInterval: 0.2)
+            }
         }
         (target ?? picker.firstMatch).tap()
 
@@ -432,8 +442,10 @@ enum KeyboardAvoidanceTestSupport {
 
         let deadline = Date().addingTimeInterval(5)
         while Date() < deadline {
-            if (field.value as? String)?.hasSuffix(text) == true { return }
-            usleep(50_000)
+            if (field.value as? String)?.hasSuffix(text) == true {
+                return
+            }
+            usleep(50000)
         }
         XCTFail(
             "The field never showed the typed text (it reads "
@@ -482,7 +494,9 @@ enum KeyboardAvoidanceTestSupport {
 
         if !row.isHittable {
             let show = app.buttons["Show Sidebar"]
-            if show.exists, show.isHittable { show.tap() }
+            if show.exists, show.isHittable {
+                show.tap()
+            }
         }
         guard row.isHittable else {
             XCTFail("Calendar '\(name)' is listed but not reachable")
@@ -583,7 +597,10 @@ enum KeyboardAvoidanceTestSupport {
         let deadline = Date().addingTimeInterval(10)
         while Date() < deadline {
             if app.descendants(matching: .any)
-                .matching(identifier: "card-archive-1").count > 0 { return }
+                .matching(identifier: "card-archive-1").count > 0
+            {
+                return
+            }
             Thread.sleep(forTimeInterval: 0.25)
         }
         XCTFail("leaveCurrentScreen did not leave the calendar. "
@@ -637,7 +654,9 @@ enum KeyboardAvoidanceTestSupport {
     static func scrollElementIntoView(_ element: XCUIElement, in app: XCUIApplication, maxSwipes: Int = 6) {
         var swipes = 0
         while swipes < maxSwipes {
-            if element.waitForExistence(timeout: 1), element.isHittable { return }
+            if element.waitForExistence(timeout: 1), element.isHittable {
+                return
+            }
             app.swipeUp(velocity: .slow)
             swipes += 1
         }

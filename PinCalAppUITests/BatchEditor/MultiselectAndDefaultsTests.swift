@@ -10,7 +10,6 @@
 import XCTest
 
 final class MultiselectAndDefaultsTests: XCTestCase {
-
     override func setUpWithError() throws {
         continueAfterFailure = false
     }
@@ -42,7 +41,7 @@ final class MultiselectAndDefaultsTests: XCTestCase {
     /// consequence of "set with the selected colour" that accessibility can see — the day
     /// cell's label is `"<n>, <k> events"` and carries no colour name.
     @MainActor
-    func testMultiselectDayTapMarksTheDayWithTheSelectedColour() throws {
+    func testMultiselectDayTapMarksTheDayWithTheSelectedColour() {
         let app = openSeededCalendar()
 
         let multiselect = KeyboardAvoidanceTestSupport.toolbarAction("Multiselect", in: app)
@@ -96,7 +95,7 @@ final class MultiselectAndDefaultsTests: XCTestCase {
     /// calendar" is asked of the *day cells*, which exist on the calendar and nowhere else.
     /// A back button would be weaker: the calendars list has one too.
     @MainActor
-    func testSavingAConfirmedMultiselectSessionReturnsToTheCalendar() throws {
+    func testSavingAConfirmedMultiselectSessionReturnsToTheCalendar() {
         let app = openSeededCalendar()
 
         KeyboardAvoidanceTestSupport.tapToolbarAction("Multiselect", in: app)
@@ -143,7 +142,7 @@ final class MultiselectAndDefaultsTests: XCTestCase {
     /// batch arrives named "New event" with the first colour already selected, and its
     /// event arrives named "New event day" in the batch's colour.
     @MainActor
-    func testANewBatchArrivesNamedAndColoured() throws {
+    func testANewBatchArrivesNamedAndColoured() {
         let app = openSeededCalendar()
 
         KeyboardAvoidanceTestSupport.tapDay(day: day, in: app)

@@ -76,27 +76,27 @@ public struct PCWalletCardStack<Item: Identifiable & Hashable, Content: View>: V
                         .simultaneousGesture(
                             !isEditing && onRemove != nil
                                 ? DragGesture(minimumDistance: 50, coordinateSpace: .local)
-                                    .onChanged { value in
-                                        guard value.translation.width < 0 else { return }
-                                        withAnimation(.interactiveSpring()) {
-                                            dragOffsets[item.id] = value.translation.width
+                                .onChanged { value in
+                                    guard value.translation.width < 0 else { return }
+                                    withAnimation(.interactiveSpring()) {
+                                        dragOffsets[item.id] = value.translation.width
+                                    }
+                                }
+                                .onEnded { value in
+                                    if value.translation.width < -120 {
+                                        let removedItem = item
+                                        withAnimation(.easeOut(duration: 0.25)) {
+                                            dragOffsets[item.id] = -cardWidth - 40
+                                        }
+                                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.28) {
+                                            onRemove?(removedItem)
+                                        }
+                                    } else {
+                                        withAnimation(.spring(response: 0.35)) {
+                                            dragOffsets[item.id] = 0
                                         }
                                     }
-                                    .onEnded { value in
-                                        if value.translation.width < -120 {
-                                            let removedItem = item
-                                            withAnimation(.easeOut(duration: 0.25)) {
-                                                dragOffsets[item.id] = -cardWidth - 40
-                                            }
-                                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.28) {
-                                                onRemove?(removedItem)
-                                            }
-                                        } else {
-                                            withAnimation(.spring(response: 0.35)) {
-                                                dragOffsets[item.id] = 0
-                                            }
-                                        }
-                                    }
+                                }
                                 : nil
                         )
                 }

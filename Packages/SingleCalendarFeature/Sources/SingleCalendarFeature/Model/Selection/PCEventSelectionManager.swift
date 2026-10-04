@@ -24,7 +24,6 @@ import DSKit
 @MainActor
 @Observable
 public final class PCEventSelectionManager {
-
     /// The whole of the feature's state. Written only by `send`.
     public private(set) var state: PCEventSelectionState
 
@@ -60,7 +59,9 @@ public final class PCEventSelectionManager {
     /// False only while a save has failed. In-flight writes are *not* a reason to block — the
     /// switch flushes them, and blocking on every keystroke-save would make the calendar feel
     /// sticky for no benefit.
-    public var canSwitchCalendar: Bool { failedSave == nil }
+    public var canSwitchCalendar: Bool {
+        failedSave == nil
+    }
 
     /// Settles in-flight work, then reports whether the calendar may be left.
     ///
@@ -85,7 +86,9 @@ public final class PCEventSelectionManager {
         await writeChain?.value
 
         // Nothing written, nothing lost: the common case, and it stays fast.
-        if failedSave == nil { return true }
+        if failedSave == nil {
+            return true
+        }
 
         // A write landed *after* the failure, for this same calendar. That write was computed
         // from the store's current state, which already includes everything the failed write
@@ -187,7 +190,9 @@ public final class PCEventSelectionManager {
     public func send(_ action: PCEventSelectionAction) {
         let previous = state
         let next = pcEventSelectionReducer(previous, action)
-        if next != previous { state = next }
+        if next != previous {
+            state = next
+        }
 
         projectCalendar()
 
@@ -274,7 +279,7 @@ public final class PCEventSelectionManager {
     /// guard belongs here, next to the call that would do the damage.
     private func perform(_ effect: PCEventSelectionEffect, isNameEdit: Bool = false) {
         guard
-            case .writeCalendar(let id, let columns, let batches) = effect,
+            case let .writeCalendar(id, columns, batches) = effect,
             id != 0
         else { return }
 

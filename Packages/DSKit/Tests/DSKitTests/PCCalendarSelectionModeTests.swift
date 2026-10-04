@@ -1,9 +1,9 @@
+
 import Testing
 import DSKit
 
 @Suite("PCCalendarSelectionMode Tests")
 struct PCCalendarSelectionModeTests {
-
     @Test("Cases are distinct and equatable")
     func casesAreDistinct() {
         #expect(PCCalendarSelectionMode.single == .single)

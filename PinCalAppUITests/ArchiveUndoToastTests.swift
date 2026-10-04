@@ -22,7 +22,6 @@ import XCTest
 
 @MainActor
 final class ArchiveUndoToastTests: XCTestCase {
-
     private let calendar = "UI Test Calendar"
     private let toastIdentifier = "archive-undo-toast"
     private let undoIdentifier = "archive-undo-toast-button"

@@ -80,7 +80,9 @@ actor InMemoryCalendarPersisting: CalendarPersisting {
     func waitForWrites(_ expected: Int, timeout: Duration = .seconds(5)) async -> Int {
         let deadline = ContinuousClock.now + timeout
         while ContinuousClock.now < deadline {
-            if writes.count >= expected { return writes.count }
+            if writes.count >= expected {
+                return writes.count
+            }
             try? await Task.sleep(for: .milliseconds(10))
         }
         return writes.count
@@ -105,7 +107,9 @@ actor InMemoryCalendarPersisting: CalendarPersisting {
     ) async -> [CalendarEventBatch]? {
         let deadline = ContinuousClock.now + timeout
         while ContinuousClock.now < deadline {
-            if let last = writes.last, predicate(last.batches) { return last.batches }
+            if let last = writes.last, predicate(last.batches) {
+                return last.batches
+            }
             try? await Task.sleep(for: .milliseconds(10))
         }
         return writes.last?.batches
@@ -142,14 +146,14 @@ actor InMemoryCalendarManaging: CalendarManaging {
         timeout: Duration = .seconds(5)
     ) async -> Int {
         switch change {
-        case .added(let calendar), .changed(let calendar):
+        case let .added(calendar), let .changed(calendar):
             self.calendar = calendar
             await persistence?.update(calendar)
         case .removed:
             // The model only goes `.empty` if the read now finds nothing, so a removal has
             // to remove the row rather than rewrite it.
             await persistence?.update(nil)
-        case .refreshed(let calendars):
+        case let .refreshed(calendars):
             await persistence?.update(calendars.first ?? calendar)
         }
         await waitForSubscribers(timeout: timeout)
@@ -164,7 +168,9 @@ actor InMemoryCalendarManaging: CalendarManaging {
     func waitForSubscribers(timeout: Duration = .seconds(5)) async -> Int {
         let deadline = ContinuousClock.now + timeout
         while ContinuousClock.now < deadline {
-            if !continuations.isEmpty { return continuations.count }
+            if !continuations.isEmpty {
+                return continuations.count
+            }
             try? await Task.sleep(for: .milliseconds(10))
         }
         return continuations.count
@@ -196,12 +202,21 @@ actor InMemoryCalendarManaging: CalendarManaging {
         subscriberCount = continuations.count
     }
 
-    // The remaining operations are not what this fake exists for; a test that starts
-    // driving them belongs in the list's suite, which has its own fake.
-    func loadActive() async -> [PinCalendar] { [calendar] }
-    func loadArchived() async -> [PinCalendar] { calendar.isArchived ? [calendar] : [] }
+    /// The remaining operations are not what this fake exists for; a test that starts
+    /// driving them belongs in the list's suite, which has its own fake.
+    func loadActive() async -> [PinCalendar] {
+        [calendar]
+    }
+
+    func loadArchived() async -> [PinCalendar] {
+        calendar.isArchived ? [calendar] : []
+    }
+
     func createCalendar(name: String, year: Int, numberOfColumns: Int) async throws {}
-    func updateCalendar(_ calendar: PinCalendar) async throws { self.calendar = calendar }
+    func updateCalendar(_ calendar: PinCalendar) async throws {
+        self.calendar = calendar
+    }
+
     func archiveCalendar(id: Int64) async throws {}
     func restoreCalendar(id: Int64) async throws {}
     func permanentlyDeleteCalendar(id: Int64) async throws {}
@@ -209,7 +224,6 @@ actor InMemoryCalendarManaging: CalendarManaging {
 
 @MainActor
 enum Fixture {
-
     static func day(_ dayOfMonth: Int, month: Int = 6, year: Int = 2026) -> Date {
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = TimeZone(identifier: "UTC")!

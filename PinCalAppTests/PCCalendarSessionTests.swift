@@ -14,20 +14,19 @@
 //  deleted.
 //
 
-import Testing
 import Foundation
+import Testing
+import CoreDomain
+import DSKit
 import ObjectBox
-@testable import PinCalApp
+import SingleCalendarFeature
 // `@testable` for `PP*` entities and the in-memory store factory.
 @testable import CorePersistence
-import CoreDomain
-import SingleCalendarFeature
-import DSKit
+@testable import PinCalApp
 
 @MainActor
 @Suite("PCCalendarSession")
 struct PCCalendarSessionTests {
-
     private let day = Date(timeIntervalSince1970: 1_780_000_000)
 
     /// `PCCalendarSession.persistence` is typed `any CalendarPersisting`, so reading rows back
@@ -39,7 +38,9 @@ struct PCCalendarSessionTests {
         let session: PCCalendarSession
         let port: CalendarStore
 
-        func close() { objectBox.close() }
+        func close() {
+            objectBox.close()
+        }
     }
 
     private func makeFixture() throws -> Fixture {
@@ -220,7 +221,7 @@ struct PCCalendarSessionTests {
         )
     }
 
-/// A reload that raced the deletion can put the row back, and the session's key can no longer
+    /// A reload that raced the deletion can put the row back, and the session's key can no longer
     /// name it — the reload re-mints `pendingID`, and `isSnapshot` has nothing to compare
     /// because the assembly is empty while the returning row is the pre-deletion snapshot.
     ///
@@ -276,7 +277,7 @@ struct PCCalendarSessionTests {
         let store = fixture.session.eventSelection(for: 1)
         // A pre-existing batch, and the session's own — both named "New event", both the same
         // colour, because that is what an untouched batch looks like.
-        let neighbour = batch("New event", on: day.addingTimeInterval(-86_400), id: 5)
+        let neighbour = batch("New event", on: day.addingTimeInterval(-86400), id: 5)
         store.send(.syncCalendar(calendarID: 1, batches: [neighbour]))
         store.send(.setMultiSelectMode(true))
         store.send(.setMultiSelectColor(.option2))
