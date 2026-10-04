@@ -12,7 +12,10 @@ public struct SettingsView: View {
     @State private var viewModel: SettingsViewModel
 
     public init() {
-        _viewModel = State(initialValue: SettingsViewModel())
+        // The app's real preferences. Stated here rather than defaulted inside
+        // `SettingsViewModel` so this remains the single place that opts into the
+        // process-wide store — see the note on that initialiser.
+        _viewModel = State(initialValue: SettingsViewModel(defaults: .standard))
     }
 
     public var body: some View {

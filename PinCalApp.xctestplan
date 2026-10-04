@@ -41,6 +41,7 @@
       }
     },
     {
+      "parallelizable" : true,
       "target" : {
         "containerPath" : "container:Packages\/CalendarListFeature",
         "identifier" : "CalendarListFeatureTests",
@@ -48,6 +49,7 @@
       }
     },
     {
+      "parallelizable" : true,
       "target" : {
         "containerPath" : "container:Packages\/CoreDomain",
         "identifier" : "CoreDomainTests",
@@ -55,6 +57,7 @@
       }
     },
     {
+      "parallelizable" : true,
       "target" : {
         "containerPath" : "container:Packages\/SingleCalendarFeature",
         "identifier" : "SingleCalendarFeatureTests",
@@ -62,6 +65,7 @@
       }
     },
     {
+      "parallelizable" : true,
       "target" : {
         "containerPath" : "container:Packages\/SettingsFeature",
         "identifier" : "SettingsFeatureTests",
@@ -69,6 +73,7 @@
       }
     },
     {
+      "parallelizable" : true,
       "target" : {
         "containerPath" : "container:Packages\/DSKit",
         "identifier" : "DSKitTests",
@@ -76,6 +81,7 @@
       }
     },
     {
+      "parallelizable" : true,
       "target" : {
         "containerPath" : "container:Packages\/CorePersistence",
         "identifier" : "CorePersistenceTests",

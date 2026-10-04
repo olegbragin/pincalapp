@@ -28,7 +28,17 @@ public final class SettingsViewModel {
 
     private let defaults: UserDefaults
 
-    public init(defaults: UserDefaults = .standard) {
+    /// `defaults` has no default value on purpose.
+    ///
+    /// It used to default to `.standard`, which made the process-wide store the path of least
+    /// resistance: a caller that forgot to pass one got a view model that silently read and wrote
+    /// the user's real preferences. Every test already passed its own UUID-named suite, so nothing
+    /// was actually broken — but the hazard was one omitted argument away, and the tests were
+    /// passing only because they happened to be the careful ones.
+    ///
+    /// Requiring it makes `SettingsView` state that the app really does use `.standard`, which is
+    /// the one place that should know it.
+    public init(defaults: UserDefaults) {
         self.defaults = defaults
         self.theme = AppTheme(rawValue: defaults.string(forKey: Self.themeKey) ?? "") ?? .system
         self.vibeId = defaults.string(forKey: Self.vibeKey) ?? PCVibe.default.id

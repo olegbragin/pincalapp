@@ -54,20 +54,34 @@ struct PCNameAutosaveTests {
     }
 
     /// The starvation case a plain trailing debounce cannot handle.
+    ///
+    /// The loop runs *until* the write lands rather than for a fixed window, and typing is still
+    /// going when it does. Both halves matter. A fixed window measured how much wall clock the
+    /// machine gave us: with `maxWait` at 200ms inside a 400ms loop, four parallel clones were
+    /// enough for the main actor to be starved past the deadline, and the test failed having
+    /// asserted nothing about the autosave. And if the loop simply *stopped* and then waited, the
+    /// trailing debounce would satisfy the assertion on its own 60ms later — a different property
+    /// entirely, and one that would have passed with the ceiling deleted.
+    ///
+    /// `delay` and `maxWait` are an order of magnitude apart for the same reason. Both timers are
+    /// wall-clock and both are delayed by load, so the only thing keeping this honest is there
+    /// being far too little quiet for the trailing debounce to take: a stall big enough for a
+    /// 500ms debounce to beat a 50ms ceiling is a stall this test should fail on, not absorb.
     @Test("Continuous typing still writes, bounded by maxWait")
     func continuousTypingStillWrites() async {
-        let autosave = PCNameAutosave(delay: .milliseconds(60), maxWait: .milliseconds(200))
+        let autosave = PCNameAutosave(delay: .milliseconds(500), maxWait: .milliseconds(50))
         var fired = 0
 
-        // Changes keep arriving faster than the delay — a plain debounce would never fire,
-        // and the work would not be saved until the user finally stopped.
-        let deadline = ContinuousClock.now + .milliseconds(400)
-        while ContinuousClock.now < deadline {
+        // A guard against hanging forever, not the thing under test: the premise is that steady
+        // typing cannot starve the write indefinitely, so the loop's exit condition *is* the
+        // write happening.
+        let cap = ContinuousClock.now + .seconds(5)
+        while fired == 0, ContinuousClock.now < cap {
             autosave.change { fired += 1 }
             try? await Task.sleep(for: .milliseconds(10))
         }
 
-        #expect(fired >= 1, "typing for 400ms with no pause still saved")
+        #expect(fired >= 1, "typing with no pause still saved")
     }
 
     @Test("flush writes immediately, without waiting out the delay")

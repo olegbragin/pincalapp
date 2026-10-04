@@ -35,6 +35,16 @@ public struct PCCalendarYearView: View {
         max(3, Int(floor(width / minMonthWidth)))
     }
 
+    /// Column layouts by count. The only mutable static in the package, so it is worth saying why it
+    /// is safe: `DSKit` builds in Swift 6 language mode, where a nonisolated mutable static is a
+    /// compile error, and this one compiles. The type inherits `@MainActor` from its `View`
+    /// conformance, so both the read and the write below are main-actor isolated and the
+    /// unsynchronised `Dictionary` cannot be reached from two threads at once.
+    ///
+    /// That safety is a property of the isolation, not of the declaration — a `nonisolated` call
+    /// site added later would reintroduce a data race here with no local signal. If this ever has
+    /// to be read off the main actor, make it a `nonisolated let` built once instead of adding a
+    /// lock; the value is a pure function of `count`.
     private static var columnsCache: [Int: [GridItem]] = [:]
 
     private var gridColumns: [GridItem] {

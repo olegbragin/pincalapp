@@ -38,6 +38,7 @@ struct AutoTestRunner {
         setvbuf(stdout, nil, _IONBF, 0)
 
         var profile = "iphone"
+        var parallelWorkers = 1
         var shouldReset = true
         var checkOnly = false
         var printConfigOnly = false
@@ -49,10 +50,32 @@ struct AutoTestRunner {
             case "--profile", "-p":
                 guard let value = args.first else { fail("Missing value for \(flag)") }
                 args.removeFirst()
-                guard value == "iphone" || value == "ipad" else {
-                    fail("Unsupported profile '\(value)'. Use 'iphone' or 'ipad'.")
+                guard ["iphone", "ipad", "all"].contains(value) else {
+                    fail("Unsupported profile '\(value)'. Use 'iphone', 'ipad' or 'all'.")
                 }
                 profile = value
+            case "--parallel-workers":
+                // A flag rather than a constant because the right number is a property of the
+                // machine, not of this file: four clones of an iPad Pro is a different ask of a
+                // Mac than four clones of an iPhone, and the answer has to come from a measured
+                // run rather than from a number someone guessed.
+                //
+                // Defaults to 1, which is serial — one destination, no clones.
+                //
+                // Deliberately not a measured optimum, because no reliable measurement exists:
+                // the same one-worker configuration has been observed at both 27s and 106s on a
+                // host whose `uptime` swung between 5 and 113 with nothing booted. An early sample
+                // suggested four workers was ~2.5x slower than one, and a later one-worker run was
+                // slower than any four-worker run, so that comparison was measuring the machine.
+                // One is the conservative default and the configuration that was green most
+                // often; raising it is opt-in, and the honest way to choose a number is to
+                // interleave configurations on an idle host and watch `uptime` while doing it.
+                guard let value = args.first else { fail("Missing value for \(flag)") }
+                args.removeFirst()
+                guard let count = Int(value), count > 0 else {
+                    fail("\(flag) expects a positive integer, got '\(value)'.")
+                }
+                parallelWorkers = count
             case "--skip-reset":
                 shouldReset = false
             case "--check":
@@ -101,10 +124,19 @@ struct AutoTestRunner {
         let defaults: SessionDefaults
         do {
             defaults = try readSessionDefaults(at: configURL)
-            try syncProfileConfig(profile: profile, with: udids, in: runDirectory)
         } catch {
-            fail("Could not read or update \(configURL.path): \(error)")
+            fail("Could not read \(configURL.path): \(error)")
         }
+
+        // 'all' means *both*, one after another, rather than a third kind of device.
+        //
+        // AGENTS.md is explicit that an iPhone-only green run has never exercised the
+        // calendar-switch guarantees: a phone pops the calendar view away, while an iPad replaces
+        // the detail column in place, so `testSwitchingCalendarEndsAMultiselectSession` is green on
+        // one and red on the other for the same code. The two profiles check different things, so
+        // neither substitutes for the other and a single-profile default quietly drops half the
+        // suite.
+        let profiles = profile == "all" ? autoTestSimulators.map(\.profile) : [profile]
 
         let workspace = defaults.workspacePath.map {
             resolvedWorkspace($0, in: runDirectory).path
@@ -117,11 +149,21 @@ struct AutoTestRunner {
         print("Scheme:    \(scheme)")
 
         if printConfigOnly {
-            print("Config synchronised at \(runDirectory.path)")
+            // Still has to do the sync. The per-profile sync moved into the run loop so each
+            // profile points the config at its own device, and leaving it out of this branch would
+            // make `--print-config` announce a synchronisation that never happened — the same
+            // "the run looks clean but nothing was done" failure this tool already got rewritten
+            // once for.
+            for target in profiles {
+                do {
+                    try syncProfileConfig(profile: target, with: udids, in: runDirectory)
+                } catch {
+                    fail("Could not point the config at the '\(target)' profile: \(error)")
+                }
+            }
+            print("Config synchronised at \(runDirectory.path) for: \(profiles.joined(separator: ", "))")
             exit(0)
         }
-
-        guard let udid = udids[profile] else { fail("No simulator resolved for profile '\(profile)'.") }
 
         if shouldReset {
             // A shutdown/erase pass, retried.
@@ -186,37 +228,88 @@ struct AutoTestRunner {
             }
         }
 
-        print("Running tests using the '\(profile)' profile (\(udid))...")
-        // The simulator is named explicitly rather than through a defaults profile. The
-        // installed CLI has no `--profile` flag, and config.yaml carries a flat
-        // `sessionDefaults:` with no `sessionDefaultsProfiles:` section, so a profile
-        // selector is not something this can ask for. The id is the thing that actually
-        // picks a device, and passing it directly cannot drift from the resolved UDID the
-        // way a name or a profile key can.
-        // The command is `mobilebuildmcp`, not `xcodebuildmcp`. The tool was renamed and
-        // both binaries are on PATH — the old name still resolves, to the previous release —
-        // so a runner still calling `xcodebuildmcp` keeps working while quietly running a
-        // version behind, which is exactly the kind of drift that reads as "the runner is
-        // flaky". Verified: `mobilebuildmcp` 2.7.1, `xcodebuildmcp` 2.7.0.
-        let status = run(
-            [
-                "mobilebuildmcp", "simulator", "test",
-                "--workspace-path", workspace,
-                "--scheme", scheme,
-                "--simulator-id", udid,
-                // Serial, always. Parallel testing produced a hard main-actor contention
-                // crash that poisoned 136 tests including previously-green ones, and the
-                // flag is an xcodebuild one — the CLI reaches it through --extra-args.
-                // Repeated `--extra-args=<value>`, one entry per xcodebuild argument.
-                // A JSON array is *not* accepted: the CLI reads the value as a single
-                // string and reports `Unknown build action '["-parallel-testing-enabled","NO"]'`,
-                // so the serial flag silently never reached xcodebuild.
-                "--extra-args=-parallel-testing-enabled",
-                "--extra-args=NO",
-            ],
-            expectingSuccess: true
-        )
-        exit(status)
+        // Profiles run strictly one after another, and each one may spread its own targets
+        // across clones.
+        //
+        // Sequential between profiles is a requirement, not a nicety. Each profile erases and
+        // then drives its own simulator, cloning it up to `--parallel-workers` times; two
+        // profiles at once would be every clone of both devices at the same time, and they
+        // would also be rewriting the same `.mobilebuildmcp/config.yaml` under each other, since
+        // the config carries a single `sessionDefaults:` block.
+        //
+        // A failing profile does not stop the next one. Running both is the point — the iPad half
+        // is the only thing that checks the calendar-switch guarantees — so exiting on the first
+        // failure would report the iPhone outcome and hide the iPad one.
+        var failures: [String] = []
+        for currentProfile in profiles {
+            guard let udid = udids[currentProfile] else {
+                failures.append("\(currentProfile) (no simulator resolved)")
+                continue
+            }
+
+            do {
+                try syncProfileConfig(profile: currentProfile, with: udids, in: runDirectory)
+            } catch {
+                fail("Could not point the config at the '\(currentProfile)' profile: \(error)")
+            }
+
+            print("Running tests using the '\(currentProfile)' profile (\(udid)), \(parallelWorkers) at a time...")
+            // The simulator is named explicitly rather than through a defaults profile. The
+            // installed CLI has no `--profile` flag, and config.yaml carries a flat
+            // `sessionDefaults:` with no `sessionDefaultsProfiles:` section, so a profile
+            // selector is not something this can ask for. The id is the thing that actually
+            // picks a device, and passing it directly cannot drift from the resolved UDID the
+            // way a name or a profile key can.
+            // The command is `mobilebuildmcp`, not `xcodebuildmcp`. The tool was renamed and
+            // both binaries are on PATH — the old name still resolves, to the previous release —
+            // so a runner still calling `xcodebuildmcp` keeps working while quietly running a
+            // version behind, which is exactly the kind of drift that reads as "the runner is
+            // flaky". Verified: `mobilebuildmcp` 2.7.1, `xcodebuildmcp` 2.7.0.
+            //
+            // Parallel, capped at `parallelWorkers`. Repeated `--extra-args=<value>`, one entry
+            // per xcodebuild argument: a JSON array is *not* accepted, the CLI reads the value as
+            // a single string and reports `Unknown build action '["-parallel-testing-enabled","NO"]'`,
+            // which is how the old serial flag could have silently stopped reaching xcodebuild.
+            //
+            // The target-level half of this lives in `PinCalApp.xctestplan`: every unit target is
+            // marked `parallelizable`, and without that this flag only buys concurrency between
+            // destinations that have nothing to put on them. `PinCalAppUITests` is deliberately
+            // left unmarked — Xcode will not distribute UI tests, since they drive one app against
+            // one device — so they run serially alongside the parallel unit targets rather than
+            // being excluded.
+            //
+            // The flag used to be `NO`, because parallel runs produced a hard main-actor contention
+            // crash that poisoned 136 tests including previously-green ones. That was never a
+            // coupling problem: Swift Testing already ran every suite concurrently inside the
+            // process (nothing in this repo carries `.serialized`), so `-parallel-testing-enabled`
+            // only ever added *cross-destination* concurrency. The crash was four clones
+            // oversubscribing one Mac and the wall-clock assertions missing their deadlines —
+            // `waitForWrites(1, timeout: .milliseconds(300))` and friends. Those are being made
+            // load-independent; this flag is on again so that work can be measured rather than
+            // assumed.
+            let status = run(
+                [
+                    "mobilebuildmcp", "simulator", "test",
+                    "--workspace-path", workspace,
+                    "--scheme", scheme,
+                    "--simulator-id", udid,
+                    "--extra-args=-parallel-testing-enabled",
+                    "--extra-args=YES",
+                    "--extra-args=-maximum-parallel-testing-workers",
+                    "--extra-args=\(parallelWorkers)",
+                ],
+                expectingSuccess: false
+            )
+            if status != 0 {
+                failures.append("\(currentProfile) (exit \(status))")
+            }
+        }
+
+        if failures.isEmpty {
+            print("All profiles passed.")
+            exit(0)
+        }
+        fail("Failed: \(failures.joined(separator: ", "))")
     }
 
     // MARK: - Simulator resolution & creation
@@ -562,7 +655,12 @@ struct AutoTestRunner {
               AutoTestRunner [options]
 
             Options:
-              --profile, -p <iphone|ipad>   Test profile (simulator) to use. Default: iphone.
+              --profile, -p <iphone|ipad|all>
+                                            Test profile (simulator) to use. 'all' runs both,
+                                            one after the other. Default: iphone.
+              --parallel-workers <n>        Simulator clones a profile's run may use at once.
+                                            1 (the default) is serial; raise it to trade wall
+                                            clock for concurrency.
               --skip-reset                  Do not erase the AutoTest simulators before testing.
               --check                       Resolve/create the AutoTest simulators and exit
                                             without touching the config or running tests.
@@ -574,6 +672,12 @@ struct AutoTestRunner {
             testing. Both are shut down and erased before every run by default, and a failure
             to do either is fatal rather than ignored — a "full reset" that silently did not
             happen is worse than none, because the run still looks clean.
+
+            Each profile runs its test targets across up to --parallel-workers clones of its own
+            simulator, one destination by default. Profiles never overlap: they share one machine
+            and one config file, so a failing profile still lets the next one run — the iPad half
+            is the only thing that checks the calendar-switch guarantees, so stopping at the
+            first failure would report the iPhone outcome and hide the iPad one.
 
             The chosen profile is written into .mobilebuildmcp/config.yaml, which is what the
             CLI reads, and the simulator is also passed to the CLI by id. The id is the
