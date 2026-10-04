@@ -80,6 +80,19 @@ public final class CalendarListViewModel {
     /// stream.
     @ObservationIgnored private var changesTask: Task<Void, Never>?
 
+    /// Reported when a calendar leaves the active set — archived, or deleted for good.
+    ///
+    /// Off the change feed rather than off the archive and delete methods, for two reasons. It
+    /// is the *effect* rather than the intent, so a write that failed raises nothing here and
+    /// the calendar stays where it was, which is the honest answer. And it covers every route to
+    /// those operations — the card's button, the context menu, anything added later — instead of
+    /// only the two this view happens to call today.
+    ///
+    /// `.removed` is exactly those two operations and not an approximation: they are the only
+    /// ones that publish a removal, and a restore publishes a *change* instead.
+    @ObservationIgnored
+    var onCalendarRemoved: ((Int64) -> Void)?
+
     var appVersion: String {
         let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "?"
         let build = Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "?"
@@ -254,6 +267,10 @@ public final class CalendarListViewModel {
             withAnimation(.spring(response: 0.4, dampingFraction: 0.75)) {
                 calendars.removeAll { $0.id == item.id }
             }
+            // Announced after the list has folded it in, so a handler that re-reads the list
+            // sees the calendar already gone. Harmless either way, and cheaper to reason about
+            // than one where the order matters.
+            onCalendarRemoved?(item.id)
         }
     }
 

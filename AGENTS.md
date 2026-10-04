@@ -207,6 +207,24 @@ These are load-bearing. Each was arrived at by fixing a bug, and the reasoning i
     (`RootNavigation.onCalendarChanged`), because an observer runs a frame *after* the render that
     acted on the new value. A frame of staleness means the detail is built against one store
     while every view reads another, and the symptom is a day list that opens empty.
+- **A calendar that stops existing stops being selected.** `RootNavigation.detailCalendarID` used
+  to be written in exactly one place and never cleared, so archiving or permanently deleting the
+  calendar on screen left the detail column rendering a calendar that was gone — blank for a
+  deleted one, since `.empty` draws an `EmptyView` — with the app root still injecting its store.
+  `RootNavigation.closeCalendarIfSelected(_:)` is now the only thing that can clear it.
+  - **The list reports it, from its existing change feed.** `CalendarListViewModel.onCalendarRemoved`
+    fires off `applyChange`'s `.removed` case — the subscription was already there and already
+    folded removals. Do **not** add a second `for await` over `managing.changes()` in a view body
+    to catch this; the list is the screen that watches calendars, and one owner of a subscription
+    is worth more than a second one placed closer to whoever needs the news. `.removed` is exactly
+    "archived or deleted": those are the only operations that publish a removal, and a restore
+    publishes a *change*, which is why Undo does not close anything.
+  - **Three things about the close are load-bearing.** It runs `willLeaveCurrentCalendar` **while
+    the id is still set** (the hook reads it to find the store whose session must not outlive its
+    calendar); it clears `path` (a pushed `.batchEditor` over a deleted calendar is built against a
+    store that can no longer write); and it notifies `onCalendarChanged(nil)` **before** clearing
+    the id, like an opening does. It deliberately does *not* consult `canLeaveCurrentCalendar`:
+    settling a write chain for a calendar on its way out means writing to a row that is leaving.
 - **Ending a session deletes a batch that has no days.** `endingMultiSelectSession` is the single
   place that decides, shared by Confirm and Cancel — two copies of it is how Confirm came to stage
   an event-less batch while Cancel left the row behind. Normally the tap that takes the last day

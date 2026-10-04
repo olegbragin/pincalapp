@@ -58,8 +58,11 @@ public class RootNavigation {
 
     /// Current detail column selection (for split-view "open" navigation).
     ///
-    /// `nil` means *no calendar has ever been selected* — nothing else. Leaving the calendar
-    /// for a sidebar category does not clear it.
+    /// `nil` means no calendar is on screen. That covers two things, and it used to cover only
+    /// the first: before any calendar has ever been selected, and after the selected one is
+    /// closed because it was archived or deleted (`closeCalendarIfSelected`).
+    ///
+    /// Leaving the calendar for a sidebar category does *not* clear it.
     ///
     /// It used to be nil'd on navigating to `.archived`/`.settings`, on the theory that the
     /// detail column should not keep showing a calendar you have navigated away from. That is
@@ -68,6 +71,12 @@ public class RootNavigation {
     /// it made the detail column's contents depend on navigation history, so the same calendar
     /// would render or not render purely because of how you arrived — the sort of invisible
     /// coupling that only shows up on a wide layout.
+    ///
+    /// A calendar ceasing to exist is a different matter from walking away from it, which is why
+    /// it gets the clearing that walking away does not. Left stale, it was a detail column
+    /// showing a deleted calendar: the id survived, so the app root went on injecting that
+    /// calendar's store, and the detail itself went blank (`SingleCalendarModel` fetches, finds
+    /// nothing, and renders nothing) with no way back and no explanation.
     public private(set) var detailCalendarID: Int64?
 
     /// Gates leaving the current calendar, installed by whoever owns unsaved work.
@@ -110,7 +119,50 @@ public class RootNavigation {
     /// store for the calendar that is about to be shown. Synchronous and inside the mutation for
     /// the reason given at the call site: an observer would be a frame late, and this value
     /// chooses which store the whole subtree reads.
-    public var onCalendarChanged: (@MainActor (Int64) -> Void)?
+    ///
+    /// **Optional** because closing a calendar is a change too, and a root that only learns
+    /// about openings goes on injecting the store for a calendar that is no longer there. `nil`
+    /// means "no calendar is on screen", which is the same answer the root needs before the
+    /// first one is ever opened.
+    public var onCalendarChanged: (@MainActor (Int64?) -> Void)?
+
+    /// Closes `id` if it is the calendar on screen — because it was archived, or deleted for
+    /// good, and so is no longer something to be looking at.
+    ///
+    /// A no-op for any other id, including when nothing is open. That guard is the whole reason
+    /// this is a method on the navigation rather than a `detailCalendarID = nil` at the call
+    /// site: the caller is reacting to a change feed that names *every* calendar that left the
+    /// active set, and closing the detail because some *other* calendar was archived would
+    /// throw away a screen the user never asked to leave.
+    ///
+    /// Three things happen, and the order is the point:
+    ///
+    /// 1. **The leave hook runs first**, while `detailCalendarID` still names the calendar — the
+    ///    hook reads it to find the store whose multi-select session is being ended. A cached
+    ///    store means a session that outlives its calendar comes back painted and unendable, and
+    ///    this is one of the ways a calendar stops being on screen without a switch.
+    /// 2. **The pushed stack is cleared.** It belongs to that calendar: leaving `.batchEditor`
+    ///    on the stack while the detail shows the "select a calendar" placeholder would build
+    ///    that editor against a calendar that is gone.
+    /// 3. **The id is cleared, after `onCalendarChanged(nil)`** — for the same reason an opening
+    ///    notifies before it assigns. The root injects a store chosen by this value, so telling
+    ///    it afterwards would leave one render built against the calendar being closed.
+    ///
+    /// The write guard is deliberately **not** consulted. `switchCalendar` asks because an
+    /// unsaved edit must not be abandoned by walking away from it; here the calendar is being
+    /// archived or erased, so settling its write chain would mean writing to a row that is on
+    /// its way out. There is nothing to protect and something to avoid.
+    ///
+    /// Undoing an archive does not reopen it. The calendar comes back to the *list*, and
+    /// selecting it again is the user's decision to look at it — a detail that reappeared on its
+    /// own would be the detail deciding what the user is looking at.
+    public func closeCalendarIfSelected(_ id: Int64) async {
+        guard detailCalendarID == id else { return }
+        await willLeaveCurrentCalendar?()
+        popToRoot()
+        onCalendarChanged?(nil)
+        detailCalendarID = nil
+    }
 
     /// Switches to `calendarID` only if the guard allows it.
     ///

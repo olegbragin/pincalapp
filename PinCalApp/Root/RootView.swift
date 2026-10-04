@@ -52,8 +52,14 @@ struct RootView: View {
             // `onChange` here, or the root would inject the previous calendar's store for one
             // render — long enough for the calendar detail to be built against a store no view
             // is reading.
+            //
+            // `0` for "no calendar", which is the state the session already documents for before
+            // the first one is opened: `perform` refuses to write against it, so the store the
+            // root injects then is inert rather than dangerous. Closing a calendar has to say so
+            // for the same reason — otherwise the root keeps injecting the store of a calendar
+            // that was just archived or deleted.
             navigation.onCalendarChanged = { id in
-                session.currentCalendarID = id
+                session.currentCalendarID = id ?? 0
             }
         }
         .onChange(of: navigation.detailCalendarID) { _, id in
@@ -61,6 +67,12 @@ struct RootView: View {
             // `RootNavigation` calls *before* it changes the id — an observer here would run a
             // frame late, and this value chooses which store the app root injects. Kept so a
             // calendar selected by any route that bypasses `goTo` still reaches the session.
+            //
+            // `nil` is not handled here on purpose: a close notifies through
+            // `onCalendarChanged(nil)` in the same mutation that clears the id, so the store has
+            // already been swapped by the time this fires. Writing `0` from here as well would be
+            // harmless today and would paper over a future route that clears the id without
+            // notifying — which is the failure this backstop exists to catch, not to hide.
             if let id { session.currentCalendarID = id }
         }
         .preferredColorScheme(theme.colorScheme)

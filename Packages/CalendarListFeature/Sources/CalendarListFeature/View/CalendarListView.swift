@@ -8,6 +8,15 @@ public struct CalendarListView: View {
     @State private var isAddSheetPresented = false
     public var selectedCalendarID: Int64?
     public var onSelectCalendar: (Int64) -> Void = { _ in }
+
+    /// A calendar left the active set — archived, or deleted for good.
+    ///
+    /// The list is the only screen that watches calendars come and go, so it is the only place
+    /// that can say this happened. Whoever put a calendar on screen needs to hear it: a calendar
+    /// that has been archived is not one to keep showing. Defaults to doing nothing so a list
+    /// embedded anywhere without a detail column behind it needs no wiring.
+    public var onCalendarRemoved: (Int64) -> Void = { _ in }
+
     let mode: CalendarListMode
 
     /// How long the undo toast stays up. See `CalendarListViewModel.undoWindowDuration`.
@@ -17,11 +26,13 @@ public struct CalendarListView: View {
         mode: CalendarListMode = .active,
         selectedCalendarID: Int64? = nil,
         onSelectCalendar: @escaping (Int64) -> Void = { _ in },
+        onCalendarRemoved: @escaping (Int64) -> Void = { _ in },
         undoWindowDuration: TimeInterval = 5
     ) {
         self.mode = mode
         self.selectedCalendarID = selectedCalendarID
         self.onSelectCalendar = onSelectCalendar
+        self.onCalendarRemoved = onCalendarRemoved
         self.undoWindowDuration = undoWindowDuration
     }
 
@@ -36,7 +47,13 @@ public struct CalendarListView: View {
         .task {
             if viewModel == nil {
                 guard let managing else { return }
-                viewModel = CalendarListViewModel(mode: mode, managing: managing, undoWindowDuration: undoWindowDuration)
+                let model = CalendarListViewModel(mode: mode, managing: managing, undoWindowDuration: undoWindowDuration)
+                // Assigned here rather than folded into `init`: the callback closes over this
+                // view's parameter, and the view model is only ever built once. A list that
+                // swapped modes would keep the first model's callback — which is why `RootContentView`
+                // tears the view down between modes instead of reconfiguring it.
+                model.onCalendarRemoved = onCalendarRemoved
+                viewModel = model
             }
             await viewModel?.fetch()
         }

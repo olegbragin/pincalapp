@@ -240,6 +240,161 @@ struct RootNavigationTests {
         #expect(nav.path.count == 2)
     }
     
+    // MARK: - Closing a calendar that has been archived or deleted
+
+    /// Archiving or deleting the calendar on screen must close it.
+    ///
+    /// It used to leave the id in place, so the detail column went on naming a calendar that was
+    /// no longer there: the app root kept injecting that calendar's store, and the detail itself
+    /// rendered nothing at all — `SingleCalendarModel` fetches, finds no calendar, and `.empty`
+    /// draws an `EmptyView`. Blank column, stale id, no way back.
+    @Test("Closing the selected calendar clears the detail")
+    @MainActor
+    func closingTheSelectedCalendarClearsTheDetail() async {
+        let nav = RootNavigation()
+        nav.goTo(.calendar(42, toRoot: false))
+
+        await nav.closeCalendarIfSelected(42)
+
+        #expect(nav.detailCalendarID == nil)
+    }
+
+    /// The caller reacts to a feed naming every calendar that left the active set, so closing
+    /// has to be conditional. Unconditional, archiving one calendar would tear down the detail
+    /// while the user was reading a different one.
+    @Test("Closing some other calendar leaves the open one alone")
+    @MainActor
+    func closingAnotherCalendarChangesNothing() async {
+        let nav = RootNavigation()
+        nav.goTo(.calendar(42, toRoot: false))
+        nav.goTo(.dayBatches)
+        var left = 0
+        nav.willLeaveCurrentCalendar = { left += 1 }
+
+        await nav.closeCalendarIfSelected(7)
+
+        #expect(nav.detailCalendarID == 42)
+        #expect(nav.path.count == 1, "the pushed screen belongs to the calendar still open")
+        #expect(left == 0, "and the calendar still open has not been left")
+    }
+
+    /// Closing with nothing open is the ordinary outcome of the very first archive a user does,
+    /// so it must be inert rather than a crash or a stray notification.
+    @Test("Closing when no calendar is open does nothing")
+    @MainActor
+    func closingWithNothingOpenIsInert() async {
+        let nav = RootNavigation()
+        var notified = 0
+        nav.onCalendarChanged = { _ in notified += 1 }
+
+        await nav.closeCalendarIfSelected(42)
+
+        #expect(nav.detailCalendarID == nil)
+        #expect(notified == 0, "there was no calendar to say had changed")
+    }
+
+    /// The stack belongs to the calendar being closed.
+    ///
+    /// Left in place, the detail shows the "select a calendar" placeholder *inside a navigation
+    /// stack that still holds `.batchEditor`*, and that editor is built against a calendar that
+    /// no longer exists — reading a store for an id the store can no longer write to.
+    @Test("Closing the calendar clears its pushed screens")
+    @MainActor
+    func closingClearsThePushedStack() async {
+        let nav = RootNavigation()
+        nav.goTo(.calendar(42, toRoot: false))
+        nav.goTo(.dayBatches)
+        nav.goTo(.batchEditor)
+
+        await nav.closeCalendarIfSelected(42)
+
+        #expect(nav.path.isEmpty)
+    }
+
+    /// Leaving is not just a permission, it has a consequence: the calendar's multi-select
+    /// session ends, and its batch goes if the user took every day back off. A close is a way of
+    /// leaving that does not go through `switchCalendar`, so it has to run the same hook.
+    @Test("Closing runs the leave hook, so the calendar's session cannot outlive it")
+    @MainActor
+    func closingRunsTheLeaveHook() async {
+        let nav = RootNavigation()
+        nav.goTo(.calendar(42, toRoot: false))
+        var left = 0
+        nav.willLeaveCurrentCalendar = { left += 1 }
+
+        await nav.closeCalendarIfSelected(42)
+
+        #expect(left == 1, "a cached store means an unended session comes back painted")
+    }
+
+    /// The hook reads `detailCalendarID` to find the store, so the ordering is observable rather
+    /// than stylistic: run last, it would find nothing and end no session at all.
+    @Test("The leave hook runs while the calendar is still the selected one")
+    @MainActor
+    func closingRunsTheLeaveHookBeforeClearingTheId() async {
+        let nav = RootNavigation()
+        nav.goTo(.calendar(42, toRoot: false))
+        var seen: Int64?
+        nav.willLeaveCurrentCalendar = { seen = nav.detailCalendarID }
+
+        await nav.closeCalendarIfSelected(42)
+
+        #expect(seen == 42)
+    }
+
+    /// No hook installed is the ordinary case for a close, and it must not stall.
+    @Test("Closing without a leave hook still closes")
+    @MainActor
+    func closingWithoutALeaveHook() async {
+        let nav = RootNavigation()
+        nav.goTo(.calendar(42, toRoot: false))
+
+        await nav.closeCalendarIfSelected(42)
+
+        #expect(nav.detailCalendarID == nil)
+    }
+
+    /// The root injects the store this id names, and it is told from inside the mutation — so a
+    /// close has to say `nil` too, or the root goes on injecting the store of a calendar that was
+    /// just archived or deleted.
+    @Test("Closing reports nil to the calendar-changed hook")
+    @MainActor
+    func closingNotifiesTheCalendarChangedHook() async {
+        let nav = RootNavigation()
+        var reported: [Int64?] = []
+        nav.onCalendarChanged = { id in reported.append(id) }
+        nav.goTo(.calendar(42, toRoot: false))
+        #expect(reported == [42])
+
+        await nav.closeCalendarIfSelected(42)
+
+        #expect(reported == [42, nil], "and nil is reported *before* the id changes, like an opening")
+    }
+
+    /// Archiving the open calendar is not walking away from it, and the difference is a write.
+    ///
+    /// `switchCalendar` asks the guard because an unsaved edit must not be abandoned by leaving.
+    /// Here the calendar is being archived or erased, so settling its write chain would mean
+    /// writing to a row on its way out. Consulting the guard here would also mean an archive
+    /// could be silently dropped because a write had failed — the user asked for the calendar to
+    /// go, and it must go.
+    @Test("Closing does not consult the write guard")
+    @MainActor
+    func closingDoesNotConsultTheWriteGuard() async {
+        let nav = RootNavigation()
+        nav.goTo(.calendar(42, toRoot: false))
+        var asked = 0
+        nav.canLeaveCurrentCalendar = {
+            asked += 1
+            return false
+        }
+
+        await nav.closeCalendarIfSelected(42)
+
+        #expect(asked == 0)
+        #expect(nav.detailCalendarID == nil, "a failed save is not a reason to keep a deleted calendar open")
+    }
+
     // MARK: - Sheet Presentation Tests
     
     @Test("goTo addCalendar sets presentedSheet")

@@ -429,6 +429,85 @@ struct CalendarListViewModelIntegrationTests {
         #expect(await managing.calendar(id: 1) == nil)
     }
 
+    /// The list is the only screen watching calendars come and go, so it is what reports that one
+    /// has gone — and whoever put a calendar on screen needs to hear it.
+    ///
+    /// Off the change feed, not off the archive and delete methods, which is the whole point of
+    /// the assertion being here: it fires for the *effect*, so it cannot miss a route to those
+    /// operations, and a write that failed produces nothing to report.
+    @Test("A calendar leaving the active set is reported")
+    func removalIsReported() async {
+        let archived = PinCalendar(id: 1, name: "Test", year: 2026, numberOfColumns: 3)
+        let (_, vm) = await makeFixture(seed: [archived])
+
+        var removed: [Int64] = []
+        vm.onCalendarRemoved = { removed.append($0) }
+
+        await vm.fetch()
+        vm.archiveCalendarInList(archived)
+        await waitUntil { vm.calendars.isEmpty }
+
+        #expect(removed == [1])
+    }
+
+    /// Announced after the list has folded the removal in, so a handler that re-reads the
+    /// list does not see a calendar it has already been told is gone.
+    @Test("The removal is reported once the list has folded it in")
+    func removalIsReportedAfterTheList() async {
+        let calendar = PinCalendar(id: 1, name: "Test", year: 2026, numberOfColumns: 3)
+        let (_, vm) = await makeFixture(seed: [calendar])
+
+        var wasAlreadyGone: Bool?
+        vm.onCalendarRemoved = { [weak vm] _ in wasAlreadyGone = vm?.calendars.isEmpty }
+
+        await vm.fetch()
+        vm.permanentlyDeleteCalendar(calendar)
+        await waitUntil { wasAlreadyGone != nil }
+
+        #expect(wasAlreadyGone == true)
+    }
+
+    /// Undo is not a removal. The archive toast offers to put the calendar back, and a close
+    /// driven by that would take the calendar off screen for an operation the user is being
+    /// invited to reverse.
+    @Test("Undoing an archive is not reported as a removal")
+    func undoIsNotReportedAsRemoval() async {
+        let calendar = PinCalendar(id: 1, name: "Test", year: 2026, numberOfColumns: 3)
+        let (managing, vm) = await makeFixture(seed: [calendar])
+
+        var removed: [Int64] = []
+        vm.onCalendarRemoved = { removed.append($0) }
+
+        await vm.fetch()
+        vm.archiveCalendarInList(calendar)
+        await waitUntil { vm.calendars.isEmpty }
+        #expect(removed == [1], "precondition: the archive reported")
+
+        vm.undoArchive()
+        await waitUntil { vm.calendars.count == 1 }
+        await managing.waitForSubscribers()
+
+        #expect(removed == [1], "and only that once: a restore is a change, not a removal")
+    }
+
+    /// Deleting for good is reachable only from the archived list, and it is the case where a
+    /// stale on-screen calendar has the least to say — the row is out of storage, so the detail
+    /// fetches, finds nothing, and renders nothing at all.
+    @Test("A permanent delete is reported from the archived list too")
+    func permanentDeleteIsReportedFromTheArchivedList() async {
+        let calendar = PinCalendar(id: 1, name: "Test", year: 2026, numberOfColumns: 3, isArchived: true)
+        let (_, vm) = await makeFixture(seed: [calendar], mode: .archived)
+
+        var removed: [Int64] = []
+        vm.onCalendarRemoved = { removed.append($0) }
+
+        await vm.fetch()
+        vm.permanentlyDeleteCalendar(calendar)
+        await waitUntil { vm.calendars.isEmpty }
+
+        #expect(removed == [1])
+    }
+
     @Test("rename from a card reaches the store")
     func renameReachesStore() async {
         let calendar = PinCalendar(id: 1, name: "Old Name", year: 2026, numberOfColumns: 3)
