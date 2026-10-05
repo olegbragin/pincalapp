@@ -279,7 +279,7 @@ Revert generated churn after every test run:
 (+ `InMemoryCalendarManaging`).
 
 **Rewritten:** the four `AddEdit*ViewModel`s, `SingleCalendarModel`, the six editor
-views, both `BatchEditor*Layout`, `SingleCalendarView`, `PCCalendarSession`,
+views, both `BatchEditor*Layout`, `SingleCalendarView`, `PCAppSession`,
 `PinCalAppApp`, `CalendarDetailView`, `RootSelection`, `RootNavigation` (+ tests).
 
 **Test suites rewritten:** `AddEditEventViewModelTests`,

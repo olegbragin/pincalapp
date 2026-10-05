@@ -326,7 +326,7 @@ These are load-bearing. Each was arrived at by fixing a bug, and the reasoning i
 - **The store is the only writer.** `PCEventSelectionManager.send` is the single mutation
   point; `pcEventSelectionReducer` is pure. Do not add `didSet` observers or a second path
   into state.
-- **There is one store per calendar, and `PCCalendarSession` owns them.** Not one for the
+- **There is one store per calendar, and `PCAppSession` owns them.** Not one for the
   process — that was the rule until it cost data. `state.calendarID` is written in exactly one
   place (`syncCalendar`), behind a guard that accepts only the calendar it already holds, so a
   single app-wide store meant the **first calendar ever opened pinned it for good**: a second

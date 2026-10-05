@@ -21,7 +21,7 @@ import SingleCalendarFeature
 /// environment, so it cannot be handed the wrong calendar's.
 struct CalendarDetailView: View {
     let calendarId: Int64
-    @Environment(PCCalendarSession.self) private var session
+    @Environment(PCAppSession.self) private var session
     @State private var model: SingleCalendarModel?
 
     var body: some View {

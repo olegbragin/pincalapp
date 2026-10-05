@@ -1,5 +1,5 @@
 //
-//  PCCalendarSession.swift
+//  PCAppSession.swift
 //  PinCalApp
 //
 //  Created by Oleg Bragin on 05.09.2026.
@@ -10,6 +10,7 @@ import Observation
 import CoreDomain
 import CorePersistence
 import DSKit
+import SettingsFeature
 import SingleCalendarFeature
 
 /// App-root session object. Bundles the app-wide dependencies that are shared
@@ -68,7 +69,7 @@ import SingleCalendarFeature
 /// here as `any CalendarPersisting`.
 @MainActor
 @Observable
-final class PCCalendarSession {
+final class PCAppSession {
     /// The domain-facing view of the calendar store. The batch pipeline is handed this
     /// and nothing else, so it cannot reach the `CalendarDataSource` DTOs.
     let persistence: any CalendarPersisting
@@ -80,6 +81,14 @@ final class PCCalendarSession {
     let managing: any CalendarManaging
     let dataProvider: PCCalendarDataProvider
     let columnCountResolver: (Int) -> Int
+
+    /// The app's settings, as `SettingsFeature` sees them.
+    ///
+    /// The *same* instance the app root injects and builds the settings holder from, rather than a
+    /// second `SettingsStore` over the same `UserDefaults.standard`. It would work either way —
+    /// the adapter is a stateless forward — but two adapters over one store is the arrangement this
+    /// file already argues against for the calendar store, and there is no reason to invite it here.
+    private let settings: any SettingsPersisting
 
     /// Builds a store for one calendar. A closure rather than the collaborators themselves so
     /// this type still does not decide what a store is made of — the composition root supplies
@@ -97,12 +106,14 @@ final class PCCalendarSession {
     init(
         persistence: any CalendarPersisting,
         managing: any CalendarManaging,
+        settings: any SettingsPersisting,
         makeEventSelection: @escaping @MainActor (Int64) -> PCEventSelectionManager,
         dataProvider: PCCalendarDataProvider = PCCalendarDataProvider(),
-        columnCountResolver: @escaping (Int) -> Int = PCCalendarSession.makeColumnCountResolver()
+        columnCountResolver: @escaping (Int) -> Int = PCAppSession.makeColumnCountResolver()
     ) {
         self.persistence = persistence
         self.managing = managing
+        self.settings = settings
         self.makeEventSelection = makeEventSelection
         self.dataProvider = dataProvider
         self.columnCountResolver = columnCountResolver
@@ -164,6 +175,87 @@ final class PCCalendarSession {
     /// statement in one place rather than a property every exit path has to remember.
     func endSession(for calendarID: Int64) {
         eventSelections[calendarID]?.send(.cancelMultiSelectTapped)
+    }
+
+    /// Records the calendar that is on screen, so the next launch can reopen it.
+    ///
+    /// Driven from `RootNavigation.onCalendarChanged`, which fires *inside* the navigation mutation
+    /// and passes `nil` when a calendar closes — so forgetting the selection needs no second path,
+    /// and archiving or deleting the calendar on screen already covers itself.
+    ///
+    /// Takes the optional rather than `currentCalendarID`. The sentinel is `0`, and storing it would
+    /// put a value into the settings that no calendar can have; the hook's `nil` is the honest
+    /// "nothing is on screen" and it is what the store removes.
+    func rememberSelectedCalendar(_ id: Int64?) {
+        settings.lastSelectedCalendarId = id
+    }
+
+    /// The remembered calendar to reopen on launch, or `nil` to open with nothing selected.
+    ///
+    /// A remembered id is a claim about the past, so it is checked before it is acted on: the
+    /// calendar can have been deleted from another install, or archived since. Restoring an id that
+    /// no longer resolves is the blank-detail-column failure described on
+    /// `RootNavigation.closeCalendarIfSelected`, except with nothing on screen to clear it — so a
+    /// stale id is *forgotten* here rather than left to render as an empty column.
+    ///
+    /// Validated with a point lookup on `persistence` rather than `loadActive()`. The list loads
+    /// overwrite the cache's current list and broadcast a refresh to every subscriber, so asking
+    /// this question that way would be answering it by disturbing the screen that is about to be
+    /// drawn. The lookup is a read, and it does not care whether the calendar is archived: the
+    /// archived list can select a calendar too (`RootContentView`), and dropping a selection on the
+    /// strength of which list the user happened to pick it from would be surprising.
+    ///
+    /// Deliberately clears the key on a calendar that is genuinely gone, and deliberately does not
+    /// clear it when the read itself fails: a read that failed is not evidence the calendar is gone,
+    /// and forgetting the user's selection over a transient error would lose it for good.
+    ///
+    /// Returns the id rather than opening it, because *how* a calendar is opened is
+    /// `RootNavigation`'s business — this type decides what is worth opening, not where.
+    func selectedCalendarToRestore() async -> Int64? {
+        if let forced = Self.forcedSelectedCalendarIdForUITests {
+            settings.lastSelectedCalendarId = forced
+        } else if Self.restoringSelectionDisabledForUITests {
+            settings.lastSelectedCalendarId = nil
+            return nil
+        }
+
+        guard let id = settings.lastSelectedCalendarId else { return nil }
+
+        do {
+            guard try await persistence.calendar(id: id) != nil else {
+                settings.lastSelectedCalendarId = nil
+                return nil
+            }
+        } catch {
+            // Nothing to report and nothing to retry: opening with no calendar selected is exactly
+            // what the app has always done, so this is the honest answer rather than a swallowed
+            // error. It is also why `RootView` can call this from a `.task` with no error path of
+            // its own — the one place a failed read is allowed to go nowhere.
+            return nil
+        }
+
+        return id
+    }
+
+    /// The app's settings store, as `SettingsFeature` sees it.
+    ///
+    /// Built here rather than in `PinCalAppApp` so this stays the one place that decides what the
+    /// app's dependencies *are*, beside `makeColumnCountResolver` and `makeNameAutosaveDelay` — the
+    /// composition root injects what this hands it and names nothing itself.
+    ///
+    /// The port is declared in `SettingsFeature` and the type is in `CorePersistence`, so this is
+    /// the only place that sees both — and `SettingsStoreConformance` is where the two are joined.
+    /// It is also the only place `.standard` is chosen: every setting is read and written through
+    /// this one store, so a second store over a different domain would split the user's preferences
+    /// in two and the app would disagree with itself about what is set.
+    ///
+    /// **The place to change when a second backend arrives**, and nothing else would have to move: a
+    /// second type conforming to the port, and a `switch` here. There is deliberately no flag for
+    /// choosing between them yet — with one backend a switch would be a decision about nothing, and
+    /// a preference read from `UserDefaults` would be self-defeating for a store whose point is to
+    /// leave `UserDefaults`.
+    static func makeSettingsStore() -> any SettingsPersisting {
+        UserDefaultsSettingsStore(defaults: .standard)
     }
 
     /// Resolves the year-grid column count. UI tests can force a specific count
@@ -229,5 +321,39 @@ final class PCCalendarSession {
             let value = Int(arguments[flagIndex + 1])
         else { return nil }
         return value
+    }
+
+    /// The calendar a UI test wants remembered, from `-UITestSelectedCalendar <id>`.
+    ///
+    /// Seeded into the settings and then read back through the ordinary path, so what the test
+    /// exercises is the production restore — read, validate, switch — rather than a stand-in for
+    /// it. Seeding it here is also the only way it can be seeded: a UI test runs in its own process
+    /// and cannot write the app's preferences.
+    private static var forcedSelectedCalendarIdForUITests: Int64? {
+        let arguments = ProcessInfo.processInfo.arguments
+        guard
+            let flagIndex = arguments.firstIndex(of: "-UITestSelectedCalendar"),
+            arguments.indices.contains(flagIndex + 1),
+            let value = Int64(arguments[flagIndex + 1]),
+            value > 0
+        else { return nil }
+        return value
+    }
+
+    /// Whether a seeded launch should restore nothing.
+    ///
+    /// A seeded launch points the calendar store at a *fresh temporary directory*
+    /// (`UITestStoreFactory`), so every launch is a different database whose ids start at 1 again.
+    /// A remembered id from an earlier run therefore either names nothing at all or names a
+    /// different calendar that happens to share the number — and in the second case the app opens a
+    /// calendar no test asked for, on a phone in the detail column rather than the list, which is
+    /// enough to strand every test that starts by tapping a sidebar row.
+    ///
+    /// Keyed off the seeding flag rather than a flag of its own, because that flag already means
+    /// "this is a throwaway database": a remembered selection from another database is not stale
+    /// there, it is meaningless. Preferences are also *not* reset between launches, so this also
+    /// keeps one test's selection out of the next one's launch.
+    private static var restoringSelectionDisabledForUITests: Bool {
+        UITestStoreFactory.shouldSeedForUITests() && forcedSelectedCalendarIdForUITests == nil
     }
 }

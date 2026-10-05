@@ -46,7 +46,7 @@ struct RootContentView: View {
                     Task { await navigation.switchCalendar(to: id) }
                 },
                 onCalendarRemoved: { id in closeIfSelected(id) },
-                undoWindowDuration: PCCalendarSession.makeUndoWindowDuration()
+                undoWindowDuration: PCAppSession.makeUndoWindowDuration()
             )
         case .archived:
             CalendarListView(
@@ -60,7 +60,7 @@ struct RootContentView: View {
                 // detail has the least to say — the row is gone from storage, so the detail
                 // would fetch, find nothing and render nothing at all.
                 onCalendarRemoved: { id in closeIfSelected(id) },
-                undoWindowDuration: PCCalendarSession.makeUndoWindowDuration()
+                undoWindowDuration: PCAppSession.makeUndoWindowDuration()
             )
         case .settings:
             SettingsView()

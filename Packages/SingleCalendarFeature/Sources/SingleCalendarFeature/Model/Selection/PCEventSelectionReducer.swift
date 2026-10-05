@@ -329,7 +329,7 @@ public func pcEventSelectionReducer(
         // calendar's row by a destructive save. Nothing rejected the *sync* loudly; the second
         // calendar simply showed the first one's batches.
         //
-        // The store is per calendar now (`PCCalendarSession.eventSelection(for:)`), so this can
+        // The store is per calendar now (`PCAppSession.eventSelection(for:)`), so this can
         // only ever see one calendar and the branch is unreachable in production. It is kept
         // because it is the one place that would notice if a store were ever handed a second
         // calendar's rows, and silently accepting them would be worse than refusing.

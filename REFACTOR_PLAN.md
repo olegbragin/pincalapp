@@ -155,7 +155,7 @@ This is requirement 4, and it is the change that makes requirement 2 enforceable
         EntityMappable (protocol) ───────┤  the pure translation seam.
         RootMapper (concrete)  ──────────┤  stateless, injected, does no I/O.
         CalendarStore  ───────────────────┘  the port. Holds the cache, does I/O,
-        PinCalAppApp builds CalendarStore and hands it to PCCalendarSession
+        PinCalAppApp builds CalendarStore and hands it to PCAppSession
                                       │  PinCalendar / [CalendarEventBatch] out
                                       ▼
   CoreDomain ────────────────────────────────────────────
@@ -192,7 +192,7 @@ Two types, split by what they carry:
 | `RootMapper` | nothing | the production translation. Stateless, and **injected** rather than a static namespace, so a test can substitute it. |
 | `CalendarStore` | a `CalendarCache` + an `EntityMappable` | the async read/write side. `CalendarPersisting`, and the only type that touches persistence. |
 
-`PCCalendarSession` does **not** build either, and does not hold the cache. Its
+`PCAppSession` does **not** build either, and does not hold the cache. Its
 collaborators — the port, the data provider, the column-count resolver, and both shared
 managers — all arrive through `init`, so it builds nothing and a test can hand it
 whatever it needs. `PinCalAppApp` is the composition root that assembles all of it.
@@ -277,7 +277,7 @@ required. User data on device is untouched. This is the fact that makes requirem
 
 Neither `CorePersistence` nor `CoreDomain` may hold the mapping, or one would have to
 depend on the other. So it lives in the **app target**, in `PinCalApp/Root/` beside
-`PCCalendarSession`, which is the composition root and already imports both.
+`PCAppSession`, which is the composition root and already imports both.
 
 ```swift
 // PinCalApp/Root/EntityMappable.swift — the translation seam.
@@ -1024,7 +1024,7 @@ public final class PCEventSelectionManager {
 
 `import` list for this file: `Foundation`, `Observation`, `CoreDomain`, `DSKit`.
 Not `CorePersistence` — the dependency is the `CalendarPersisting` port, and the
-concrete `CalendarCache` is named only in `PCCalendarSession`.
+concrete `CalendarCache` is named only in `PCAppSession`.
 
 `columnCountResolver` and `numberOfColumns` are preserved because they carry the
 `-UITestColumns` launch-argument override the UI suite depends on. Losing them breaks
@@ -1193,7 +1193,7 @@ needed. One line at the app root:
 ```
 
 Views read it with `@Environment(PCEventSelectionManager.self) private var store`.
-`PCCalendarSession` remains the composition root, and is the only file in the app
+`PCAppSession` remains the composition root, and is the only file in the app
 that names both `CalendarCache` and `PCEventSelectionManager`. Its field
 `eventsSelectionManager` is renamed `eventSelection`.
 
@@ -1467,7 +1467,7 @@ could not be bolted onto the batch port either. It needed a third door, and
 moves the read, `changes()` moves the feed, and the cache is not needed for either.
 
 So the shape is now: one `CalendarStore` in the composition root, exposed under two
-protocols, handed to `PCCalendarSession` as both. The model takes `any CalendarManaging`
+protocols, handed to `PCAppSession` as both. The model takes `any CalendarManaging`
 and `any CalendarPersisting` and cannot see a DTO even if it wanted to. `Package.swift` no
 longer lists `CorePersistence` under the `SingleCalendarFeature` target at all, and
 `PCEventSelectionManagerTests` asserts that over **every** file in `Sources/` rather than
@@ -1572,9 +1572,9 @@ tests green at every stage, which the previous revision of this plan did not.
 | **0** | **Baseline.** Record the full suite including UI tests. | **Done** — see `TEST_BASELINE.md`: 229 unit, 29 UI, 0 failures |
 | 1 | **Rename** `AddEditListView` → `AddEditEventListView` and its model (requirement 1). Add `typealias` shims. Update `AddEditEventBatchView`, previews, `AddEditListViewModelTests`. | 229 / 29 |
 | 2 | **`CoreDomain`.** Add `PinCalendar`, `CalendarEventBatch`, `CalendarEvent`, `CalendarPersisting`; make `PCCalendarDataProvider` `Equatable` so it can live in state. No behaviour change. | 247 unit |
-| 3 | **Composition-root mapping + additive fixes.** `EntityMappable`, `RootMapper` and `CalendarStore` added to `PinCalApp/Root/`, with their 22 tests in `PinCalAppTests` (which gains `CorePersistence` + `CoreDomain` package dependencies). `PinCalAppApp` assembles everything and owns the cache; `PCCalendarSession` exposes `persistence` only — no `cache` — and builds nothing. `CorePersistence` gains **no** dependency on `CoreDomain` and no new file — untouched apart from the dead assignment. **ObjectBox schema untouched.** | 268 unit |
+| 3 | **Composition-root mapping + additive fixes.** `EntityMappable`, `RootMapper` and `CalendarStore` added to `PinCalApp/Root/`, with their 22 tests in `PinCalAppTests` (which gains `CorePersistence` + `CoreDomain` package dependencies). `PinCalAppApp` assembles everything and owns the cache; `PCAppSession` exposes `persistence` only — no `cache` — and builds nothing. `CorePersistence` gains **no** dependency on `CoreDomain` and no new file — untouched apart from the dead assignment. **ObjectBox schema untouched.** | 268 unit |
 | 4a | **Combine → `AsyncStream`.** `CalendarCache` replaces `PassthroughSubject` with a continuation fan-out and loses `import Combine`; `SingleCalendarModel` and `CalendarListViewModel` consume `for await` in a `Task`; the 5 sinks in `CalendarCacheIntegrationTests` become awaited collectors. `CalendarCache.loadedCalendars()` is added so a first paint reads its own result instead of awaiting the broadcast it triggered. Combine leaves the app. | 269 unit, 7 UI |
-| 4b | **`CalendarListFeature` onto `PinCalendar`, and off `CorePersistence` entirely.** Nothing moves: the package stays at `Packages/CalendarListFeature`. The five scalars are `PinCalendar`'s whole surface, and the list never read the event graph. `ChangeOperation` follows as `PinCalendarChange`, bridged by `CalendarStore`. `Package.swift` swaps `CorePersistence` for `CoreDomain` — **not** "gains `CoreDomain` while keeping `CorePersistence`" as originally drafted; keeping it was only ever acceptable as a holding pattern, and the 8 management operations the list needs turned out to be closable (§4b.1). `PCCalendarSession` does **not** gain `eventSelection` in this stage — that was stale, the manager is Stage 6. | 275 unit, 10 UI |
+| 4b | **`CalendarListFeature` onto `PinCalendar`, and off `CorePersistence` entirely.** Nothing moves: the package stays at `Packages/CalendarListFeature`. The five scalars are `PinCalendar`'s whole surface, and the list never read the event graph. `ChangeOperation` follows as `PinCalendarChange`, bridged by `CalendarStore`. `Package.swift` swaps `CorePersistence` for `CoreDomain` — **not** "gains `CoreDomain` while keeping `CorePersistence`" as originally drafted; keeping it was only ever acceptable as a holding pattern, and the 8 management operations the list needs turned out to be closable (§4b.1). `PCAppSession` does **not** gain `eventSelection` in this stage — that was stale, the manager is Stage 6. | 275 unit, 10 UI |
 
 #### 4b.1 Why the 8 management operations are closable, and how
 

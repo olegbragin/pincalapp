@@ -16,6 +16,8 @@
 		D7A647373040DD35009034E4 /* CoreDomain in Frameworks */ = {isa = PBXBuildFile; productRef = D7A647363040DD35009034E4 /* CoreDomain */; };
 		D7A6473A3040DD40009034E4 /* CalendarListFeature in Frameworks */ = {isa = PBXBuildFile; productRef = D7A647393040DD40009034E4 /* CalendarListFeature */; };
 		D7A6473D3040DD4C009034E4 /* AppNavigation in Frameworks */ = {isa = PBXBuildFile; productRef = D7A6473C3040DD4C009034E4 /* AppNavigation */; };
+		D7C0A0013040DD1F009034E4 /* DSKit in Frameworks */ = {isa = PBXBuildFile; productRef = D7A647303040DD1F009034E4 /* DSKit */; };
+		D7C0A0023040DCD7009034E4 /* SingleCalendarFeature in Frameworks */ = {isa = PBXBuildFile; productRef = D7A6472D3040DCD7009034E4 /* SingleCalendarFeature */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -81,6 +83,8 @@
 			files = (
 				D733BC91306A7693000F242F /* CorePersistence in Frameworks */,
 				D733BC92306A7693000F242F /* CoreDomain in Frameworks */,
+				D7C0A0013040DD1F009034E4 /* DSKit in Frameworks */,
+				D7C0A0023040DCD7009034E4 /* SingleCalendarFeature in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -167,6 +171,8 @@
 			packageProductDependencies = (
 				D7A647333040DD2A009034E4 /* CorePersistence */,
 				D7A647363040DD35009034E4 /* CoreDomain */,
+				D7A6472D3040DCD7009034E4 /* SingleCalendarFeature */,
+				D7A647303040DD1F009034E4 /* DSKit */,
 			);
 			productName = PinCalAppTests;
 			productReference = D7B935862FA90E7C00E5A62D /* PinCalAppTests.xctest */;

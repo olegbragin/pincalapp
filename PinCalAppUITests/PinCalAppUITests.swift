@@ -124,7 +124,7 @@ final class PinCalAppUITests: XCTestCase {
     /// second calendar wrote into the first calendar's row.
     ///
     /// **This is the test that fails if the store goes back to being app-wide.** Re-wiring
-    /// `PCCalendarSession.makeEventSelection` to hand out one instance for every calendar makes it
+    /// `PCAppSession.makeEventSelection` to hand out one instance for every calendar makes it
     /// red on the middle assertion, with day 20 in the second calendar reporting `1 events` from
     /// the first calendar's batch.
     ///

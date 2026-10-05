@@ -267,9 +267,10 @@ struct AutoTestRunner {
             // flaky". Verified: `mobilebuildmcp` 2.7.1, `xcodebuildmcp` 2.7.0.
             //
             // Parallel, capped at `parallelWorkers`. Repeated `--extra-args=<value>`, one entry
-            // per xcodebuild argument: a JSON array is *not* accepted, the CLI reads the value as
-            // a single string and reports `Unknown build action '["-parallel-testing-enabled","NO"]'`,
-            // which is how the old serial flag could have silently stopped reaching xcodebuild.
+            // per xcodebuild argument. A JSON array is *not* a way to pass them: the schema accepts
+            // one, but it reaches xcodebuild as a single argument —
+            // `Unknown build action '["-parallel-testing-enabled","NO"]'` — which is how the old
+            // serial flag could have silently stopped reaching xcodebuild.
             //
             // The target-level half of this lives in `PinCalApp.xctestplan`: every unit target is
             // marked `parallelizable`, and without that this flag only buys concurrency between
@@ -296,7 +297,7 @@ struct AutoTestRunner {
                     "--extra-args=-parallel-testing-enabled",
                     "--extra-args=YES",
                     "--extra-args=-maximum-parallel-testing-workers",
-                    "--extra-args=\(parallelWorkers)",
+                    "--extra-args=\(Self.workerCountArgument(parallelWorkers))",
                 ],
                 expectingSuccess: false
             )
@@ -560,6 +561,29 @@ struct AutoTestRunner {
     }
 
     // MARK: - Process helpers
+
+    /// The worker count in the only form both ends of the pipeline accept.
+    ///
+    /// The CLI parses every `--extra-args` value as JSON against a `string[]` schema, so a plain
+    /// `2` arrives as a **number** and is rejected before anything runs:
+    /// `extraArgs.3: Invalid input: expected string, received number`. Every route around that was
+    /// tried and measured:
+    ///
+    /// - Quoting it — `--extra-args="2"` — does not help. The quotes are stripped before the parse,
+    ///   so it is a number again and fails identically.
+    /// - A JSON array — `--extra-args=["-a","-b"]` — passes the schema and then fails later, because
+    ///   it reaches xcodebuild as a *single* argument: `Unknown build action '["-a","-b"]'`. This is
+    ///   also the trap the comment at the call site used to blame on the wrong thing.
+    ///
+    /// A leading zero is what remains. `02` is not valid strict JSON, so it survives as the string
+    /// the schema wants, and xcodebuild's integer parsing reads it as 2. Verified end to end: the
+    /// suite runs and reports against it.
+    ///
+    /// A hack forced by a schema that types a flag value as JSON, and it should be revisited if
+    /// mobilebuildmcp ever accepts `extraArgs` as a proper repeated list.
+    private static func workerCountArgument(_ count: Int) -> String {
+        "0\(max(count, 1))"
+    }
 
     private static var runDirectory: URL? {
         let current = URL(fileURLWithPath: FileManager.default.currentDirectoryPath, isDirectory: true)

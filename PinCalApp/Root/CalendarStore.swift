@@ -22,7 +22,7 @@ import CorePersistence
 /// small, obviously-persistence type that talks to ObjectBox.
 ///
 /// The app's composition root (`PinCalAppApp`) builds one and hands it to
-/// `PCCalendarSession` as `any CalendarPersisting`. From that point the batch pipeline
+/// `PCAppSession` as `any CalendarPersisting`. From that point the batch pipeline
 /// cannot reach `CalendarCache` even by accident, which is what keeps
 /// `SingleCalendarFeature` free of `import CorePersistence`.
 ///

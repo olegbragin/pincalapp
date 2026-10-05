@@ -1,5 +1,5 @@
 //
-//  PCCalendarSessionTests.swift
+//  PCAppSessionTests.swift
 //  PinCalAppTests
 //
 //  The session's job is to hand out **one store per calendar** and to end that calendar's
@@ -19,27 +19,33 @@ import Testing
 import CoreDomain
 import DSKit
 import ObjectBox
+import SettingsFeature
 import SingleCalendarFeature
 // `@testable` for `PP*` entities and the in-memory store factory.
 @testable import CorePersistence
 @testable import PinCalApp
 
 @MainActor
-@Suite("PCCalendarSession")
-struct PCCalendarSessionTests {
+@Suite("PCAppSession")
+struct PCAppSessionTests {
     private let day = Date(timeIntervalSince1970: 1_780_000_000)
 
-    /// `PCCalendarSession.persistence` is typed `any CalendarPersisting`, so reading rows back
+    /// `PCAppSession.persistence` is typed `any CalendarPersisting`, so reading rows back
     /// needs the concrete `CalendarStore`. Carried on the fixture rather than down-cast from the
     /// session, so the test reads the port it built instead of reaching through the session.
     private struct Fixture {
         let objectBox: Store
         let cache: CalendarCache
-        let session: PCCalendarSession
+        let session: PCAppSession
         let port: CalendarStore
+        let settingsStore: any SettingsPersisting
+        /// Not `private`, though the struct is: a `private` member would make the memberwise
+        /// initialiser itself private, and this type is built one level up in `makeFixture`.
+        let settingsSuite: String
 
         func close() {
             objectBox.close()
+            UserDefaults.standard.removePersistentDomain(forName: settingsSuite)
         }
     }
 
@@ -47,9 +53,17 @@ struct PCCalendarSessionTests {
         let objectBox = try ObjectBoxFactory.makeInMemoryStore(named: "session-\(UUID().uuidString)")
         let cache = CalendarCache(repository: ObjectBoxCalendarStorage(store: objectBox))
         let calendarStore = CalendarStore(cache: cache)
-        let session = PCCalendarSession(
+        // A private suite, so the settings written by a test cannot reach — or be reached by — the
+        // real preferences. `removePersistentDomain` first because suite names are reusable and a
+        // value left by an earlier run would make a "nothing remembered" assertion pass wrongly.
+        let suite = "PCAppSessionTests-\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defaults.removePersistentDomain(forName: suite)
+        let settingsStore: any SettingsPersisting = UserDefaultsSettingsStore(defaults: defaults)
+        let session = PCAppSession(
             persistence: calendarStore,
             managing: calendarStore,
+            settings: settingsStore,
             makeEventSelection: { _ in
                 PCEventSelectionManager(
                     initialState: PCEventSelectionState(dataProvider: PCCalendarDataProvider()),
@@ -61,7 +75,14 @@ struct PCCalendarSessionTests {
                 )
             }
         )
-        return Fixture(objectBox: objectBox, cache: cache, session: session, port: calendarStore)
+        return Fixture(
+            objectBox: objectBox,
+            cache: cache,
+            session: session,
+            port: calendarStore,
+            settingsStore: settingsStore,
+            settingsSuite: suite
+        )
     }
 
     private func batch(_ name: String, on date: Date, id: Int64? = nil) -> CalendarEventBatch {
@@ -297,5 +318,106 @@ struct PCCalendarSessionTests {
             store.state.batches.first?.persistedID == 5,
             "and what is left is the batch that was already there"
         )
+    }
+
+    // MARK: - Remembering the selected calendar
+
+    /// `createCalendar` returns nothing, so the assigned id is read back the way the rest of this
+    /// package's tests do it.
+    private func createCalendar(_ fixture: Fixture, name: String = "Work") async throws -> Int64 {
+        try await fixture.cache.createCalendar(name: name, year: 2026, numberOfColumns: 3)
+        let all = try await fixture.cache.getAllCalendars()
+        return try #require(all.first { $0.name == name }?.id)
+    }
+
+    @Test("Nothing remembered means nothing to restore")
+    func nothingRememberedRestoresNothing() async throws {
+        let fixture = try makeFixture()
+        defer { fixture.close() }
+
+        #expect(await fixture.session.selectedCalendarToRestore() == nil)
+    }
+
+    /// The feature, end to end over the real store: what the app remembers is what it reopens.
+    ///
+    /// Driven through `rememberSelectedCalendar` and read back through the restore, rather than
+    /// seeding the settings directly, because the write path is the part a tap actually takes and
+    /// it is the part that had no coverage at all.
+    @Test("A remembered calendar is restored on the next launch")
+    func rememberedCalendarIsRestored() async throws {
+        let fixture = try makeFixture()
+        defer { fixture.close() }
+        let created = try await createCalendar(fixture)
+
+        fixture.session.rememberSelectedCalendar(created)
+
+        #expect(await fixture.session.selectedCalendarToRestore() == created)
+    }
+
+    /// Forgetting is the answer when a calendar closes, and it has to be distinguishable from
+    /// "never stored" — otherwise a closed calendar comes straight back.
+    @Test("A forgotten calendar is not restored")
+    func forgottenCalendarIsNotRestored() async throws {
+        let fixture = try makeFixture()
+        defer { fixture.close() }
+        let created = try await createCalendar(fixture)
+        fixture.session.rememberSelectedCalendar(created)
+        #expect(await fixture.session.selectedCalendarToRestore() == created, "precondition")
+
+        fixture.session.rememberSelectedCalendar(nil)
+
+        #expect(await fixture.session.selectedCalendarToRestore() == nil)
+    }
+
+    /// A calendar that no longer exists must not be restored — and must be *forgotten*, which is the
+    /// half that matters.
+    ///
+    /// Restoring it would be the blank-detail-column failure: the id survives, the app root injects
+    /// that calendar's store, and `SingleCalendarModel` fetches nothing and renders nothing, with
+    /// nothing on screen to clear it. Leaving the stale id stored means every subsequent launch
+    /// repeats it.
+    @Test("An id for a calendar that is gone is forgotten rather than restored")
+    func staleIdIsForgotten() async throws {
+        let fixture = try makeFixture()
+        defer { fixture.close() }
+        fixture.session.rememberSelectedCalendar(4242)
+
+        #expect(await fixture.session.selectedCalendarToRestore() == nil, "nothing to restore")
+        #expect(
+            fixture.settingsStore.lastSelectedCalendarId == nil,
+            "and the stale id must not survive to be retried on every launch"
+        )
+    }
+
+    /// An archived calendar is still restored.
+    ///
+    /// The archived list can select a calendar (`RootContentView` wires the same route), so this is
+    /// a selection the user made like any other. Dropping it because of *which* list it was made
+    /// from would mean the app forgets a calendar the user deliberately opened.
+    @Test("An archived calendar is still restored")
+    func archivedCalendarIsRestored() async throws {
+        let fixture = try makeFixture()
+        defer { fixture.close() }
+        let created = try await createCalendar(fixture, name: "Old")
+        try await fixture.port.archiveCalendar(id: created)
+
+        fixture.session.rememberSelectedCalendar(created)
+
+        #expect(await fixture.session.selectedCalendarToRestore() == created)
+    }
+
+    /// `0` is not a calendar, and it must not restore.
+    ///
+    /// `currentCalendarID` uses `0` for "no calendar on screen", so it is the one value most likely
+    /// to reach a store by accident. `SettingsStore` will hold it if something writes it; this is
+    /// the check that it cannot come back out as an open calendar.
+    @Test("The sentinel id does not restore")
+    func sentinelDoesNotRestore() async throws {
+        let fixture = try makeFixture()
+        defer { fixture.close() }
+
+        fixture.session.rememberSelectedCalendar(0)
+
+        #expect(await fixture.session.selectedCalendarToRestore() == nil)
     }
 }
