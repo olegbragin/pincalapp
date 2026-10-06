@@ -88,7 +88,7 @@ enum KeyboardAvoidanceTestSupport {
     static func openCalendarDetail(_ app: XCUIApplication, named name: String) {
         openCalendarsList(app)
 
-        let calendarRow = app.staticTexts[name].firstMatch
+        let titleQuery = app.staticTexts.matching(NSPredicate(format: "label == %@", name))
 
         // iPad only: let the list finish its first layout before tapping it.
         //
@@ -106,7 +106,24 @@ enum KeyboardAvoidanceTestSupport {
             _ = sidebarRow("calendar-list-empty-active", in: app).waitForExistence(timeout: 5)
         }
 
-        XCTAssertTrue(calendarRow.waitForExistence(timeout: 15), "Calendar '\(name)' should exist in the list")
+        XCTAssertTrue(titleQuery.firstMatch.waitForExistence(timeout: 15), "Calendar '\(name)' should exist in the list")
+
+        // Pick the *row*, not whatever else carries the label.
+        //
+        // Once the calendar is already open — which is what a sidebar-category leave leaves
+        // behind on the iPad, since `goTo(.sidebar)` deliberately does not clear
+        // `RootNavigation.detailCalendarID` — the label names two elements: this row and the
+        // detail column's navigation title. `firstMatch` resolved to the title (measured:
+        // x=621,y=43 against the row's x=66,y=123) and tapping a title does nothing, so the
+        // helper reported an open that never happened and its day-grid sentinel — already
+        // satisfied by the calendar that never left — could not tell. Callers then asserted
+        // against the state they thought they had changed.
+        //
+        // The content column is always left of the detail column on this app's layouts, so
+        // the leftmost match is the row; with one match this selects the only candidate.
+        let candidates = titleQuery.allElementsBoundByIndex.filter { $0.frame != .zero }
+        let calendarRow = candidates.min { $0.frame.minX < $1.frame.minX }
+            ?? titleQuery.firstMatch
 
         // Wait for the row to be *hittable*, not merely present.
         //
@@ -427,29 +444,47 @@ enum KeyboardAvoidanceTestSupport {
     /// the batch") rather than the typing, which is why it was worth fixing here rather than at
     /// the call site.
     ///
-    /// **A suffix, not equality.** Two different things can go wrong here and only one of them
-    /// is this function's business. The triple-tap selection is itself flaky, and when it fails
-    /// the text is *appended* — "New eventCycle" instead of "Cycle". Asserting equality here
-    /// would report that as a typing-timing failure, which it is not, and would fail a test
-    /// whose own assertion on the resulting name is the right place to hear about it. So this
-    /// waits for the suffix and leaves the value to the caller.
+    /// **Equality, with a repair — and why the suffix rule was wrong.** This used to wait for
+    /// a suffix rather than equality, on the reasoning that two different things can go wrong
+    /// and only one of them is this function's business: the triple-tap selection is itself
+    /// flaky, and when it fails the text is *appended* — "New eventCycle" instead of "Cycle" —
+    /// so a caller's own assertion on the resulting name was supposed to be the place to hear
+    /// about that. It never was. The append sails through a suffix wait, and the test fails
+    /// minutes later on a row label that never matched, naming the batch ("the list should
+    /// contain the batch") rather than the typing — measured in both runs of that flake, with
+    /// the failure hierarchy reading `label: 'New eventCycle'`.
+    ///
+    /// Every caller passes a full replacement, so equality is what they are all asking for,
+    /// and a missed selection is repairable here rather than merely reportable: re-select and
+    /// retype, up to three times. A failure after that is a typing failure, which is what the
+    /// message will say — the diagnosis the suffix rule promised and did not deliver.
     @MainActor
     static func replaceText(in field: XCUIElement, with text: String) {
         XCTAssertTrue(field.waitForExistence(timeout: 5), "The field should be on screen before typing into it")
-        field.tap(withNumberOfTaps: 3, numberOfTouches: 1)
-        Thread.sleep(forTimeInterval: 0.2)
-        field.typeText(text)
 
-        let deadline = Date().addingTimeInterval(5)
-        while Date() < deadline {
-            if (field.value as? String)?.hasSuffix(text) == true {
-                return
+        for _ in 1...3 {
+            field.tap(withNumberOfTaps: 3, numberOfTouches: 1)
+            // The selection is lost when the tap lands while the field is still settling, so
+            // give it a moment longer than the 0.2s this started with.
+            Thread.sleep(forTimeInterval: 0.3)
+            field.typeText(text)
+
+            let deadline = Date().addingTimeInterval(3)
+            while Date() < deadline {
+                if (field.value as? String) == text {
+                    return
+                }
+                usleep(50000)
             }
-            usleep(50000)
+            // Not equal after settling: either the append case (selection missed, old text
+            // still there) or the keys never landed. Triple-tap over whatever is in the field
+            // and try again — the retry *is* the repair for the append case.
         }
+
         XCTFail(
-            "The field never showed the typed text (it reads "
-                + "\(String(describing: field.value)); a caller that navigates now would drop the tail of it)"
+            "The field never took the replacement text (it reads "
+                + "\(String(describing: field.value)) after three select-and-retype attempts; "
+                + "a caller asserting on a later label would see the old name and blame that)"
         )
     }
 

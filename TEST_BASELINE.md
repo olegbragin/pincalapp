@@ -91,13 +91,17 @@ already on is a no-op and leaves the same calendar alive.
 | Test | iPad before | iPad after |
 |---|---|---|
 | `CalendarListRefreshTests` (3 tests) | 2 pass, 1 fail | **3 pass** |
-| `PinCalAppUITests.testLeavingCalendarInMultiselectModeResetsOnReopen` | fail | **still fails — now an app bug, not a test bug** |
+| `PinCalAppUITests.testLeavingCalendarInMultiselectModeResetsOnReopen` | fail | **still fails — now an app bug, not a test bug** — superseded by §20: a harness fault, green with no app change |
 
 `openArchivedList` tapped `BackButton` unconditionally; on iPad that is the *sidebar's*
 control, so it collapsed the sidebar and then failed to find the row it had just navigated
 to. It now navigates only when the sidebar is not already reachable.
 
 ### The remaining failure is diagnosed, and it is not the harness
+
+> **Superseded (§20).** The conclusion below — "needs an app fix, not a test fix" — was wrong.
+> The tap never reached the calendar row (it hit the detail column's navigation title), and
+> the test is green on the iPad with no app change. Kept as the Stage 14 record.
 
 `testLeavingCalendarInMultiselectModeResetsOnReopen` used to fail on
 *"After reopening, the calendar should be in single-select mode"*, which read as a
@@ -232,6 +236,16 @@ identical in each: `Show Sidebar` → `sidebar-settings` → the day cell never 
 | `BatchEditCommitTests.testEditingExistingEventShowsPreFilledNameAndPersistsChanges` | fails |
 | `BatchEditCommitTests.testSavingBatchFromEditorUpdatesCalendarWithoutReachingRoot` | fails |
 
+All four are green as of §20: the multiselect test was re-run with the two batch tests
+(3 passed, 0 failed) and `BatchEditCommitTests` as a class re-ran on the iPad after the
+harness fixes (**7 passed, 0 failed**, 441.4s). Two rows above were renamed in `0b77f22`,
+per the convention that a changed premise gets a new name:
+`testSavingBatchFromEditorUpdatesCalendarWithoutReachingRoot` →
+`testLeavingBatchEditorUpdatesCalendarWithoutReachingRoot`, and
+`testChangingEventColorPersistsAfterBatchSave` →
+`testChangingEventColorPersistsAfterLeavingBatchEditor`. The table is kept as the Stage 17
+record of what the iPad profile looked like before the harness faults below were found.
+
 ### Three harness faults found, and where the investigation actually landed
 
 Each was measured, not reasoned about, and two of them are the same shape as the
@@ -353,6 +367,12 @@ an unverified root-layout change.
 and `.task` does not run until the view appears. What is not known: why the column is not
 appearing. That needs a view debugger session or a dump of the running scene, not another probe.
 
+> **Superseded (§20).** The full iPad plan no longer reproduces this: the run immediately
+> before the §20 fixes completed 474 tests with only the two failures §20 addresses, the rest
+> — including everything that opens a calendar and drives the day grid — passing. Which change
+> closed it was not recorded in this file — an honest gap, and the reason not to treat the
+> paragraph above as a current description of the app.
+
 **Verified:** iPhone 17 Pro - AutoTest, full plan through `AutoTestRunner` on a freshly erased
 simulator — **386 completed, 0 failures, 0 skipped**, reset on attempt 1.
 
@@ -400,3 +420,68 @@ straight back out.
 
 **Verified:** the test fails on the restore without the cache fix and passes with it, and the
 full plan through `AutoTestRunner` is **387 completed, 0 failures, 0 skipped**.
+
+
+## Stage 20 — the last two failures were harness faults, both measured
+
+The suite immediately before this stage: iPhone full plan **472 passed, 0 failed, 2 skipped**;
+iPad full plan **474 run with 2 failures** — `testLeavingCalendarInMultiselectModeResetsOnReopen`
+(red on iPad) and `testRemovingAllBatchesReturnsToSingleCalendar` (flaky, seen on both
+profiles), with `testRemovingAnchorDayUncolorsItOnCalendar` flaking the same way. **No app code
+was changed in this stage**; both faults lived in `KeyboardAvoidanceTestSupport`.
+
+### 1. `openCalendarDetail` tapped a navigation title, not the calendar row
+
+`goTo(.sidebar)` deliberately does not clear `RootNavigation.detailCalendarID` (only `.archived`
+and `.settings` do), so a sidebar-category leave on the iPad keeps the calendar open in the
+detail column — and the label "UI Test Calendar" then names **two** elements: the list row
+(measured `x=66,y=123`) and the detail column's navigation title (measured `x=621,y=43`).
+`app.staticTexts[name].firstMatch` resolved to the *title*; tapping a title does nothing; the
+helper's day-grid sentinel was already satisfied by the calendar that never left, so the helper
+reported an open that never happened and the test's assertion then ran against a screen it
+never left. On the iPhone there is one match, which is why this read as an iPad-only app bug.
+
+The helper now queries the name, bounds all matches, and taps the **leftmost** candidate — the
+content column is always left of the detail column in every layout this app uses — leaving the
+single-match case untouched. Note against §17.3, which had the helper preferring the *last*
+hittable match: neither end is special, the geometry is — leftmost is the row.
+
+### 2. `replaceText`'s suffix wait accepted an appended value
+
+Both flaky tests failed the same way, measured from the exported xcresult failure hierarchies:
+the triple-tap selection intermittently misses, the typed text is *appended* (`label: 'New
+eventCycle'`), the old suffix wait treated that as success, and the caller's exact
+`staticTexts["Cycle"]` failed 5 seconds later — so the failure named the *list* ("the list
+should contain the batch"), not the typing, which is the diagnosis the suffix rule had
+promised and did not deliver. Every caller passes a full replacement, so `replaceText` now
+waits for **equality** and *repairs* a miss by re-selecting and retyping, up to three attempts,
+before failing with a typing message. AGENTS.md's "wait for a suffix, not equality" rule came
+from this helper's original doc comment and is corrected there too.
+
+### 3. `screenInventory` moved
+
+`screenInventory` moved out of `KeyboardAvoidanceTestSupport.swift` (which is over the linter's
+`file_length` limit) into `PinCalAppUITests.swift`, its one caller. It stays in the failure
+message of the multiselect test, because its job is exactly the distinction that failure has to
+draw: "reopened with the wrong toolbar" versus "never reopened" — the `titles=[x=,y=,hit=]`
+fields are what would have caught this stage's root cause #1 immediately.
+
+### Corrections this stage makes
+
+- §14's "now an app bug, not a test bug" and "needs an app fix, not a test fix" — wrong on both
+  counts: the tap never reached the row, and the test is green with no app change.
+- §17's four-test iPad table — all four are green.
+- §18's "the iPad detail-column bug is still open" — no longer reproduces; which change closed
+  it is not recorded here (gap).
+- AGENTS.md's suffix rule for `replaceText` — wrong for the reason above.
+
+**Verified after the fix:** full plans through `AutoTestRunner` — iPad: **474 passed, 0 failed,
+0 skipped** (1715.3s); iPhone: **472 passed, 0 failed, 2 skipped** (1525.9s), the 2 skips being
+conditional `XCTSkip`s from fixture-guarded tests, unchanged from the pre-fix runs. Targeted
+runs behind those numbers: the three affected tests green on the iPad (3 passed, 0 failed,
+157.4s) and on the iPhone (multiselect 50.6s; both batch tests 95.9s); `BatchEditCommitTests`
+on the iPad, 7 passed, 0 failed (441.4s). Linters: `swiftformat --lint` and
+`sort_imports.py --check` print zero; `swiftlint` reports 47 violations, the measured baseline
+at HEAD (AGENTS.md's "44" was stale). Working tree: the two UI-test files plus this file and
+AGENTS.md — the diagnostic instrumentation that found fault #1 was fully reverted before the
+fix was written, and no app source changed.

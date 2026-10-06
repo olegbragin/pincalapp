@@ -214,7 +214,7 @@ swiftformat .                          # apply formatting
 swiftformat --lint .                   # check only: prints "N/182 files require formatting"
 python3 scripts/sort_imports.py .      # apply import order
 python3 scripts/sort_imports.py --check .
-swiftlint lint --quiet                 # report; 44 pre-existing violations, not a gate yet
+swiftlint lint --quiet                 # report; 47 pre-existing violations, not a gate yet
 ```
 
 The two writers (`swiftformat`, `sort_imports.py`) are idempotent and do not step on each
@@ -434,9 +434,16 @@ These are load-bearing. Each was arrived at by fixing a bug, and the reasoning i
   assembly, so the trailing characters are dropped. It surfaces as a flake in whichever test lost
   the race, with the failure naming the batch rather than the typing. `replaceText` waits for the
   typed text to land in the field — keep that wait.
-- **`replaceText`'s triple-tap selection is itself flaky.** When it fails the text is *appended*
-  ("New eventCycle"), so wait for a **suffix**, not equality: the value is the caller's to assert
-  on, and a helper that fails on the wrong-value case reports it as a timing problem.
+- **`replaceText`'s triple-tap selection is itself flaky, and a suffix wait hid it.** When the
+  tap misses, the text is *appended* ("New eventCycle"). The original rule was to wait for a
+  **suffix** and leave the value to the caller, on the reasoning that a caller's own name
+  assertion was the right place to hear about the append — but it never was: the append sailed
+  through the suffix wait, and the test failed minutes later on a row label that never matched,
+  naming the list rather than the typing (measured in both runs of that flake). Every caller
+  passes a full replacement, so `replaceText` now waits for **equality** and *repairs* the miss
+  by re-selecting and retyping — up to three attempts — before failing as a typing failure.
+  Assert what the caller asked for, and fix the flake where it happens instead of reporting it
+  downstream.
 - A UI test that takes a screenshot or dumps the hierarchy is worth the seconds when a UI change
   has to be verified by hand — but say so in the report, separately from the suite result.
 

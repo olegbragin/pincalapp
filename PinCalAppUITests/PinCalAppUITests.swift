@@ -336,6 +336,44 @@ final class PinCalAppUITests: XCTestCase {
         XCTAssertTrue(editorBack.waitForNonExistence(timeout: 3), "Batch editor should dismiss after Back")
     }
 
+    /// What is on screen, for a failure message that has to tell "the calendar reopened
+    /// but its toolbar is not the one expected" apart from "the calendar never reopened".
+    ///
+    /// Counts the two sentinels that separate those cases (day cells = the grid, the card
+    /// = the list), plus every button's `identifier|label`, because a failure naming one
+    /// missing button says nothing about which screen is actually up. `titles` carries a
+    /// frame each, because when a label names two elements at once — a row and a navigation
+    /// title — the frames say which one a `firstMatch` would have resolved to.
+    ///
+    /// Lives here rather than in `KeyboardAvoidanceTestSupport` only because that file is
+    /// over the linter's line limit and this is its one caller.
+    @MainActor
+    private func screenInventory(_ app: XCUIApplication) -> String {
+        let buttons = app.buttons.allElementsBoundByIndex
+            .map { "\($0.identifier)|\($0.label)" }
+            .sorted()
+            .joined(separator: ", ")
+        let dayCells = app.descendants(matching: .any)
+            .matching(NSPredicate(format: "identifier BEGINSWITH %@", "day-"))
+            .allElementsBoundByIndex.count
+        func count(_ id: String) -> Int {
+            app.descendants(matching: .any).matching(identifier: id).count
+        }
+        let titles = app.staticTexts.matching(
+            NSPredicate(format: "label == %@", "UI Test Calendar")
+        )
+        let titleFrames = titles.allElementsBoundByIndex
+            .map { "x=\(Int($0.frame.minX)),y=\(Int($0.frame.minY)),hit=\($0.isHittable)" }
+            .joined(separator: " ")
+        return "dayCells=\(dayCells)"
+            + " calendarCard=\(count("card-archive-1"))"
+            + " calendarDetail=\(count("calendar-detail-1"))"
+            + " showSidebar=\(app.buttons.matching(identifier: "Show Sidebar").count)"
+            + " hideSidebar=\(app.buttons.matching(identifier: "Hide Sidebar").count)"
+            + " titles=[\(titleFrames)]"
+            + " buttons=[\(buttons)]"
+    }
+
     @MainActor
     func testEditingBatchRemovesToggledOffEventsFromCalendar() {
         let app = KeyboardAvoidanceTestSupport.launchSeededApp()
@@ -623,7 +661,10 @@ final class PinCalAppUITests: XCTestCase {
         XCTAssertTrue(multiselectButton.waitForExistence(timeout: 5), "Multiselect button should be visible")
         multiselectButton.tap()
 
-        // Leave the screen via the back button.
+        // Leave the screen: back when there is one, the sidebar otherwise. On the iPad this
+        // lands on the calendar list *beside* a detail column that deliberately stays open
+        // (`goTo(.sidebar)` does not clear `detailCalendarID`), so the reopen below is what
+        // ends the session — see `openCalendarDetail` on picking the row over the title.
         KeyboardAvoidanceTestSupport.leaveCurrentScreen(in: app)
 
         // Reopen the calendar.
@@ -632,7 +673,8 @@ final class PinCalAppUITests: XCTestCase {
         // Must be in single-select mode: "Multiselect" button, no "Save".
         XCTAssertTrue(
             KeyboardAvoidanceTestSupport.waitForToolbarAction("Multiselect", in: app),
-            "After reopening, the calendar should be in single-select mode"
+            "After reopening, the calendar should be in single-select mode. "
+                + screenInventory(app)
         )
         XCTAssertFalse(
             KeyboardAvoidanceTestSupport.toolbarActionExists("Save", in: app),
