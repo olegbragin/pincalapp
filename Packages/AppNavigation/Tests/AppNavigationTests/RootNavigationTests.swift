@@ -171,6 +171,158 @@ struct RootNavigationTests {
         }
     }
 
+    // MARK: - Landing on the list when a link names no calendar
+
+    /// Both halves, or neither: the category says "calendars" and the detail says nothing is
+    /// selected. Doing only one leaves the two columns disagreeing.
+    @Test("Landing on the list shows it and clears the selection")
+    @MainActor
+    func showListWithoutSelectionClearsAndShowsList() async {
+        let nav = RootNavigation()
+        nav.goTo(.calendar(42, toRoot: false))
+        nav.goTo(.sidebar(.archived))
+        #expect(nav.detailCalendarID == 42)
+        #expect(nav.selectedSidebarCategory == .archived)
+
+        await nav.showCalendarListWithoutSelection()
+
+        #expect(nav.selectedSidebarCategory == .calendarList, "the list is where the user was trying to go")
+        #expect(nav.detailCalendarID == nil, "and it must not still be showing a calendar")
+    }
+
+    /// The detail column is a peer of the content column, so showing the list does not by itself
+    /// clear what the detail is showing. That is the half that is easy to leave out.
+    @Test("Landing on the list from the calendar list itself still closes the calendar")
+    @MainActor
+    func showListWithoutSelectionClosesEvenWhenAlreadyOnList() async {
+        let nav = RootNavigation()
+        nav.goTo(.calendar(42, toRoot: false))
+
+        await nav.showCalendarListWithoutSelection()
+
+        #expect(nav.detailCalendarID == nil)
+    }
+
+    /// A closed calendar's screens go with it — a `.batchEditor` left on the stack would be built
+    /// against a calendar that is no longer selected.
+    @Test("Landing on the list clears the pushed screens too")
+    @MainActor
+    func showListWithoutSelectionClearsPath() async {
+        let nav = RootNavigation()
+        nav.goTo(.calendar(42, toRoot: true))
+        nav.goTo(.dayBatches)
+        nav.goTo(.batchEditor)
+
+        await nav.showCalendarListWithoutSelection()
+
+        #expect(nav.path.isEmpty)
+    }
+
+    /// Same reason `closeCalendarIfSelected` runs the leave hook: a cached store means an
+    /// unended session comes back painted with no way to end it.
+    @Test("Landing on the list ends the calendar's session")
+    @MainActor
+    func showListWithoutSelectionRunsTheLeaveHook() async {
+        let nav = RootNavigation()
+        nav.goTo(.calendar(42, toRoot: false))
+        var left = 0
+        nav.willLeaveCurrentCalendar = { left += 1 }
+
+        await nav.showCalendarListWithoutSelection()
+
+        #expect(left == 1, "the calendar was left, so its session is over")
+    }
+
+    /// The ordinary bad-link case is a fresh launch: no calendar open, already on the list. It
+    /// must be inert rather than a crash or a stray notification.
+    @Test("Landing on the list with nothing open is inert")
+    @MainActor
+    func showListWithoutSelectionIsInertWhenNothingOpen() async {
+        let nav = RootNavigation()
+        var notified = 0
+        nav.onCalendarChanged = { _ in notified += 1 }
+        var left = 0
+        nav.willLeaveCurrentCalendar = { left += 1 }
+
+        await nav.showCalendarListWithoutSelection()
+
+        #expect(nav.detailCalendarID == nil)
+        #expect(nav.selectedSidebarCategory == .calendarList)
+        #expect(notified == 0, "there was no calendar to say had changed")
+        #expect(left == 0)
+    }
+
+    // MARK: - Reporting a link that could not be honoured
+
+    /// The alert and the move are one operation. An alert raised over whatever calendar happened
+    /// to be open would be dismissed on a screen the link was never about.
+    @Test("Reporting a failed link records it and lands on the list")
+    @MainActor
+    func reportDeepLinkFailureRecordsAndMoves() async {
+        let nav = RootNavigation()
+        nav.goTo(.calendar(42, toRoot: false))
+        #expect(nav.deepLinkFailure == nil)
+
+        await nav.reportDeepLinkFailure(.noSuchCalendar(id: 999))
+
+        #expect(nav.deepLinkFailure == .noSuchCalendar(id: 999), "the alert has to outlive the call")
+        #expect(nav.selectedSidebarCategory == .calendarList)
+        #expect(nav.detailCalendarID == nil)
+    }
+
+    @Test("Reporting a failed link clears the pushed screens")
+    @MainActor
+    func reportDeepLinkFailureClearsPath() async {
+        let nav = RootNavigation()
+        nav.goTo(.calendar(42, toRoot: true))
+        nav.goTo(.batchEditor)
+
+        await nav.reportDeepLinkFailure(.noSuchCalendar(id: 999))
+
+        #expect(nav.path.isEmpty)
+    }
+
+    /// Same reason as every other close: a cached store brings an unended session back painted.
+    @Test("Reporting a failed link ends the calendar's session")
+    @MainActor
+    func reportDeepLinkFailureRunsTheLeaveHook() async {
+        let nav = RootNavigation()
+        nav.goTo(.calendar(42, toRoot: false))
+        var left = 0
+        nav.willLeaveCurrentCalendar = { left += 1 }
+
+        await nav.reportDeepLinkFailure(.noSuchCalendar(id: 999))
+
+        #expect(left == 1)
+    }
+
+    /// A fresh launch into a bad link raises the alert but disturbs nothing else.
+    @Test("Reporting a failed link with nothing open still raises it")
+    @MainActor
+    func reportDeepLinkFailureWithNothingOpen() async {
+        let nav = RootNavigation()
+
+        await nav.reportDeepLinkFailure(.noSuchCalendar(id: 999))
+
+        #expect(nav.deepLinkFailure == .noSuchCalendar(id: 999))
+        #expect(nav.detailCalendarID == nil)
+    }
+
+    /// The alert is dismissible, and dismissing it must be how it goes away — a second bad link
+    /// has to be able to raise it again afterwards.
+    @Test("A dismissed alert can be raised again")
+    @MainActor
+    func deepLinkFailureCanBeClearedAndReraised() async {
+        let nav = RootNavigation()
+
+        await nav.reportDeepLinkFailure(.noSuchCalendar(id: 1))
+        nav.deepLinkFailure = nil
+        #expect(nav.deepLinkFailure == nil)
+
+        await nav.reportDeepLinkFailure(.noSuchCalendar(id: 2))
+        #expect(nav.deepLinkFailure == .noSuchCalendar(id: 2))
+    }
+
     // MARK: - Calendar Detail Tests
 
     @Test("goTo calendar sets detailCalendarID and preferredCompactColumn")

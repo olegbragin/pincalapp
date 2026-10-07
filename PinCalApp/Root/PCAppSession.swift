@@ -190,6 +190,25 @@ final class PCAppSession {
         settings.lastSelectedCalendarId = id
     }
 
+    /// Whether a calendar with this id is still there to be opened.
+    ///
+    /// Asked before a deep link navigates, because `switchCalendar` will happily open *any* id
+    /// and a calendar that is not there renders as an empty detail column with no way back —
+    /// the failure `RootNavigation.closeCalendarIfSelected` documents and exists to clean up
+    /// after. A link can name an id that has since been deleted, or that never existed, because
+    /// links outlive the data they name and can be typed by hand.
+    ///
+    /// A read that *fails* answers `false`, which is the opposite of what
+    /// `selectedCalendarToRestore` does with the same read and deliberate: there, forgetting a
+    /// selection over a transient error loses it for good, so a failure leaves the stored value
+    /// alone. Here the stored value is not at stake — the user asked for a calendar by id, and
+    /// declining to open one they cannot see is a far smaller failure than opening an empty
+    /// column that looks broken. Re-asking costs a link tap; recovering from a blank detail
+    /// column does not cost anything at all.
+    func calendarExists(_ id: Int64) async -> Bool {
+        await (try? persistence.calendar(id: id)) != nil
+    }
+
     /// The remembered calendar to reopen on launch, or `nil` to open with nothing selected.
     ///
     /// A remembered id is a claim about the past, so it is checked before it is acted on: the

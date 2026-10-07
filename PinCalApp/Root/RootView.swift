@@ -129,5 +129,49 @@ struct RootView: View {
         }
         .preferredColorScheme(theme.colorScheme)
         .pcVibe(vibe)
+        .onOpenURL { url in
+            // A link from outside: `pincalapp://calendars/4`, or the query-shaped
+            // `pincalapp://calendars?calendarid=4`. Anything this app does not recognise parses to
+            // nothing and is ignored — a link can arrive from a web page, and one that is not
+            // addressed to us is not a thing to report to the user.
+            //
+            // Routed through `switchCalendar` rather than `goTo`, so the write guard is consulted
+            // and the calendar being left ends its multi-select session. A link arriving while
+            // the user is mid-edit is a switch like any other, and must be refused by the same
+            // rule that refuses a tap on another row.
+            guard let link = CalendarDeepLink(url: url) else { return }
+            Task {
+                if await session.calendarExists(link.calendarID) {
+                    await navigation.switchCalendar(to: link.calendarID)
+                } else {
+                    // The link named a calendar that is not there. Say so *and* move: an alert on
+                    // its own would be dismissed over whatever calendar happened to be open,
+                    // which is not the screen the link was asking about.
+                    await navigation.reportDeepLinkFailure(.noSuchCalendar(id: link.calendarID))
+                }
+            }
+        }
+        .alert(
+            "Calendar not found",
+            isPresented: Binding(
+                get: { bindableNavigation.deepLinkFailure != nil },
+                set: {
+                    if !$0 {
+                        bindableNavigation.deepLinkFailure = nil
+                    }
+                }
+            ),
+            presenting: bindableNavigation.deepLinkFailure
+        ) { _ in
+            Button("OK", role: .cancel) { bindableNavigation.deepLinkFailure = nil }
+        } message: { failure in
+            // The id is in the message because it is the one thing the user can check against
+            // what they tapped — a link shared before the calendar was deleted arrives here
+            // routinely, and "4" tells them which one is gone.
+            switch failure {
+            case let .noSuchCalendar(id):
+                Text("There is no calendar with id \(id).")
+            }
+        }
     }
 }

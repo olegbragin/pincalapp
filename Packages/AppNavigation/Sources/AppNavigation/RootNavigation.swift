@@ -166,6 +166,51 @@ public class RootNavigation {
         detailCalendarID = nil
     }
 
+    /// Set when a link could not be honoured, and cleared when the alert is dismissed.
+    ///
+    /// Navigation state for the same reason `presentedSheet` is: it is a thing on screen that the
+    /// user has to answer, and it outlives the call that raised it. Optional rather than a
+    /// `Bool` plus a `String`, which is two pieces of state that can disagree — the pattern this
+    /// codebase already has in `archiveToastMessage` / `isArchiveToastPresented`.
+    public var deepLinkFailure: DeepLinkFailure?
+
+    /// Records that a link could not be honoured, and puts the user somewhere they can act.
+    ///
+    /// One operation rather than a bare state write, because the two halves belong together: a
+    /// link that failed leaves the user looking at whatever was open before, which reads as the
+    /// tap having done nothing, so the alert is much easier to notice if the screen has also
+    /// changed underneath it.
+    public func reportDeepLinkFailure(_ failure: DeepLinkFailure) async {
+        deepLinkFailure = failure
+        await showCalendarListWithoutSelection()
+    }
+
+    /// Lands on the calendar list with nothing selected — where a link that names no calendar
+    /// leaves the user.
+    ///
+    /// A link is a request to be shown a calendar. When the one it names is not there, the choices
+    /// are to ignore the link or to show the list, and ignoring is the worse of the two: the user
+    /// asked for a calendar and would be left looking at whatever was open before, which reads as
+    /// the tap having done nothing at all. The list says "there is nothing to open" in a way they
+    /// can act on, and it is where they were trying to go anyway.
+    ///
+    /// Both halves are needed and neither is enough alone. The category alone would leave the
+    /// detail column still showing a calendar, so the list and the detail would disagree about
+    /// what is selected; the close alone would leave the user on Settings with an empty detail.
+    ///
+    /// The close goes through `closeCalendarIfSelected` rather than assigning the id, because
+    /// that is the only thing that can clear it — and it is what ends the calendar's multi-select
+    /// session, which a cached store would otherwise bring back painted and unendable.
+    ///
+    /// Inert when nothing is open, which is the ordinary outcome for a bad link arriving into a
+    /// fresh launch: the category is already the list and there is no calendar to close.
+    public func showCalendarListWithoutSelection() async {
+        goTo(.sidebar(.calendarList))
+        if let id = detailCalendarID {
+            await closeCalendarIfSelected(id)
+        }
+    }
+
     /// Switches to `calendarID` only if the guard allows it.
     ///
     /// This is the only supported way to change calendars, because it is the only place the
