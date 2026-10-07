@@ -5,6 +5,7 @@ import DSKit
 
 public struct CalendarListView: View {
     @Environment(\.calendarManaging) private var managing
+    @Environment(\.pcVibe) private var vibe
     @State private var viewModel: CalendarListViewModel?
     @State private var isAddSheetPresented = false
     public var selectedCalendarID: Int64?
@@ -92,7 +93,13 @@ public struct CalendarListView: View {
                 .frame(maxWidth: .infinity)
                 .padding(.bottom, 8)
         }
-        .background(PCSystemColor.systemGroupedBackground)
+        // The themed background rather than a system grouped one, so this column matches the
+        // detail column beside it. `systemGroupedBackground` is a near-neutral system grey, which
+        // put two visibly different backgrounds either side of a single divider — and it ignored
+        // the vibe entirely, so a theme could not have reached it. `.backgroundMain` is
+        // `#F4F0EA` in light and carries its own dark variant, which is also what the launch
+        // screen paints.
+        .background(vibe.color(for: .backgroundMain))
         .ignoresSafeArea(edges: .bottom)
         .overlay(alignment: .bottomTrailing) {
             if !viewModel.isAnyCardEditing, mode == .active {
