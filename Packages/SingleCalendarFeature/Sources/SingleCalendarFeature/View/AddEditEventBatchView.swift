@@ -18,20 +18,25 @@ public struct AddEditEventBatchView: View {
 
         VStack(alignment: .leading, spacing: 24) {
             VStack(alignment: .leading, spacing: 8) {
-                Text("Имя")
+                Text(.name)
                     .font(.headline)
                     .fontWeight(.medium)
 
                 HStack(spacing: 12) {
-                    PCTextField(title: "Введите имя", text: viewModel.nameBinding, identifier: "batch-name-field")
+                    PCTextField(title: String(localized: .enterName), text: viewModel.nameBinding, identifier: "batch-name-field")
 
-                    PCColorPickerView(selectedColor: viewModel.colorBinding, defaultColor: viewModel.defaultColor)
+                    PCColorPickerView(
+                        selectedColor: viewModel.colorBinding,
+                        selectColorLabel: String(localized: .selectColor),
+                        optionNames: pcColorOptionNames(),
+                        defaultColor: viewModel.defaultColor
+                    )
                 }
                 .padding(.horizontal, 4)
             }
 
             VStack(alignment: .leading, spacing: 8) {
-                Text("События")
+                Text(.events)
                     .font(.headline)
                     .fontWeight(.medium)
 

@@ -96,6 +96,11 @@ struct PinCalAppApp: App {
                 .environment(\.calendarCache, cache)
                 .environment(\.calendarManaging, managing)
                 .environment(\.settingsPersisting, settingsStore)
+                // No localization injection, because there is nothing to inject: every string in
+                // the app is resolved by `String(localized:)` or a SwiftUI `LocalizedStringKey`,
+                // both of which read the main bundle — which is where `Localizable.xcstrings`
+                // lives. A feature has no localization port to satisfy and no key enum to map, so
+                // there is nothing for a composition root to wire and nothing it could get wrong.
                 // The current calendar's store, injected at the root.
                 //
                 // Still app-wide — not because sharing is right, but because a

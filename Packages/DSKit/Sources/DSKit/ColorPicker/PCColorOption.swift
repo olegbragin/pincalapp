@@ -35,15 +35,6 @@ public enum PCColorOption: CaseIterable, Equatable, Hashable {
         }
     }
 
-    public var name: String {
-        switch self {
-        case .option1: return "Вариант 1"
-        case .option2: return "Вариант 2"
-        case .option3: return "Вариант 3"
-        case .option4: return "Вариант 4"
-        }
-    }
-
     public init?(_ rawValue: String) {
         switch rawValue {
         case "eventColorOption1":
@@ -57,5 +48,27 @@ public enum PCColorOption: CaseIterable, Equatable, Hashable {
         default:
             return nil
         }
+    }
+}
+
+/// How each colour option is called, supplied by whoever owns the words.
+///
+/// A value rather than four parallel string properties so a caller threads one thing through
+/// `PCColorPickerView`, `PCExpandedColorPicker` and `PCColorOptionSheet` instead of three sets of
+/// arguments that can drift apart. A function rather than a `[PCColorOption: String]` because a
+/// dictionary can be *missing* an entry, and a missing entry draws an empty label that no
+/// compiler complains about — the silent half of a localization bug.
+///
+/// `Sendable` because the pickers are values that cross the concurrency boundary Swift 6 draws
+/// around a view's captured state.
+public struct PCColorOptionNames: Sendable {
+    private let name: @Sendable (PCColorOption) -> String
+
+    public init(_ name: @escaping @Sendable (PCColorOption) -> String) {
+        self.name = name
+    }
+
+    public func name(for option: PCColorOption) -> String {
+        name(option)
     }
 }

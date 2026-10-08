@@ -18,13 +18,13 @@ public struct AddEditCalendarView: View {
             // Верхняя панель с кнопками
             HStack {
                 PCButton(action: { dismiss() }, identifier: "add-calendar-close-button") {
-                    Text("Закрыть")
+                    Text(.close)
                 }
                 .foregroundColor(.red)
 
                 Spacer()
 
-                Text("Edit calendar")
+                Text(.editCalendar)
                     .font(.headline)
                     .fontWeight(.semibold)
                     .padding([.top, .bottom])
@@ -41,7 +41,7 @@ public struct AddEditCalendarView: View {
                     },
                     identifier: "add-calendar-save-button"
                 ) {
-                    Text("Сохранить")
+                    Text(.save)
                 }
                 .foregroundColor(.blue)
             }
@@ -53,15 +53,15 @@ public struct AddEditCalendarView: View {
             // Форма внутри ScrollView для лучшей прокрутки
             ScrollView {
                 VStack(alignment: .leading, spacing: 24) {
-                    Text("Введите название календаря")
+                    Text(.enterCalendarName)
 
                     // Поле ввода имени
                     VStack(alignment: .leading, spacing: 8) {
-                        Text("Имя")
+                        Text(.name)
                             .font(.headline)
                             .fontWeight(.medium)
 
-                        PCTextField(title: "Введите имя", text: $viewModel.label)
+                        PCTextField(title: String(localized: .enterName), text: $viewModel.label)
                             .accessibilityIdentifier("add-calendar-name-field")
                     }
                 }

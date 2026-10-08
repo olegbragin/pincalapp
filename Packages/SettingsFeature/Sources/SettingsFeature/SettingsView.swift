@@ -49,14 +49,17 @@ public struct SettingsView: View {
 
     private func content(for model: SettingsViewModel) -> some View {
         Form {
-            Section("Appearance") {
-                Picker("Theme", selection: model.themeBinding) {
+            Section(.appearance) {
+                Picker(String(localized: .theme), selection: model.themeBinding) {
                     ForEach(AppTheme.allCases) { theme in
-                        Text(theme.title)
+                        Text(theme.localizedTitle)
                             .tag(theme)
                     }
                 }
-                Picker("Vibe", selection: model.vibeBinding) {
+                // Only the picker's own label is a UI string. `vibe.name` is data — a custom
+                // vibe carries the name its author gave it, which is not this catalog's to
+                // translate, so it stays a plain value.
+                Picker(String(localized: .vibe), selection: model.vibeBinding) {
                     ForEach(PCVibe.all) { vibe in
                         Text(vibe.name)
                             .tag(vibe.id)
@@ -64,7 +67,7 @@ public struct SettingsView: View {
                 }
             }
         }
-        .navigationTitle("Settings")
+        .navigationTitle(String(localized: .settings))
         .pcNavigationBarTitleDisplayMode(.inline)
     }
 }

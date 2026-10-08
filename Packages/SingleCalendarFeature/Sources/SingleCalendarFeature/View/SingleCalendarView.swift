@@ -10,21 +10,21 @@ import AppNavigation
 import DSKit
 
 public struct SingleCalendarView: View {
-    @Bindable public var viewModel: SingleCalendarModel
-
-    public init(viewModel: SingleCalendarModel) {
-        self.viewModel = viewModel
-    }
-
     @Environment(RootNavigation.self) var navigation
     @Environment(PCEventSelectionManager.self) private var store
     @Environment(\.pcVibe) private var vibe
+
+    @Bindable public var viewModel: SingleCalendarModel
 
     /// Local so dismissing the toast does not touch the store: the failure is the store's
     /// to hold until it is retried, and clearing it here would unblock the calendar switch
     /// for a save that still has not landed. The store clears `failedSave` itself when a
     /// write succeeds, and this follows it down.
     @State private var isSaveFailedToastPresented = false
+
+    public init(viewModel: SingleCalendarModel) {
+        self.viewModel = viewModel
+    }
 
     public var body: some View {
         ZStack {
@@ -36,11 +36,15 @@ public struct SingleCalendarView: View {
                         // editor no longer shares this panel's selection state, so nothing
                         // behind a pushed screen can flip it.
                         if navigation.isAtRoot, viewModel.isMultiSelectMode {
-                            PCExpandedColorPicker(selectedColor: viewModel.multiSelectColorBinding)
-                                .disabled(viewModel.isColorPickerDisabled)
+                            PCExpandedColorPicker(
+                                selectedColor: viewModel.multiSelectColorBinding,
+                                optionNames: pcColorOptionNames()
+                            )
+                            .disabled(viewModel.isColorPickerDisabled)
                         }
                         PCCalendarYearView(
                             viewModel: viewModel.yearModel,
+                            selectYearTitle: String(localized: .selectYear),
                             onLongPress: { viewModel.setMultiSelectMode(true) },
                             onYearSelect: { viewModel.switchYear(to: $0) }
                         )
@@ -157,7 +161,7 @@ public struct SingleCalendarView: View {
         if navigation.isAtRoot, !viewModel.isArchived {
             ToolbarItem {
                 Button(
-                    viewModel.isMultiSelectMode ? "Save" : "Multiselect",
+                    viewModel.isMultiSelectMode ? .save : .multiselect,
                     systemImage: viewModel.isMultiSelectMode ? "checkmark" : "plus.rectangle.on.rectangle"
                 ) {
                     if viewModel.isMultiSelectMode {
@@ -177,6 +181,6 @@ public struct SingleCalendarView: View {
 
 private struct SingleCalendarViewPreview: View {
     var body: some View {
-        Text("SingleCalendarView Preview")
+        Text(verbatim: "SingleCalendarView Preview")
     }
 }

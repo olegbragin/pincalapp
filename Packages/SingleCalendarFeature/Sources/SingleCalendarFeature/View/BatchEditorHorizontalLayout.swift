@@ -19,6 +19,7 @@ public struct BatchEditorHorizontalLayout: View {
         HStack(spacing: 0) {
             PCCalendarYearView(
                 viewModel: viewModel.yearModel,
+                selectYearTitle: String(localized: .selectYear),
                 onYearSelect: { viewModel.switchYear(to: $0) }
             )
             .accessibilityIdentifier("batch-editor-calendar")

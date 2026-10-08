@@ -1,29 +1,10 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <Scheme
-   LastUpgradeVersion = "2640"
+   LastUpgradeVersion = "2700"
    version = "1.7">
    <BuildAction
       parallelizeBuildables = "YES"
       buildImplicitDependencies = "YES">
-      <PreActions>
-         <ExecutionAction
-            ActionType = "Xcode.IDEStandardExecutionActionsCore.ExecutionActionType.ShellScriptAction">
-            <ActionContent
-               title = "GenerateLocalizations"
-               scriptText = "/usr/bin/env -i HOME=&quot;$HOME&quot; PATH=&quot;/usr/bin:/bin:/usr/sbin:/sbin&quot; /usr/bin/swift &quot;$SRCROOT/Packages/SingleCalendarFeature/Sources/GenerateLocalization/main.swift&quot; &quot;$SRCROOT/Packages/SingleCalendarFeature/Sources/SingleCalendarFeature/Resources/pcScfLocalisation.xcstrings&quot;"
-               shellToInvoke = "/bin/bash">
-               <EnvironmentBuildable>
-                  <BuildableReference
-                     BuildableIdentifier = "primary"
-                     BlueprintIdentifier = "D7B935782FA90E7A00E5A62D"
-                     BuildableName = "PinCalApp.app"
-                     BlueprintName = "PinCalApp"
-                     ReferencedContainer = "container:PinCalApp.xcodeproj">
-                  </BuildableReference>
-               </EnvironmentBuildable>
-            </ActionContent>
-         </ExecutionAction>
-      </PreActions>
       <BuildActionEntries>
          <BuildActionEntry
             buildForTesting = "YES"

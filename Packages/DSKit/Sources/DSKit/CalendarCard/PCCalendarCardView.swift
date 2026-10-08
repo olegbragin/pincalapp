@@ -10,12 +10,37 @@ import SwiftUI
 public struct PCCalendarCardView: View {
     @Bindable var viewModel: PCCalendarCardViewModel
     var onNameFieldFocusedChanged: ((Int64, Bool) -> Void)?
+
+    /// The badge shown on an archived card.
+    public let archivedLabel: String
+
+    /// The line under the name, already carrying the column count.
+    ///
+    /// A finished `String` rather than a format template or a count plus a template, because the
+    /// count belongs to the view model and the *sentence* belongs to the caller — a translator is
+    /// entitled to reorder the two, and `String(format:)` against a template this package owned
+    /// would quietly assume they do not.
+    public let columnsLabel: String
+
+    /// Placeholder for the rename field.
+    public let namePlaceholder: String
+
     @Environment(\.pcVibe) private var vibe
 
     @FocusState private var nameFieldFocused: Bool
 
-    public init(viewModel: PCCalendarCardViewModel, onNameFieldFocusedChanged: ((Int64, Bool) -> Void)? = nil, nameFieldFocused: Bool) {
+    public init(
+        viewModel: PCCalendarCardViewModel,
+        archivedLabel: String,
+        columnsLabel: String,
+        namePlaceholder: String,
+        onNameFieldFocusedChanged: ((Int64, Bool) -> Void)? = nil,
+        nameFieldFocused: Bool
+    ) {
         self.viewModel = viewModel
+        self.archivedLabel = archivedLabel
+        self.columnsLabel = columnsLabel
+        self.namePlaceholder = namePlaceholder
         self.onNameFieldFocusedChanged = onNameFieldFocusedChanged
         self.nameFieldFocused = nameFieldFocused
     }
@@ -39,7 +64,7 @@ public struct PCCalendarCardView: View {
                     Image(systemName: viewModel.isArchived ? "archivebox" : "calendar")
                         .font(vibe.font(for: .headerIcon))
                     if viewModel.isEditing {
-                        TextField("Calendar name", text: $viewModel.editingName)
+                        TextField(namePlaceholder, text: $viewModel.editingName)
                             .font(vibe.font(for: .title))
                             .foregroundStyle(.white)
                             .tint(.white)
@@ -66,7 +91,7 @@ public struct PCCalendarCardView: View {
                     }
                     Spacer()
                     if viewModel.isArchived {
-                        Text("Archived")
+                        Text(archivedLabel)
                             .font(vibe.font(for: .badge))
                             .foregroundStyle(.white.opacity(0.6))
                             .padding(.horizontal, 6)
@@ -107,7 +132,7 @@ public struct PCCalendarCardView: View {
                     }
                 }
 
-                Text("Columns: \(viewModel.numberOfColumns)")
+                Text(columnsLabel)
                     .font(vibe.font(for: .metadata))
                     .opacity(0.7)
                     .padding(.top, 2)

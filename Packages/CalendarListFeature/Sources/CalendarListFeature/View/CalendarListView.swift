@@ -43,7 +43,7 @@ public struct CalendarListView: View {
             if let viewModel {
                 content(for: viewModel)
             } else {
-                PCProgressView(label: "Loading")
+                PCProgressView(label: String(localized: .loading))
             }
         }
         .task {
@@ -70,7 +70,7 @@ public struct CalendarListView: View {
         VStack(spacing: 0) {
             if viewModel.isLoading, viewModel.calendars.isEmpty {
                 Spacer()
-                PCProgressView(label: "Loading")
+                PCProgressView(label: String(localized: .loading))
                 Spacer()
             } else {
                 CalendarListContent(
@@ -127,7 +127,7 @@ public struct CalendarListView: View {
         .pcNavigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .principal) {
-                Text(mode == .active ? "My calendars" : "Archived")
+                Text(mode == .active ? .myCalendars : .archived)
                     .font(.headline)
             }
             ToolbarItem(placement: .pcTrailing) {

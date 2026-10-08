@@ -38,26 +38,30 @@ public struct AddEditEventView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 24) {
                 PCDatePicker(
-                    title: "Выберите время события",
+                    title: String(localized: .selectEventTime),
                     selection: viewModel.dateBinding,
                     displayedComponents: .hourAndMinute
                 )
                 .environment(\.timeZone, TimeZone.current)
 
                 VStack(alignment: .leading, spacing: 8) {
-                    Text("Имя")
+                    Text(.name)
                         .font(.headline)
                         .fontWeight(.medium)
 
-                    PCTextField(title: "Введите имя", text: viewModel.nameBinding, identifier: "event-name-field")
+                    PCTextField(title: String(localized: .enterName), text: viewModel.nameBinding, identifier: "event-name-field")
                 }
 
                 VStack(alignment: .leading, spacing: 8) {
-                    Text("Выберите цвет")
+                    Text(.selectColor)
                         .font(.headline)
                         .fontWeight(.medium)
 
-                    PCColorPickerView(selectedColor: viewModel.colorBinding)
+                    PCColorPickerView(
+                        selectedColor: viewModel.colorBinding,
+                        selectColorLabel: String(localized: .selectColor),
+                        optionNames: pcColorOptionNames()
+                    )
                 }
                 Spacer()
             }
@@ -77,7 +81,7 @@ public struct AddEditEventView: View {
                 Button {
                     store.send(.backTapped)
                 } label: {
-                    Label("Back", systemImage: "chevron.backward")
+                    Label(.back, systemImage: "chevron.backward")
                 }
                 .accessibilityIdentifier(Self.backButtonAccessibilityIdentifier)
             }

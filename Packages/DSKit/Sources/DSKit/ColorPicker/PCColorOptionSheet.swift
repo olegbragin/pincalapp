@@ -10,8 +10,27 @@ import SwiftUI
 public struct PCColorOptionSheet: View {
     @Binding var selectedColor: PCColorOption?
     var defaultColor: PCColorOption?
+
+    /// The sheet's navigation title.
+    public let title: String
+
+    /// How each option is called.
+    public let optionNames: PCColorOptionNames
+
     @Environment(\.pcVibe) private var vibe
     @Environment(\.dismiss) private var dismiss
+
+    public init(
+        selectedColor: Binding<PCColorOption?>,
+        title: String,
+        optionNames: PCColorOptionNames,
+        defaultColor: PCColorOption? = nil
+    ) {
+        self._selectedColor = selectedColor
+        self.title = title
+        self.optionNames = optionNames
+        self.defaultColor = defaultColor
+    }
 
     public var body: some View {
         NavigationStack {
@@ -25,7 +44,7 @@ public struct PCColorOptionSheet: View {
                             .fill(vibe.eventColor(for: colorOption))
                             .frame(width: 28, height: 28)
 
-                        Text(colorOption.name)
+                        Text(optionNames.name(for: colorOption))
                             .foregroundColor(.primary)
 
                         Spacer()
@@ -41,7 +60,7 @@ public struct PCColorOptionSheet: View {
                 }
                 .accessibilityIdentifier("color-option-\(colorOption.colorName)")
             }
-            .navigationTitle("Выберите цвет")
+            .navigationTitle(title)
             .pcNavigationBarTitleDisplayMode(.inline)
         }
         .presentationDetents([.medium, .large])
@@ -49,5 +68,9 @@ public struct PCColorOptionSheet: View {
 }
 
 #Preview {
-    PCColorOptionSheet(selectedColor: .constant(.option1))
+    PCColorOptionSheet(
+        selectedColor: .constant(.option1),
+        title: "Select color",
+        optionNames: PCColorOptionNames { String(describing: $0) }
+    )
 }

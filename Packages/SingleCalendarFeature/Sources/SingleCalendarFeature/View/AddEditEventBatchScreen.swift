@@ -62,7 +62,7 @@ public struct AddEditEventBatchScreen: View {
                 Button {
                     store.send(.backTapped)
                 } label: {
-                    Label("Back", systemImage: "chevron.backward")
+                    Label(.back, systemImage: "chevron.backward")
                 }
                 .accessibilityIdentifier(Self.backButtonAccessibilityIdentifier)
             }

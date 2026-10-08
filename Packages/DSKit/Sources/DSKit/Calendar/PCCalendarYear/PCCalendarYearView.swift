@@ -15,6 +15,13 @@ public struct PCCalendarYearView: View {
     @Environment(\.pcVibe) private var vibe
     @State private var isYearPickerPresented = false
 
+    /// The year-picker sheet's navigation title, supplied by the caller.
+    ///
+    /// Required, not defaulted: `DSKit` does not localize, so there is no word here that would be
+    /// right for every language. The year *numbers* need no such treatment — `String(year)` is the
+    /// same in all of them, and the month and weekday labels already arrive through the model.
+    public let selectYearTitle: String
+
     var onLongPress: (() -> Void)?
     /// Invoked when the user picks a year. The feature layer rebuilds the month
     /// matrix for the chosen year and writes it into the model.
@@ -57,8 +64,14 @@ public struct PCCalendarYearView: View {
         return columns
     }
 
-    public init(viewModel: PCCalendarYearModel, onLongPress: (() -> Void)? = nil, onYearSelect: ((Int) -> Void)? = nil) {
+    public init(
+        viewModel: PCCalendarYearModel,
+        selectYearTitle: String,
+        onLongPress: (() -> Void)? = nil,
+        onYearSelect: ((Int) -> Void)? = nil
+    ) {
         self.viewModel = viewModel
+        self.selectYearTitle = selectYearTitle
         self.onLongPress = onLongPress
         self.onYearSelect = onYearSelect
     }
@@ -175,6 +188,7 @@ public struct PCCalendarYearView: View {
         .padding(.bottom, 4)
         .sheet(isPresented: $isYearPickerPresented) {
             PCYearPickerSheet(
+                title: selectYearTitle,
                 years: Array(Self.yearRange),
                 selectedYear: viewModel.year,
                 onSelect: { onYearSelect?($0) }
@@ -215,6 +229,7 @@ public struct PCCalendarYearView: View {
 /// in an adaptive grid whose column count is derived from the available width so
 /// the year labels always fit. Selecting a year dismisses the sheet.
 private struct PCYearPickerSheet: View {
+    let title: String
     let years: [Int]
     let selectedYear: Int
     let onSelect: (Int) -> Void
@@ -255,7 +270,7 @@ private struct PCYearPickerSheet: View {
                     .padding(.vertical, 12)
                 }
             }
-            .navigationTitle("Выберите год")
+            .navigationTitle(title)
             .pcNavigationBarTitleDisplayMode(.inline)
         }
         .presentationDetents([.medium, .large])
@@ -297,5 +312,5 @@ private func yearViewPreview() -> some View {
             weeks: weeks
         )
     }
-    return PCCalendarYearView(viewModel: yearModel)
+    return PCCalendarYearView(viewModel: yearModel, selectYearTitle: "Select year")
 }

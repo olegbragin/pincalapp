@@ -15,9 +15,7 @@ public struct CalendarEmptyStateView: View {
             Image(systemName: isArchived ? "archivebox" : "calendar")
                 .font(.system(size: 40, weight: .light))
                 .foregroundColor(.secondary)
-            Text(isArchived
-                ? "No archived calendars"
-                : "Нет календарей. Нажмите «+», чтобы добавить.")
+            Text(isArchived ? .noArchivedCalendars : .noCalendarsPressToAdd)
                 .font(.subheadline)
                 .foregroundColor(.secondary)
                 .multilineTextAlignment(.center)

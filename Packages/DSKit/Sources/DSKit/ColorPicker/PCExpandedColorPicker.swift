@@ -10,11 +10,20 @@ import SwiftUI
 public struct PCExpandedColorPicker: View {
     @Binding var selectedColor: PCColorOption?
     public var defaultColor: PCColorOption?
+
+    /// How each option is called.
+    public let optionNames: PCColorOptionNames
+
     @Environment(\.pcVibe) private var vibe
     @Environment(\.isEnabled) private var isEnabled
 
-    public init(selectedColor: Binding<PCColorOption?>, defaultColor: PCColorOption? = nil) {
+    public init(
+        selectedColor: Binding<PCColorOption?>,
+        optionNames: PCColorOptionNames,
+        defaultColor: PCColorOption? = nil
+    ) {
         self._selectedColor = selectedColor
+        self.optionNames = optionNames
         self.defaultColor = defaultColor
     }
 
@@ -37,7 +46,7 @@ public struct PCExpandedColorPicker: View {
                                     )
                             )
 
-                        Text(colorOption.name)
+                        Text(optionNames.name(for: colorOption))
                             .font(.caption2)
                             .foregroundColor(.secondary)
                             .lineLimit(1)
@@ -45,8 +54,9 @@ public struct PCExpandedColorPicker: View {
                 }
                 .buttonStyle(.plain)
                 // Same contract as the sheet the compact picker opens, so a UI test can
-                // pick a colour without depending on `name` — which is a localised label,
-                // and the stage 11 multi-day test needs to be able to name a colour here.
+                // pick a colour without depending on `optionNames` — which is a translated
+                // label, and the stage 11 multi-day test needs to be able to name a colour
+                // here.
                 .accessibilityIdentifier("color-option-\(colorOption.colorName)")
             }
         }
@@ -65,9 +75,13 @@ public struct PCExpandedColorPicker: View {
 
 #Preview {
     VStack(spacing: 24) {
-        PCExpandedColorPicker(selectedColor: .constant(.option1))
-        PCExpandedColorPicker(selectedColor: .constant(nil))
-        PCExpandedColorPicker(selectedColor: .constant(.option3))
+        PCExpandedColorPicker(selectedColor: .constant(.option1), optionNames: previewExpandedOptionNames)
+        PCExpandedColorPicker(selectedColor: .constant(nil), optionNames: previewExpandedOptionNames)
+        PCExpandedColorPicker(selectedColor: .constant(.option3), optionNames: previewExpandedOptionNames)
             .disabled(true)
     }
 }
+
+/// Previews are not localized — a preview that resolved through the catalog would show
+/// whichever language the preview host happens to be in.
+private let previewExpandedOptionNames = PCColorOptionNames { _ in "Option" }

@@ -3,6 +3,7 @@ import PackageDescription
 
 let package = Package(
     name: "SettingsFeature",
+    defaultLocalization: "en",
     platforms: [.iOS(.v17), .macOS(.v14)],
     products: [
         .library(
@@ -19,11 +20,15 @@ let package = Package(
         .target(
             name: "SettingsFeature",
             dependencies: ["DSKit"],
-            path: "Sources/SettingsFeature"
+            path: "Sources/SettingsFeature",
+            resources: [.process("Resources")]
         ),
         .testTarget(
             name: "SettingsFeatureTests",
-            dependencies: ["SettingsFeature", "DSKit"],
+            dependencies: [
+                "SettingsFeature",
+                "DSKit",
+            ],
             path: "Tests/SettingsFeatureTests"
         ),
     ],

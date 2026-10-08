@@ -3,6 +3,7 @@ import PackageDescription
 
 let package = Package(
     name: "SingleCalendarFeature",
+    defaultLocalization: "en",
     platforms: [.iOS(.v17), .macOS(.v14)],
     products: [
         .library(
@@ -25,10 +26,6 @@ let package = Package(
         .package(
             path: "../AppNavigation"
         ),
-        .package(
-            url: "https://github.com/objectbox/objectbox-swift-spm",
-            from: "5.3.0"
-        ),
     ],
     targets: [
         .target(
@@ -41,9 +38,7 @@ let package = Package(
                 "AppNavigation",
             ],
             path: "Sources/SingleCalendarFeature",
-            resources: [
-                .process("Resources"),
-            ]
+            resources: [.process("Resources")]
         ),
         .testTarget(
             name: "SingleCalendarFeatureTests",
@@ -53,7 +48,6 @@ let package = Package(
                 "DSKit",
                 "CoreDomain",
                 "AppNavigation",
-                .product(name: "ObjectBox.xcframework", package: "objectbox-swift-spm"),
             ],
             path: "Tests/SingleCalendarFeatureTests"
         ),

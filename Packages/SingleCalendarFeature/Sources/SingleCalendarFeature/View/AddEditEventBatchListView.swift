@@ -74,7 +74,7 @@ public struct AddEditEventBatchListView: View {
                                 .clipShape(Circle())
                         }
                         .buttonStyle(.plain)
-                        .accessibilityLabel("Delete batch")
+                        .accessibilityLabel(Text(.deleteBatch))
                     }
                 }
             }
@@ -89,7 +89,7 @@ public struct AddEditEventBatchListView: View {
                 Button {
                     store.send(.backTapped)
                 } label: {
-                    Label("Back", systemImage: "chevron.backward")
+                    Label(.back, systemImage: "chevron.backward")
                 }
             }
             ToolbarItem(placement: .pcTitle) {
@@ -101,7 +101,7 @@ public struct AddEditEventBatchListView: View {
                 } label: {
                     Image(systemName: "plus")
                 }
-                .accessibilityLabel("New batch")
+                .accessibilityLabel(Text(.newBatch))
                 .accessibilityIdentifier("add-batch-button")
             }
         }
@@ -203,7 +203,7 @@ private struct BatchEventCard: View {
                 Circle()
                     .fill(eventColor(event))
                     .frame(width: 10, height: 10)
-                Text(.eventAt(event.name, event.date.formatted(date: .omitted, time: .shortened)))
+                Text(String(format: String(localized: .at(event.name, event.date.formatted(date: .omitted, time: .shortened)))))
                     .font(.subheadline)
                     .lineLimit(1)
                     .foregroundStyle(vibe.color(for: .foregroundOnEventCard))
@@ -219,7 +219,7 @@ private struct BatchEventCard: View {
                 isExpanded.toggle()
             }
         } label: {
-            Text(isExpanded ? .show_less : .show_more)
+            Text(isExpanded ? .showLess : .showMore)
                 .font(.footnote.weight(.semibold))
                 .foregroundStyle(vibe.color(for: .foregroundOnEventCard))
                 .frame(maxWidth: .infinity)

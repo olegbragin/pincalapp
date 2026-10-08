@@ -59,9 +59,19 @@ public struct CalendarListContent: View {
                     ForEach(calendars) { calendar in
                         let viewModel = cardViewModelFactory(calendar)
                         let isSelected = selectedCalendarID == calendar.id
-
+                        
                         PCCalendarCardView(
                             viewModel: viewModel,
+                            // `DSKit` names nothing itself, so the feature that owns this screen
+                            // supplies the card's words. `columns` is built here rather than inside
+                            // the card because the count is the card's data and the sentence is
+                            // this feature's — the card takes both finished.
+                            archivedLabel: String(localized: .archived),
+                            columnsLabel: String(
+                                format: String(localized: .columns(viewModel.numberOfColumns)),
+                                viewModel.numberOfColumns
+                            ),
+                            namePlaceholder: String(localized: .calendarName),
                             onNameFieldFocusedChanged: { id, focused in
                                 focusedCardID = focused ? id : nil
                             },
@@ -92,14 +102,14 @@ public struct CalendarListContent: View {
                                         onCalendarRestore(calendar)
                                     }
                                 } label: {
-                                    Label("Restore", systemImage: "arrow.counterclockwise")
+                                    Label(.restore, systemImage: "arrow.counterclockwise")
                                 }
                                 Button(role: .destructive) {
                                     withAnimation(.spring(response: 0.4, dampingFraction: 0.75)) {
                                         onCalendarPermanentDelete(calendar)
                                     }
                                 } label: {
-                                    Label("Delete Permanently", systemImage: "trash")
+                                    Label(.deletePermanently, systemImage: "trash")
                                 }
                             } else {
                                 Button(role: .destructive) {
@@ -107,7 +117,7 @@ public struct CalendarListContent: View {
                                         onCalendarDelete(calendar)
                                     }
                                 } label: {
-                                    Label("Archive", systemImage: "archivebox")
+                                    Label(.archive, systemImage: "archivebox")
                                 }
                             }
                         }

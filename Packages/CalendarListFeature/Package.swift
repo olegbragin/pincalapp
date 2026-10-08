@@ -3,6 +3,7 @@ import PackageDescription
 
 let package = Package(
     name: "CalendarListFeature",
+    defaultLocalization: "en",
     platforms: [.iOS(.v17), .macOS(.v14)],
     products: [
         .library(
@@ -23,14 +24,13 @@ let package = Package(
                 "DSKit",
                 "AppNavigation",
             ],
-            path: "Sources/CalendarListFeature"
+            path: "Sources/CalendarListFeature",
+            resources: [.process("Resources")]
         ),
         .testTarget(
             name: "CalendarListFeatureTests",
-            dependencies: [
-                "CalendarListFeature",
-                "CoreDomain",
-            ],
+            dependencies: ["CalendarListFeature",
+                           "CoreDomain"],
             path: "Tests/CalendarListFeatureTests"
         ),
     ],

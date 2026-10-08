@@ -25,12 +25,24 @@ public enum AppTheme: String, CaseIterable, Identifiable {
         case .dark: return .dark
         }
     }
+}
 
-    public var title: String {
+public extension AppTheme {
+    /// The theme's name as the user reads it.
+    ///
+    /// On the enum rather than in `SettingsView` because the label belongs to the theme, and
+    /// because a `switch` is what makes adding a fourth case a compile error here instead of a
+    /// blank row in the picker.
+    ///
+    /// `String(localized:)` takes a *literal*, which is the point: Xcode extracts it into
+    /// `pcLocalisation.xcstrings` on build, so the label can be translated without anyone editing
+    /// the catalog by hand. `AppTheme` deliberately holds no key and no port — it names nothing
+    /// until the view asks it to.
+    var localizedTitle: String {
         switch self {
-        case .system: return "System"
-        case .light: return "Always light"
-        case .dark: return "Always dark"
+        case .system: return String(localized: .system)
+        case .light: return String(localized: .alwaysLight)
+        case .dark: return String(localized: .alwaysDark)
         }
     }
 }

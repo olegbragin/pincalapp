@@ -151,27 +151,28 @@ struct RootView: View {
                 }
             }
         }
-        .alert(
-            "Calendar not found",
-            isPresented: Binding(
-                get: { bindableNavigation.deepLinkFailure != nil },
+        // Built here rather than in `AppNavigation`, which holds no strings: the navigation says
+        // *what* went wrong and this decides what to say about it.
+        .pcAlert(
+            Binding(
+                get: { bindableNavigation.deepLinkFailure.map { failure in
+                    // Exhaustive on purpose: a second kind of link failure gets its own words
+                    // here rather than silently reusing this one's.
+                    switch failure {
+                    case .noSuchCalendar:
+                        PCAlertContent(
+                            title: String(localized: "Calendar not found"),
+                            message: String(localized: "That calendar does not exist"),
+                            dismiss: String(localized: "OK")
+                        )
+                    }
+                } },
                 set: {
-                    if !$0 {
+                    if $0 == nil {
                         bindableNavigation.deepLinkFailure = nil
                     }
                 }
-            ),
-            presenting: bindableNavigation.deepLinkFailure
-        ) { _ in
-            Button("OK", role: .cancel) { bindableNavigation.deepLinkFailure = nil }
-        } message: { failure in
-            // The id is in the message because it is the one thing the user can check against
-            // what they tapped — a link shared before the calendar was deleted arrives here
-            // routinely, and "4" tells them which one is gone.
-            switch failure {
-            case let .noSuchCalendar(id):
-                Text("There is no calendar with id \(id).")
-            }
-        }
+            )
+        )
     }
 }

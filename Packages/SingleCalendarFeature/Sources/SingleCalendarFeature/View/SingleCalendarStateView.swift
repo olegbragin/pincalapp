@@ -26,12 +26,12 @@ public struct SingleCalendarStateView: View {
 
 #Preview("Loading") {
     SingleCalendarStateView(state: .loading) {
-        AnyView(Text("Content"))
+        AnyView(Text(.content))
     }
 }
 
 #Preview("Empty") {
     SingleCalendarStateView(state: .empty) {
-        AnyView(Text("Content"))
+        AnyView(Text(.content))
     }
 }

@@ -28,7 +28,7 @@ public struct AddEditEventListView: View {
                             viewModel.open(event)
                         } label: {
                             HStack(spacing: 12) {
-                                Text(.eventAt(event.name, event.date.formatted(date: .omitted, time: .shortened)))
+                                Text(String(format: String(localized: .at(event.name, event.date.formatted(date: .omitted, time: .shortened)))))
                                     .foregroundStyle(vibe.color(for: .foregroundOnEventCard))
 
                                 Spacer()
@@ -54,7 +54,7 @@ public struct AddEditEventListView: View {
                             .clipShape(Circle())
                     }
                     .buttonStyle(.plain)
-                    .accessibilityLabel("Delete event")
+                    .accessibilityLabel(Text(.deleteEvent))
                 }
                 .listRowBackground(Color.clear)
                 .listRowSeparator(.hidden)
