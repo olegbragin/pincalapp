@@ -42,6 +42,55 @@ public class RootNavigation {
         }
     }
 
+    /// Whether the sidebar and calendar-list columns are collapsed to a rail, leaving the
+    /// detail column the width of the window.
+    ///
+    /// Set from the content column's toggle, and read by `RootView` to size the columns. Both
+    /// columns collapse **together**, and that is forced by the arithmetic rather than chosen:
+    /// measured on an 18 Pro Max at 832x420, the three columns come out at 302 + 380 + 451 —
+    /// 301pt more than the window. Collapsing only the list still leaves no valid three-column
+    /// answer, and the split view resolves that by squeezing the detail until its month headers
+    /// wrap. The sidebar is a three-item menu and is by far the cheapest 302pt to give back, so
+    /// it goes first and with it.
+    ///
+    /// Kept here rather than in `@State` on `RootView` because two columns have to agree on it,
+    /// and because it has to outlive the rotation that triggered it.
+    ///
+    /// Not persisted. Session-only is deliberate: a preference that survives relaunch but not a
+    /// device rotation would be its own surprise, and there is no established place for
+    /// per-window layout state in this type.
+    public var columnsCollapsed = false {
+        didSet {
+            guard oldValue != columnsCollapsed else { return }
+            navLog.debug("columnsCollapsed \(oldValue) -> \(self.columnsCollapsed)")
+        }
+    }
+
+    /// Whether the window is a landscape iPhone — the one shape where three columns do not fit.
+    ///
+    /// Written by `RootView` from the measured window size and read by
+    /// `columnsCollapsedAreEffective` below. It lives here rather than as `@State` on that view
+    /// because two columns have to agree on whether collapsing is even possible: `RootView`
+    /// sizes the columns, and `RootContentView` decides whether to draw the rail or the list.
+    /// They were reading `columnsCollapsed` directly and disagreed — the columns resized while
+    /// the rail kept showing, so rotating to portrait left a 66pt sliver instead of the list.
+    public var isPhoneLandscape = false
+
+    /// Whether the columns are *actually* collapsed right now.
+    ///
+    /// `columnsCollapsed` on its own is not the answer: it records what the user asked for, and
+    /// asking is only meaningful on a landscape phone. Gating the read here rather than at each
+    /// use is what makes rotating back to portrait restore the full list on its own, with no
+    /// observer having to write the flag back.
+    ///
+    /// The preference is deliberately *not* cleared on rotation. Clearing it would mean the
+    /// layout forgets the user's choice, so rotating away and back would silently undo it —
+    /// and `PCWindowShape` cannot match a tablet, so the flag would sit `true` indefinitely
+    /// without doing anything.
+    public var columnsCollapsedAreEffective: Bool {
+        columnsCollapsed && isPhoneLandscape
+    }
+
     public var isAtRoot: Bool {
         path.isEmpty
     }

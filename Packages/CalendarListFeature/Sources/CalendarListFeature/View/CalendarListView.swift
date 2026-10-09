@@ -24,18 +24,60 @@ public struct CalendarListView: View {
     /// How long the undo toast stays up. See `CalendarListViewModel.undoWindowDuration`.
     let undoWindowDuration: TimeInterval
 
+    /// Which card to draw. `.compact` is for the collapsed landscape rail.
+    let layout: PCCardLayout
+
     public init(
         mode: CalendarListMode = .active,
         selectedCalendarID: Int64? = nil,
         onSelectCalendar: @escaping (Int64) -> Void = { _ in },
         onCalendarRemoved: @escaping (Int64) -> Void = { _ in },
-        undoWindowDuration: TimeInterval = 5
+        undoWindowDuration: TimeInterval = 5,
+        layout: PCCardLayout = .full
     ) {
         self.mode = mode
         self.selectedCalendarID = selectedCalendarID
         self.onSelectCalendar = onSelectCalendar
         self.onCalendarRemoved = onCalendarRemoved
         self.undoWindowDuration = undoWindowDuration
+        self.layout = layout
+    }
+
+    /// Nothing in compact: the title does not fit 66pt, and the column is a rail.
+    @ViewBuilder
+    private var title: some View {
+        if layout != .compact {
+            Text(mode == .active ? .myCalendars : .archived)
+                .font(.headline)
+        }
+    }
+
+    /// - Parameter viewModel: the unwrapped model, passed in rather than read from `self`:
+    ///   `self.viewModel` is still optional out here, and this is only ever built from
+    ///   `content(for:)`, which is where it is known to be non-nil.
+    @ViewBuilder
+    private func addButton(for viewModel: CalendarListViewModel) -> some View {
+        if !viewModel.isAnyCardEditing, mode == .active, layout != .compact {
+            Button {
+                viewModel.addItem()
+                isAddSheetPresented = true
+            } label: {
+                Image(systemName: "plus")
+                    .font(.system(size: 24, weight: .bold))
+                    .foregroundStyle(.white)
+                    .shadow(color: .black.opacity(0.55), radius: 3, y: 2)
+                    .frame(width: 56, height: 56)
+            }
+            .pcGlass(cornerRadius: 28, tint: .black.opacity(0.22))
+            .clipShape(Circle())
+            /// The route to "there are no calendars, so make one". It is a symbol with no
+            /// text, so without an identifier there is nothing stable to find it by.
+            .accessibilityIdentifier("calendar-list-add-button")
+            .shadow(color: .black.opacity(0.3), radius: 10, y: 5)
+            .padding(.trailing, 20)
+            .padding(.bottom, 20)
+            .transition(.scale.combined(with: .opacity))
+        }
     }
 
     public var body: some View {
@@ -83,7 +125,8 @@ public struct CalendarListView: View {
                     onCalendarPermanentDelete: { viewModel.permanentlyDeleteCalendar($0) },
                     onRefresh: { await model.fetch() },
                     selectedCalendarID: selectedCalendarID,
-                    onSelectCalendar: onSelectCalendar
+                    onSelectCalendar: onSelectCalendar,
+                    cardLayout: layout
                 )
             }
 
@@ -102,41 +145,28 @@ public struct CalendarListView: View {
         .background(vibe.color(for: .backgroundMain))
         .ignoresSafeArea(edges: .bottom)
         .overlay(alignment: .bottomTrailing) {
-            if !viewModel.isAnyCardEditing, mode == .active {
-                Button {
-                    viewModel.addItem()
-                    isAddSheetPresented = true
-                } label: {
-                    Image(systemName: "plus")
-                        .font(.system(size: 24, weight: .bold))
-                        .foregroundStyle(.white)
-                        .shadow(color: .black.opacity(0.55), radius: 3, y: 2)
-                        .frame(width: 56, height: 56)
-                }
-                .pcGlass(cornerRadius: 28, tint: .black.opacity(0.22))
-                .clipShape(Circle())
-                // The route to "there are no calendars, so make one". It is a symbol with no
-                // text, so without an identifier there is nothing stable to find it by.
-                .accessibilityIdentifier("calendar-list-add-button")
-                .shadow(color: .black.opacity(0.3), radius: 10, y: 5)
-                .padding(.trailing, 20)
-                .padding(.bottom, 20)
-                .transition(.scale.combined(with: .opacity))
-            }
+            addButton(for: viewModel)
         }
         .pcNavigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .principal) {
-                Text(mode == .active ? .myCalendars : .archived)
-                    .font(.headline)
+                title
             }
-            ToolbarItem(placement: .pcTrailing) {
-                Button {
-                    withAnimation(.easeInOut(duration: 0.3)) {
-                        viewModel.displayMode = viewModel.displayMode.toggled
+            /// Hidden when compact.
+            ///
+            /// The collapsed rail forces a single column, so this control would claim to offer
+            /// a choice that does not exist — and at 66pt it cannot render a `Label` with both
+            /// text and an icon anyway. `.hidden` rather than removed from the `ToolbarItem` so
+            /// the placement stays reserved and does not shift the expand button on toggle.
+            if layout != .compact {
+                ToolbarItem(placement: .pcTrailing) {
+                    Button {
+                        withAnimation(.easeInOut(duration: 0.3)) {
+                            viewModel.displayMode = viewModel.displayMode.toggled
+                        }
+                    } label: {
+                        Label(viewModel.displayMode.toggled.label, systemImage: viewModel.displayMode.toggled.icon)
                     }
-                } label: {
-                    Label(viewModel.displayMode.toggled.label, systemImage: viewModel.displayMode.toggled.icon)
                 }
             }
         }

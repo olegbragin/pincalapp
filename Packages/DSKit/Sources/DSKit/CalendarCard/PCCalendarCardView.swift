@@ -7,9 +7,21 @@
 
 import SwiftUI
 
+/// How much of a calendar card to draw.
+///
+/// `.full` is the screen-size card. `.compact` exists because the collapsed landscape rail is
+/// 66pt wide, and the full card cannot be made to fit by shrinking: it is 200pt tall with 20pt
+/// of padding and three 28pt buttons, so at that width every one of those becomes the tap
+/// target of its neighbour.
+public enum PCCardLayout: Sendable, Equatable {
+    case full
+    case compact
+}
+
 public struct PCCalendarCardView: View {
     @Bindable var viewModel: PCCalendarCardViewModel
     var onNameFieldFocusedChanged: ((Int64, Bool) -> Void)?
+    private let layout: PCCardLayout
 
     /// The badge shown on an archived card.
     public let archivedLabel: String
@@ -35,8 +47,10 @@ public struct PCCalendarCardView: View {
         columnsLabel: String,
         namePlaceholder: String,
         onNameFieldFocusedChanged: ((Int64, Bool) -> Void)? = nil,
-        nameFieldFocused: Bool
+        nameFieldFocused: Bool,
+        layout: PCCardLayout = .full
     ) {
+        self.layout = layout
         self.viewModel = viewModel
         self.archivedLabel = archivedLabel
         self.columnsLabel = columnsLabel
@@ -46,6 +60,47 @@ public struct PCCalendarCardView: View {
     }
 
     public var body: some View {
+        Group {
+            if layout == .compact {
+                compactCard
+            } else {
+                fullCard
+            }
+        }
+        .animation(.spring(response: 0.35, dampingFraction: 0.85), value: viewModel.isEditing)
+    }
+
+    /// Name and column count only.
+    ///
+    /// The pencil and trash are gone rather than shrunk. At 66pt there is no width at which a
+    /// 28pt button is still distinguishable from its neighbour, and a control too small to hit
+    /// is worse than an absent one — so renaming and archiving stay on the expanded list, and
+    /// this rail's job is to switch calendars and get out of the way.
+    private var compactCard: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .fill(vibe.cardGradient())
+
+            VStack(alignment: .leading, spacing: 0) {
+                Text(viewModel.name)
+                    .font(vibe.font(for: .metadata))
+                    .foregroundStyle(.white)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+                Text(columnsLabel)
+                    .font(vibe.font(for: .metadata))
+                    .foregroundStyle(.white.opacity(0.7))
+                    .lineLimit(1)
+            }
+            .padding(.horizontal, 6)
+            .padding(.vertical, 8)
+        }
+        .frame(height: 44)
+        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .contentShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+    }
+
+    private var fullCard: some View {
         ZStack {
             RoundedRectangle(cornerRadius: 20, style: .continuous)
                 .fill(vibe.cardGradient())
@@ -205,7 +260,7 @@ public struct PCCalendarCardView: View {
                 .animation(.easeInOut(duration: 0.2), value: viewModel.isEditing)
         )
         .contentShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
-        .animation(.spring(response: 0.35, dampingFraction: 0.85), value: viewModel.isEditing)
+        .animation(.easeInOut(duration: 0.2), value: viewModel.isEditing)
         .onChange(of: nameFieldFocused) { _, isFocused in
             if isFocused {
                 onNameFieldFocusedChanged?(viewModel.id, true)
@@ -218,6 +273,8 @@ public struct PCCalendarCardView: View {
     /// Resigns focus before committing so the focused `TextField` is never
     /// removed from the hierarchy (removing a still-focused field triggers a
     /// UIKit `UIFocusSystem` assertion on iOS 26, which crashes the app).
+    ///
+    /// Only reachable from the full layout: the compact card has no rename field.
     private func confirmEdit() {
         nameFieldFocused = false
         viewModel.confirmEdit()

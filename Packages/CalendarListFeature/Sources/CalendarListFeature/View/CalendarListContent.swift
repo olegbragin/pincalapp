@@ -19,6 +19,13 @@ public struct CalendarListContent: View {
     public var selectedCalendarID: Int64?
     public var onSelectCalendar: (Int64) -> Void = { _ in }
 
+    /// Which card to draw. `.compact` is for the collapsed landscape rail; see `PCCardLayout`.
+    ///
+    /// Named `cardLayout` rather than `layout`: `layout` reads as SwiftUI's own layout
+    /// vocabulary, and naming it that made the type-checker fail on the `ForEach` below with an
+    /// error about `Range<Int>` that had nothing to do with either.
+    public var cardLayout: PCCardLayout
+
     public init(
         calendars: [PinCalendar],
         displayMode: DisplayMode,
@@ -29,7 +36,8 @@ public struct CalendarListContent: View {
         onCalendarPermanentDelete: @escaping (PinCalendar) -> Void,
         onRefresh: @escaping @Sendable () async -> Void,
         selectedCalendarID: Int64? = nil,
-        onSelectCalendar: @escaping (Int64) -> Void = { _ in }
+        onSelectCalendar: @escaping (Int64) -> Void = { _ in },
+        cardLayout: PCCardLayout = .full
     ) {
         self.calendars = calendars
         self.displayMode = displayMode
@@ -41,12 +49,33 @@ public struct CalendarListContent: View {
         self.onRefresh = onRefresh
         self.selectedCalendarID = selectedCalendarID
         self.onSelectCalendar = onSelectCalendar
+        self.cardLayout = cardLayout
+    }
+
+    /// One column when compact.
+    ///
+    /// The grid's second column would put two cards side by side in a 66pt rail, which is 33pt
+    /// each — narrower than the compact card's own text can render.
+    /// The selection ring's corner radius, matching the card it is drawn around.
+    ///
+    /// Was hard-coded to 20 while the compact card draws at 10, so on the collapsed rail the
+    /// ring floated outside its card with visibly rounder corners. Two literals in two files had
+    /// to agree and nothing made them.
+    private var cardCornerRadius: CGFloat {
+        cardLayout == .compact ? 10 : 20
     }
 
     private var columns: [GridItem] {
         switch displayMode {
-        case .list: return [GridItem(.flexible(), spacing: 12)]
-        case .grid: return [GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12)]
+        case .list:
+            return [GridItem(.flexible(), spacing: 12)]
+        case .grid:
+            guard cardLayout == .compact else {
+                return [GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12)]
+            }
+            // One column in the collapsed rail: a second would put two cards side by side in
+            // 66pt, which is 33pt each — narrower than the compact card's own text renders.
+            return [GridItem(.flexible(), spacing: 12)]
         }
     }
 
@@ -59,7 +88,7 @@ public struct CalendarListContent: View {
                     ForEach(calendars) { calendar in
                         let viewModel = cardViewModelFactory(calendar)
                         let isSelected = selectedCalendarID == calendar.id
-                        
+
                         PCCalendarCardView(
                             viewModel: viewModel,
                             // `DSKit` names nothing itself, so the feature that owns this screen
@@ -75,7 +104,8 @@ public struct CalendarListContent: View {
                             onNameFieldFocusedChanged: { id, focused in
                                 focusedCardID = focused ? id : nil
                             },
-                            nameFieldFocused: false
+                            nameFieldFocused: false,
+                            layout: cardLayout
                         )
                         .id(calendar.id)
                         .transition(
@@ -85,7 +115,7 @@ public struct CalendarListContent: View {
                             )
                         )
                         .overlay(
-                            RoundedRectangle(cornerRadius: 20, style: .continuous)
+                            RoundedRectangle(cornerRadius: cardCornerRadius, style: .continuous)
                                 .strokeBorder(
                                     isSelected ? Color.accentColor : Color.clear,
                                     lineWidth: isSelected ? 2.5 : 0
@@ -124,7 +154,7 @@ public struct CalendarListContent: View {
                     }
                 }
             }
-            .padding(.horizontal, 16)
+            .padding(.horizontal, cardLayout == .compact ? 8 : 16)
             .padding(.top, 12)
             // `safeRefreshable`, not `.refreshable`: plain `.refreshable` on a
             // ScrollView is the thing that misbehaves on iOS 26+ (contentOffset

@@ -22,12 +22,24 @@ struct RootView: View {
     @Environment(\.settingsPersisting) private var settings
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
+    /// Reported into `RootNavigation` rather than held as `@State` here, because
+    /// `RootContentView` needs the same answer to decide between the rail and the full list.
+    /// Two views each deriving it separately is how they came to disagree — the columns resized
+    /// while the rail kept drawing, leaving a 66pt sliver instead of the list after rotating to
+    /// portrait. `PCWindowShape` carries the measurement and the reasoning.
+    private func reportWindowShape(_ size: CGSize) {
+        navigation.isPhoneLandscape = PCWindowShape.isPhoneLandscape(size)
+    }
+
     var body: some View {
         @Bindable var bindableNavigation = navigation
         let compactBinding = Binding<NavigationSplitViewColumn>(
             get: { horizontalSizeClass == .compact ? navigation.preferredCompactColumn : .sidebar },
             set: { navigation.preferredCompactColumn = $0 }
         )
+        /// Only ever true on a landscape phone, where the columns do not fit; see
+        /// `RootNavigation.columnsCollapsed` for the measurement.
+        let collapsed = navigation.columnsCollapsedAreEffective
         let theme = settings?.theme ?? .system
         let vibe = PCVibe.all.first { $0.id == settings?.vibeId } ?? .default
         if settings == nil {
@@ -43,11 +55,36 @@ struct RootView: View {
         }
         return NavigationSplitView(preferredCompactColumn: compactBinding) {
             RootSidebarView()
+                /// Kept even though `RootSidebarView` themes itself.
+                ///
+                /// The list hides its own background and paints the theme itself, but a collapsed
+                /// sidebar still leaves a gutter the split view needs for its own toggle button,
+                /// and that gutter belongs to this column — not to the list inside it. Without
+                /// this the gutter shows through as system grey beside a themed sidebar, which is
+                /// the same seam the rail's own background was added to close.
+                ///
+                /// A background cannot cross a column boundary, which is why the rail cannot paint
+                /// this gutter itself. `ignoresSafeArea` expands a view past its *own* bounds, so
+                /// it cannot reach over either.
+                .background {
+                    vibe.color(for: .backgroundMain)
+                        .ignoresSafeArea(edges: [.leading, .top, .bottom])
+                }
         } content: {
             RootContentView()
+                /// 66pt is a rail rather than nothing, because the column that collapses this is
+                /// the list itself and the way back lives inside it — see `collapsedRail`.
+                .collapsedColumnWidth(collapsed, railWidth: 66)
         } detail: {
             RootDetailView()
         }
+        .background(
+            GeometryReader { proxy in
+                Color.clear
+                    .onAppear { reportWindowShape(proxy.size) }
+                    .onChange(of: proxy.size) { _, size in reportWindowShape(size) }
+            }
+        )
         .environment(navigation)
         .environment(keyboardState)
         .task {
