@@ -88,7 +88,11 @@ public struct SingleCalendarView: View {
         .sensoryFeedback(.success, trigger: viewModel.isMultiSelectMode)
         .task(id: viewModel.calendarid) {
             viewModel.installDayTapHandler()
-            await viewModel.fetch()
+            // A failed fetch leaves the model in whatever state it was in, rather than
+            // pretending the calendar is empty — that part is fixed. Reporting it is not, and
+            // the catch below preserves the previous quiet behaviour so this step changes
+            // nothing a user can observe. Replaced by a surfaced failure in the next step.
+            try? await viewModel.fetch()
         }
         .onDisappear {
             viewModel.clearDayTapHandler()

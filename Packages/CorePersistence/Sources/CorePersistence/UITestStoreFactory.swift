@@ -11,15 +11,15 @@ import ObjectBox
 public enum UITestStoreFactory {
     public static let launchArgument = "-UITestSeedData"
 
-    public static func makeSeededStore() -> Store {
+    public static func makeSeededStore() throws -> Store {
         let path = FileManager.default.temporaryDirectory
             .appendingPathComponent("pincal-uitest-\(UUID().uuidString)")
-        try! FileManager.default.createDirectory(
+        try FileManager.default.createDirectory(
             at: path,
             withIntermediateDirectories: true,
             attributes: nil
         )
-        let store = try! Store(directoryPath: path.path)
+        let store = try Store(directoryPath: path.path)
         TestDataSeeder.seedUITestData(into: store)
         return store
     }

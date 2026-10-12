@@ -19,12 +19,37 @@ import CoreDomain
 /// The fan-out shape is kept on purpose, which brings one trap with it: **a subscriber
 /// that has not started iterating yet misses everything yielded to it.** Yielding to an
 /// `AsyncStream` with no registered consumer is silently dropped, there is no replay to
+/// The only failure these tests can produce.
+///
+/// A named case rather than `NSError(domain:code:)` so `#expect(throws:)` matches on
+/// identity — `Equatable`, not stringly-compared, which is what makes the assertion below fail
+/// if the wrong error is ever thrown.
+enum TestError: Error, Equatable {
+    case readFailed
+    case writeFailed
+}
+
 /// catch up on. `CalendarStore` escapes this by registering with the cache before
 /// `changes()` returns, and by the time anything writes in the real app the subscription
 /// is long since live. A test, though, can write in the same instant it constructs the
 /// view model — and then it is testing task-scheduling luck, not logic. Hence
 /// `waitForSubscribers()`, which every fixture awaits.
 actor InMemoryCalendarManaging: CalendarManaging {
+    /// When set, the two loads throw this instead of answering.
+    ///
+    /// This exists because `loadActive`/`loadArchived` used to be non-throwing, which forced the
+    /// implementation to swallow a failed read and return `[]` — and every test in this suite
+    /// ran against a fake that could not fail, so nothing could tell the difference between "no
+    /// calendars" and "the read broke". With the protocol now throwing, a fake that never throws
+    /// leaves the new behaviour untested: a regression back to the empty-list path would pass
+    /// silently. Tests that care set this; the rest never touch it.
+    var loadError: Error?
+
+    /// Arms or disarms the load failure. `nil` restores normal behaviour.
+    func setLoadFailure(_ error: Error?) {
+        loadError = error
+    }
+
     private var calendars: [Int64: PinCalendar] = [:]
     private var nextID: Int64 = 1
     private var continuations: [UUID: AsyncStream<PinCalendarChange>.Continuation] = [:]
@@ -86,12 +111,27 @@ actor InMemoryCalendarManaging: CalendarManaging {
 
     // MARK: Reads
 
-    func loadActive() -> [PinCalendar] {
-        sorted { !$0.isArchived }
+    /// `throws` and non-throwing, matching `CalendarManaging`.
+    ///
+    /// The protocol's loads throw, so a fake that does not forces every call site to carry a
+    /// `try` that the compiler then reports as unnecessary — a warning in the very tests meant to
+    /// pin the behaviour.
+    ///
+    /// Throws `loadError` when a test sets it, and nothing otherwise. The failure mode is the
+    /// reason this fake exists in its present shape: before the protocol threw, a failed read
+    /// and an empty list were the same value, so no test could tell them apart.
+    func loadActive() throws -> [PinCalendar] {
+        if let loadError {
+            throw loadError
+        }
+        return sorted { !$0.isArchived }
     }
 
-    func loadArchived() -> [PinCalendar] {
-        sorted(\.isArchived)
+    func loadArchived() throws -> [PinCalendar] {
+        if let loadError {
+            throw loadError
+        }
+        return sorted(\.isArchived)
     }
 
     private func sorted(_ predicate: (PinCalendar) -> Bool) -> [PinCalendar] {
@@ -110,7 +150,23 @@ actor InMemoryCalendarManaging: CalendarManaging {
 
     // MARK: Writes
 
+    /// When set, every write throws this and touches nothing.
+    ///
+    /// The mirror of `loadError`, and for the same reason. Before the writes reported failure,
+    /// each one was a `try?` inside a `Task`, so nothing in this suite could observe one — and
+    /// the most damaging case, an archive whose toast claimed success before the write was even
+    /// attempted, was untestable rather than merely unhandled.
+    var writeError: Error?
+
+    /// Arms or disarms the write failure. `nil` restores normal behaviour.
+    func setWriteFailure(_ error: Error?) {
+        writeError = error
+    }
+
     func createCalendar(name: String, year: Int, numberOfColumns: Int) throws {
+        if let writeError {
+            throw writeError
+        }
         let id = nextID
         nextID += 1
         let calendar = PinCalendar(id: id, name: name, year: year, numberOfColumns: numberOfColumns)
@@ -119,12 +175,18 @@ actor InMemoryCalendarManaging: CalendarManaging {
     }
 
     func updateCalendar(_ calendar: PinCalendar) throws {
+        if let writeError {
+            throw writeError
+        }
         guard calendars[calendar.id] != nil else { return }
         calendars[calendar.id] = calendar
         broadcast(.changed(calendar))
     }
 
     func archiveCalendar(id: Int64) throws {
+        if let writeError {
+            throw writeError
+        }
         guard var calendar = calendars[id] else { return }
         calendar.isArchived = true
         calendars[id] = calendar
@@ -132,6 +194,9 @@ actor InMemoryCalendarManaging: CalendarManaging {
     }
 
     func restoreCalendar(id: Int64) throws {
+        if let writeError {
+            throw writeError
+        }
         guard var calendar = calendars[id] else { return }
         calendar.isArchived = false
         calendars[id] = calendar
@@ -139,6 +204,9 @@ actor InMemoryCalendarManaging: CalendarManaging {
     }
 
     func permanentlyDeleteCalendar(id: Int64) throws {
+        if let writeError {
+            throw writeError
+        }
         guard let calendar = calendars.removeValue(forKey: id) else { return }
         broadcast(.removed(calendar))
     }
@@ -314,22 +382,63 @@ struct CalendarListModeTests {
 @Suite("CalendarListViewModel Integration Tests")
 struct CalendarListViewModelIntegrationTests {
     @Test("fetch loads active calendars")
-    func fetchActiveCalendars() async {
+    func fetchActiveCalendars() async throws {
         let (_, vm) = await makeFixture(seed: [
             PinCalendar(id: 1, name: "Calendar 1", year: 2026, numberOfColumns: 3),
             PinCalendar(id: 2, name: "Calendar 2", year: 2026, numberOfColumns: 2),
         ])
 
-        await vm.fetch()
+        try await vm.fetch()
 
         #expect(vm.isLoading == false)
         #expect(vm.calendars.count == 2)
         #expect(vm.calendars[0].name == "Calendar 1")
         #expect(vm.calendars[1].name == "Calendar 2")
+        #expect(vm.loadFailure == false)
+    }
+
+    /// The regression this whole change exists to prevent.
+    ///
+    /// A failed read used to return `[]`, which made a database error indistinguishable from an
+    /// account with no calendars — the user was shown their data had vanished. The two
+    /// requirements are separate and both are asserted: the failure is *reported*, and the
+    /// already-loaded list is *not* replaced by an empty one.
+    @Test("a failed load is recorded and does not empty the list")
+    func failedLoadKeepsTheLastKnownList() async throws {
+        let (managing, vm) = await makeFixture(seed: [
+            PinCalendar(id: 1, name: "Calendar 1", year: 2026, numberOfColumns: 3),
+        ])
+        try await vm.fetch()
+        #expect(vm.calendars.count == 1)
+
+        await managing.setLoadFailure(TestError.readFailed)
+        await #expect(throws: TestError.readFailed) { try await vm.fetch() }
+
+        #expect(vm.calendars.count == 1)
+        #expect(vm.calendars[0].name == "Calendar 1")
+        #expect(vm.isLoading == false)
+        #expect(vm.loadFailure)
+    }
+
+    /// A later good read must clear the failure, or the error sticks after it stops being true.
+    @Test("a successful load clears a previous failure")
+    func successfulLoadClearsFailure() async throws {
+        let (managing, vm) = await makeFixture(seed: [
+            PinCalendar(id: 1, name: "Calendar 1", year: 2026, numberOfColumns: 3),
+        ])
+
+        await managing.setLoadFailure(TestError.readFailed)
+        await #expect(throws: TestError.readFailed) { try await vm.fetch() }
+
+        await managing.setLoadFailure(nil)
+        try await vm.fetch()
+
+        #expect(vm.loadFailure == false)
+        #expect(vm.calendars.count == 1)
     }
 
     @Test("fetch in archived mode excludes active calendars")
-    func fetchArchivedExcludesActive() async {
+    func fetchArchivedExcludesActive() async throws {
         let (_, vm) = await makeFixture(
             seed: [
                 PinCalendar(id: 1, name: "Active", year: 2026, numberOfColumns: 3),
@@ -338,7 +447,7 @@ struct CalendarListViewModelIntegrationTests {
             mode: .archived
         )
 
-        await vm.fetch()
+        try await vm.fetch()
 
         #expect(vm.calendars.count == 1)
         #expect(vm.calendars.first?.name == "Archived")
@@ -357,29 +466,93 @@ struct CalendarListViewModelIntegrationTests {
     }
 
     @Test("archiveCalendarInList archives immediately and shows undo toast")
-    func archiveCalendarInList() async {
+    func archiveCalendarInList() async throws {
         let calendar = PinCalendar(id: 1, name: "Test", year: 2026, numberOfColumns: 3)
         let (managing, vm) = await makeFixture(seed: [calendar])
 
-        await vm.fetch()
+        try await vm.fetch()
         #expect(vm.calendars.count == 1)
 
         vm.archiveCalendarInList(calendar)
 
-        // Archiving is immediate; the toast offers an undo window.
-        #expect(vm.isArchiveToastPresented)
+        // The toast waits for the write to land. It used to be presented *before* the write was
+        // attempted, so on failure the calendar sat in the list under a banner claiming it had
+        // been archived — and the five-second undo window counted down over nothing.
+        await waitUntil { vm.isArchiveToastPresented }
         #expect(vm.pendingArchive?.id == 1)
         await waitUntil { vm.calendars.isEmpty }
         #expect(await managing.calendar(id: 1)?.isArchived == true)
-        #expect(await managing.loadActive().isEmpty)
+        #expect(try await managing.loadActive().isEmpty)
+    }
+
+    /// The regression the archive rewrite exists to prevent.
+    ///
+    /// Every part is asserted, because any one of them alone would pass on the old code: no
+    /// toast (the claim), the calendar still in the list (the row), and a recorded failure the
+    /// user can retry (the remedy).
+    @Test("a failed archive shows no toast and keeps the calendar in the list")
+    func failedArchiveIsNotReportedAsSuccess() async throws {
+        let calendar = PinCalendar(id: 1, name: "Test", year: 2026, numberOfColumns: 3)
+        let (managing, vm) = await makeFixture(seed: [calendar])
+        try await vm.fetch()
+
+        await managing.setWriteFailure(TestError.writeFailed)
+        vm.archiveCalendarInList(calendar)
+
+        await waitUntil { vm.writeFailure != nil }
+        #expect(vm.isArchiveToastPresented == false)
+        #expect(vm.pendingArchive == nil)
+        #expect(vm.calendars.count == 1)
+        #expect(vm.calendars[0].id == 1)
+        #expect(vm.writeFailure?.operation == .archive(calendarID: 1))
+    }
+
+    /// Retry re-runs the operation that failed, not whatever the list looks like now.
+    @Test("retry re-runs the failed archive")
+    func retryReRunsFailedArchive() async throws {
+        let calendar = PinCalendar(id: 1, name: "Test", year: 2026, numberOfColumns: 3)
+        let (managing, vm) = await makeFixture(seed: [calendar])
+        try await vm.fetch()
+
+        await managing.setWriteFailure(TestError.writeFailed)
+        vm.archiveCalendarInList(calendar)
+        await waitUntil { vm.writeFailure != nil }
+
+        await managing.setWriteFailure(nil)
+        vm.retryWriteFailure()
+
+        await waitUntil { vm.calendars.isEmpty }
+        #expect(vm.writeFailure == nil)
+        #expect(await managing.calendar(id: 1)?.isArchived == true)
+    }
+
+    /// A failed permanent delete must not look like a successful one.
+    ///
+    /// Specifically: no removal is published. The removal change drives `onCalendarRemoved`,
+    /// which closes the detail column and clears the selection — so a failure that still broadcast
+    /// would tear down the screen over a row that never went anywhere.
+    @Test("a failed permanent delete does not publish a removal")
+    func failedPermanentDeleteDoesNotRemove() async throws {
+        let calendar = PinCalendar(id: 1, name: "Doomed", year: 2026, numberOfColumns: 3)
+        let (managing, vm) = await makeFixture(seed: [calendar])
+        try await vm.fetch()
+        #expect(vm.calendars.count == 1)
+
+        await managing.setWriteFailure(TestError.writeFailed)
+        vm.permanentlyDeleteCalendar(calendar)
+
+        await waitUntil { vm.writeFailure != nil }
+        #expect(vm.writeFailure?.operation == .permanentlyDelete(calendarID: 1))
+        #expect(vm.calendars.count == 1)
+        #expect(await managing.calendar(id: 1) != nil)
     }
 
     @Test("undoArchive restores the calendar")
-    func undoArchive() async {
+    func undoArchive() async throws {
         let calendar = PinCalendar(id: 1, name: "Test", year: 2026, numberOfColumns: 3)
         let (managing, vm) = await makeFixture(seed: [calendar])
 
-        await vm.fetch()
+        try await vm.fetch()
         #expect(vm.calendars.count == 1)
 
         vm.archiveCalendarInList(calendar)
@@ -395,11 +568,11 @@ struct CalendarListViewModelIntegrationTests {
     }
 
     @Test("restoreCalendarInList restores calendar")
-    func restoreCalendarInList() async {
+    func restoreCalendarInList() async throws {
         let calendar = PinCalendar(id: 1, name: "Test", year: 2026, numberOfColumns: 3, isArchived: true)
         let (managing, vm) = await makeFixture(seed: [calendar], mode: .archived)
 
-        await vm.fetch()
+        try await vm.fetch()
         #expect(vm.calendars.count == 1)
 
         vm.restoreCalendarInList(calendar)
@@ -413,11 +586,11 @@ struct CalendarListViewModelIntegrationTests {
     }
 
     @Test("permanentlyDeleteCalendar removes calendar")
-    func permanentlyDeleteCalendar() async {
+    func permanentlyDeleteCalendar() async throws {
         let calendar = PinCalendar(id: 1, name: "Test", year: 2026, numberOfColumns: 3)
         let (managing, vm) = await makeFixture(seed: [calendar])
 
-        await vm.fetch()
+        try await vm.fetch()
         #expect(vm.calendars.count == 1)
 
         vm.permanentlyDeleteCalendar(calendar)
@@ -433,14 +606,14 @@ struct CalendarListViewModelIntegrationTests {
     /// the assertion being here: it fires for the *effect*, so it cannot miss a route to those
     /// operations, and a write that failed produces nothing to report.
     @Test("A calendar leaving the active set is reported")
-    func removalIsReported() async {
+    func removalIsReported() async throws {
         let archived = PinCalendar(id: 1, name: "Test", year: 2026, numberOfColumns: 3)
         let (_, vm) = await makeFixture(seed: [archived])
 
         var removed: [Int64] = []
         vm.onCalendarRemoved = { removed.append($0) }
 
-        await vm.fetch()
+        try await vm.fetch()
         vm.archiveCalendarInList(archived)
         await waitUntil { vm.calendars.isEmpty }
 
@@ -450,14 +623,14 @@ struct CalendarListViewModelIntegrationTests {
     /// Announced after the list has folded the removal in, so a handler that re-reads the
     /// list does not see a calendar it has already been told is gone.
     @Test("The removal is reported once the list has folded it in")
-    func removalIsReportedAfterTheList() async {
+    func removalIsReportedAfterTheList() async throws {
         let calendar = PinCalendar(id: 1, name: "Test", year: 2026, numberOfColumns: 3)
         let (_, vm) = await makeFixture(seed: [calendar])
 
         var wasAlreadyGone: Bool?
         vm.onCalendarRemoved = { [weak vm] _ in wasAlreadyGone = vm?.calendars.isEmpty }
 
-        await vm.fetch()
+        try await vm.fetch()
         vm.permanentlyDeleteCalendar(calendar)
         await waitUntil { wasAlreadyGone != nil }
 
@@ -468,14 +641,14 @@ struct CalendarListViewModelIntegrationTests {
     /// driven by that would take the calendar off screen for an operation the user is being
     /// invited to reverse.
     @Test("Undoing an archive is not reported as a removal")
-    func undoIsNotReportedAsRemoval() async {
+    func undoIsNotReportedAsRemoval() async throws {
         let calendar = PinCalendar(id: 1, name: "Test", year: 2026, numberOfColumns: 3)
         let (managing, vm) = await makeFixture(seed: [calendar])
 
         var removed: [Int64] = []
         vm.onCalendarRemoved = { removed.append($0) }
 
-        await vm.fetch()
+        try await vm.fetch()
         vm.archiveCalendarInList(calendar)
         await waitUntil { vm.calendars.isEmpty }
         #expect(removed == [1], "precondition: the archive reported")
@@ -491,14 +664,14 @@ struct CalendarListViewModelIntegrationTests {
     /// stale on-screen calendar has the least to say — the row is out of storage, so the detail
     /// fetches, finds nothing, and renders nothing at all.
     @Test("A permanent delete is reported from the archived list too")
-    func permanentDeleteIsReportedFromTheArchivedList() async {
+    func permanentDeleteIsReportedFromTheArchivedList() async throws {
         let calendar = PinCalendar(id: 1, name: "Test", year: 2026, numberOfColumns: 3, isArchived: true)
         let (_, vm) = await makeFixture(seed: [calendar], mode: .archived)
 
         var removed: [Int64] = []
         vm.onCalendarRemoved = { removed.append($0) }
 
-        await vm.fetch()
+        try await vm.fetch()
         vm.permanentlyDeleteCalendar(calendar)
         await waitUntil { vm.calendars.isEmpty }
 
@@ -506,11 +679,11 @@ struct CalendarListViewModelIntegrationTests {
     }
 
     @Test("rename from a card reaches the store")
-    func renameReachesStore() async {
+    func renameReachesStore() async throws {
         let calendar = PinCalendar(id: 1, name: "Old Name", year: 2026, numberOfColumns: 3)
         let (managing, vm) = await makeFixture(seed: [calendar])
 
-        await vm.fetch()
+        try await vm.fetch()
         #expect(vm.calendars.count == 1)
 
         // Driven through the card's own edit cycle, the way the UI does it, so the test

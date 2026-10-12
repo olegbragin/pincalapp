@@ -45,7 +45,14 @@ struct CalendarDetailView: View {
                     columnCountResolver: session.columnCountResolver
                 )
             }
-            await model?.fetch(force: true)
+            // A failed *re*fetch no longer empties the store's batches or leaves this
+            // column half-updated — the two damaging cases, and both are fixed.
+            //
+            // The initial load is **not** fixed and this comment previously claimed otherwise:
+            // `state` starts as `.empty`, which draws `EmptyView`, so a first fetch that throws
+            // still shows a blank column. It just no longer *replaces* good content with
+            // nothing. Giving `.empty` a failure case, and telling the user, is still to do.
+            try? await model?.fetch(force: true)
         }
         .onDisappear {
             // Leaving the calendar ends any multi-select session, on both platforms: on iPhone

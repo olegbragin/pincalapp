@@ -49,10 +49,15 @@ struct CalendarCacheIntegrationTests {
         return await collector.value
     }
 
+    /// `trigger` throws, because the loads it calls now throw.
+    ///
+    /// A non-throwing trigger would have forced these tests back to `try?` at every call site,
+    /// which is the habit this whole change exists to remove — including in the tests that are
+    /// supposed to be checking the behaviour.
     private func waitForRefresh(
         _ cache: CalendarCache,
-        trigger: @escaping @Sendable () async -> Void
-    ) async {
+        trigger: @escaping @Sendable () async throws -> Void
+    ) async throws {
         let stream = await cache.changes()
         let waiter = Task {
             for await operation in stream {
@@ -61,7 +66,7 @@ struct CalendarCacheIntegrationTests {
                 }
             }
         }
-        await trigger()
+        try await trigger()
         await waiter.value
     }
 
@@ -209,7 +214,7 @@ struct CalendarCacheIntegrationTests {
         try await cache.archiveCalendar(cache.getCalendar(id: cal3.id) ?? cal1)
 
         // Path A: verify via cache
-        await waitForRefresh(cache, trigger: { await cache.loadActive() })
+        try await waitForRefresh(cache, trigger: { try await cache.loadActive() })
 
         // Path B: verify via direct ObjectBox
         let calendarBox = store.box(for: PPCalendar.self)
@@ -231,7 +236,7 @@ struct CalendarCacheIntegrationTests {
         try await cache.archiveCalendar(archived)
 
         // Path A: verify via cache
-        await waitForRefresh(cache, trigger: { await cache.loadArchived() })
+        try await waitForRefresh(cache, trigger: { try await cache.loadArchived() })
 
         // Path B: verify via direct ObjectBox
         let calendarBox = store.box(for: PPCalendar.self)
@@ -467,5 +472,53 @@ struct CalendarCacheIntegrationTests {
         #expect(readBack.eventBatches[0].name == "Renamed")
         #expect(readBack.eventBatches[0].events.count == 2)
         #expect(try eventBox.all().count == 2)
+    }
+
+    /// A batch id that is not in storage must abort the save, not quietly become a new row.
+    ///
+    /// This is the silent-fallback case. `saveCalendar` used to write
+    /// `let existing = try? box.get(id)`, and any failure fell through to `else` — building a
+    /// **brand-new** `PPEventBatch` carrying the batch's own id. That happened *after* the
+    /// destructive delete phase above it had already run, so a contradiction in the input could
+    /// orphan the original row and leave the calendar pointing at rows the caller never wrote,
+    /// with no error anywhere.
+    ///
+    /// Both halves are asserted: it throws `StorageError.batchMissing`, **and** the rows the
+    /// delete phase had removed are still there. The second is the one that matters — throwing
+    /// is only correct because `runInTransaction` rolls it back.
+    @Test func saveCalendarThrowsWhenBatchIdIsNotInStorage() async throws {
+        let store = try makeStore()
+        defer { store.close() }
+
+        let calendarBox = store.box(for: PPCalendar.self)
+        let batchBox = store.box(for: PPEventBatch.self)
+        let eventBox = store.box(for: PPEvent.self)
+
+        let calendar = PPCalendar(name: "Test", year: 2026, numberOfColumns: 3)
+        try calendarBox.put(calendar)
+        let event = PPEvent(name: "Keep", color: "eventColorOption1", date: Date())
+        try eventBox.put(event)
+        let keep = PPEventBatch(title: "Keep", color: "eventColorOption1")
+        try batchBox.put(keep)
+        keep.events.replace([event])
+        try keep.events.applyToDb()
+        calendar.eventBatches.append(keep)
+        try calendar.eventBatches.applyToDb()
+        _ = try calendarBox.put(calendar)
+
+        let storage = ObjectBoxCalendarStorage(store: store)
+        var dto = try #require(calendarBox.get(calendar.id).map { CalendarDataSource($0)! })
+
+        // Drop the real batch from the payload and name one that does not exist. The orphan
+        // phase will delete `keep` first, so a non-throwing implementation would destroy it.
+        dto.eventBatches = [.init(id: 999_999, name: "Ghost", colorName: "eventColorOption1", events: [], date: Date())]
+
+        await #expect(throws: StorageError.batchMissing(id: 999_999)) {
+            _ = try await storage.saveCalendar(dto)
+        }
+
+        // The delete phase ran before the failure, and the transaction rolled it back.
+        #expect(try eventBox.all().count == 1)
+        #expect(try batchBox.get(keep.id) != nil)
     }
 }

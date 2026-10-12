@@ -18,10 +18,15 @@ public enum CalendarRepositoryFactory {
     /// test can build exactly what the app builds — same repository, same storage — pointed
     /// somewhere disposable. Passing it alongside `-UITestSeedData` is a mistake rather than an
     /// error: the seeded branch wins and the argument is silently unused.
-    public static func makeDefault(directory: URL? = nil) -> any CalendarRepository {
+    ///
+    /// Throws. It did not, and that meant the *only* place a storage failure could be reported to
+    /// the user could not report one: this is the production wiring, and opening the database is
+    /// the first thing it does. A failure here used to trap at launch (via `try!` further down)
+    /// rather than surface as anything a person could read or recover from.
+    public static func makeDefault(directory: URL? = nil) throws -> any CalendarRepository {
         if UITestStoreFactory.shouldSeedForUITests() {
-            return ObjectBoxCalendarStorage(store: UITestStoreFactory.makeSeededStore())
+            return try ObjectBoxCalendarStorage(store: UITestStoreFactory.makeSeededStore())
         }
-        return ObjectBoxCalendarStorage(store: ObjectBoxFactory.makePersistentStore(directory: directory))
+        return try ObjectBoxCalendarStorage(store: ObjectBoxFactory.makePersistentStore(directory: directory))
     }
 }

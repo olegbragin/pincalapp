@@ -112,7 +112,16 @@ public final class SingleCalendarModel {
             for await change in await managing.changes() {
                 guard let self else { return }
                 if Self.touchedIDs(in: change).contains(calendarid) {
-                    await self.fetch(force: true)
+                    // Keeps the subscription alive on a failed refetch.
+                    //
+                    // The alternative — letting `fetch` throw — would end this loop on the first
+                    // database hiccup, and a change feed has no replay: every later write from
+                    // any other screen would be missed for the rest of this calendar's life.
+                    // Continuing is therefore strictly better than propagating, even though it
+                    // is not yet *reported*; reporting it is the next step of this work, and
+                    // this comment should go away when that lands rather than stay as the reason
+                    // a failure is still quiet.
+                    try? await self.fetch(force: true)
                 }
             }
         }
@@ -219,15 +228,45 @@ public final class SingleCalendarModel {
 
     // MARK: - Loading
 
-    public func fetch(force: Bool = false) async {
+    /// Throws if either read fails.
+    ///
+    /// Both reads previously degraded to "empty", and both were destructive rather than merely
+    /// quiet:
+    ///
+    /// - A failed `calendar(id:)` became `state = .empty`, which is the same state a genuinely
+    ///   deleted calendar produces and which draws `EmptyView`. A database hiccup therefore
+    ///   rendered as a blank calendar with nothing to say.
+    /// - A failed `eventBatches` became `[]` and that was handed to `.syncCalendar`, which
+    ///   replaces `state.batches` wholesale. One transient read error emptied every batch from
+    ///   the UI and destroyed any multi-select session in progress, and nothing could repair it
+    ///   afterwards because no `.removed` change had been published — nothing was removed.
+    ///
+    /// Neither read is now allowed to reach those two lines with a value it invented.
+    public func fetch(force: Bool = false) async throws {
         guard force || state != .content, !Task.isCancelled else { return }
 
         // Metadata through the domain port, so what is rendered is a `PinCalendar` and not
         // a persistence DTO this file would have to know the shape of.
-        guard let calendar = try? await persistence.calendar(id: calendarid) else {
+        //
+        // A thrown read and a `nil` are different facts and no longer collapse into one.
+        // `nil` is the honest answer — there is no such calendar — and is still `.empty`.
+        // A throw is *not* that answer, and is no longer allowed to become it.
+        guard let calendar = try await persistence.calendar(id: calendarid) else {
             state = .empty
             return
         }
+
+        // **Before** any mutation below, deliberately.
+        //
+        // Both reads are fallible, and anything assigned between them would be left updated
+        // while `state` still reflected the *previous* calendar — a title from the new one over
+        // markers from the old. Half-applying a fetch is worse than not applying it: the screen
+        // is internally inconsistent and nothing says so. Reading both first makes the
+        // mutation block below total — every assignment in it is reached or none is.
+        //
+        // It also restores the invariant the empty-batch fix was after: `.syncCalendar` replaces
+        // `state.batches` wholesale, so it must never be handed an invented `[]`.
+        let batches = try await persistence.eventBatches(calendarID: calendarid)
 
         label = calendar.name
         isArchived = calendar.isArchived
@@ -248,7 +287,6 @@ public final class SingleCalendarModel {
         }
 
         // The registry is the store's; this only tells it what was on disk.
-        let batches = await (try? persistence.eventBatches(calendarID: calendarid)) ?? []
         store.send(.syncCalendar(calendarID: calendarid, batches: batches))
         projectMarkers()
         state = .content

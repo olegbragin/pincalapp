@@ -57,18 +57,28 @@ public actor CalendarCache {
         }
     }
 
-    public func loadActive() async {
-        let fetched = try? await repository.getActiveCalendars()
-        calendars = fetched ?? []
-        let snapshot = calendars
-        broadcast(.refresh(calendars: snapshot))
+    /// Throws rather than degrading to an empty list.
+    ///
+    /// It used to be `calendars = (try? …) ?? []`, which had two failures in one line: a
+    /// thrown read became "you have no calendars", *and* it overwrote the cache with that
+    /// emptiness — so a transient database error destroyed the in-memory state as well as
+    /// the on-screen state, and nothing later could recover either. Only the assign on the
+    /// success path now happens.
+    ///
+    /// A subscriber still gets nothing on failure, and that is deliberate: it is better than
+    /// being told the user's calendars are gone. What the caller does with the error is its
+    /// own decision.
+    public func loadActive() async throws {
+        let fetched = try await repository.getActiveCalendars()
+        calendars = fetched
+        broadcast(.refresh(calendars: calendars))
     }
 
-    public func loadArchived() async {
-        let fetched = try? await repository.getArchivedCalendars()
-        calendars = fetched ?? []
-        let snapshot = calendars
-        broadcast(.refresh(calendars: snapshot))
+    /// Throws rather than degrading to an empty list, as `loadActive()` does.
+    public func loadArchived() async throws {
+        let fetched = try await repository.getArchivedCalendars()
+        calendars = fetched
+        broadcast(.refresh(calendars: calendars))
     }
 
     public func createCalendar(name: String, year: Int, numberOfColumns: Int) async throws {

@@ -24,11 +24,11 @@ struct ObjectBoxFactoryTests {
     }
 
     @Test("The store is opened at the requested directory, and the directory is created")
-    func opensStoreAtRequestedDirectory() {
+    func opensStoreAtRequestedDirectory() throws {
         let directory = temporaryDirectory()
         defer { try? FileManager.default.removeItem(at: directory) }
 
-        let store = ObjectBoxFactory.makePersistentStore(directory: directory)
+        let store = try ObjectBoxFactory.makePersistentStore(directory: directory)
         defer { store.close() }
 
         #expect(FileManager.default.fileExists(atPath: directory.path))
@@ -50,8 +50,8 @@ struct ObjectBoxFactoryTests {
             try? FileManager.default.removeItem(at: secondDirectory)
         }
 
-        let first = ObjectBoxFactory.makePersistentStore(directory: firstDirectory)
-        let second = ObjectBoxFactory.makePersistentStore(directory: secondDirectory)
+        let first = try ObjectBoxFactory.makePersistentStore(directory: firstDirectory)
+        let second = try ObjectBoxFactory.makePersistentStore(directory: secondDirectory)
         defer {
             first.close()
             second.close()
@@ -71,8 +71,8 @@ struct ObjectBoxFactoryTests {
     /// process has no meaningful `Bundle.main.bundleIdentifier` and would otherwise resolve to the
     /// fallback — comparing against the wrong path and passing for the wrong reason.
     @Test("The default directory is application support, namespaced by bundle identifier")
-    func defaultDirectoryIsNamespacedByBundleIdentifier() {
-        let resolved = ObjectBoxFactory.defaultDirectory(bundleIdentifier: "com.example.PinCalApp")
+    func defaultDirectoryIsNamespacedByBundleIdentifier() throws {
+        let resolved = try ObjectBoxFactory.defaultDirectory(bundleIdentifier: "com.example.PinCalApp")
 
         #expect(resolved.lastPathComponent == "p_calendars")
         #expect(resolved.deletingLastPathComponent().lastPathComponent == "com.example.PinCalApp")
@@ -83,9 +83,9 @@ struct ObjectBoxFactoryTests {
     /// default: shared by every caller of `makePersistentStore()`, and by the app and its tests
     /// alike.
     @Test("Different bundle identifiers resolve to different directories")
-    func defaultDirectoryVariesByBundleIdentifier() {
-        let first = ObjectBoxFactory.defaultDirectory(bundleIdentifier: "com.example.First")
-        let second = ObjectBoxFactory.defaultDirectory(bundleIdentifier: "com.example.Second")
+    func defaultDirectoryVariesByBundleIdentifier() throws {
+        let first = try ObjectBoxFactory.defaultDirectory(bundleIdentifier: "com.example.First")
+        let second = try ObjectBoxFactory.defaultDirectory(bundleIdentifier: "com.example.Second")
 
         #expect(first != second)
     }

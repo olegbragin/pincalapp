@@ -1,4 +1,5 @@
 
+import os
 import SwiftUI
 import CalendarListFeature
 import CoreDomain
@@ -44,7 +45,31 @@ struct PinCalAppApp: App {
         // `CalendarStore` — the one type that carries a cache and satisfies the domain
         // ports — is built here and handed to the session, rather than the session
         // building it for itself.
-        let cache = CalendarCache(repository: CalendarRepositoryFactory.makeDefault())
+        // Opening the database can fail — a full disk, a locked container, a corrupt store. It used
+        // to be `try!` two layers down, which trapped here in all but name.
+        //
+        // It is now caught, and the choice made here is deliberate: **stop, and say so.**
+        //
+        // The alternative was to fall back to an in-memory store and carry on. That was rejected
+        // because it converts a loud failure into the exact thing this codebase has spent this
+        // whole change removing: an app that looks like it is working, while silently persisting
+        // nothing. Every event added would be lost on relaunch, and nothing would say why.
+        //
+        // An `App.init` cannot present a recovery UI, so an honest trap with the reason is the
+        // most this layer can do. Doing better means failing *after* launch, behind a screen —
+        // which is the right shape and is not this change.
+        let repository: any CalendarRepository
+        do {
+            repository = try CalendarRepositoryFactory.makeDefault()
+        } catch {
+            // Logged before trapping: `fatalError` output reaches the device console but not
+            // anywhere a person reads it.
+            Logger(subsystem: "com.crucialsoftware.PinCalApp", category: "app")
+                .fault("Could not open the calendar database: \(String(describing: error), privacy: .public)")
+            fatalError("Could not open the calendar database: \(String(describing: error))")
+        }
+
+        let cache = CalendarCache(repository: repository)
         self.cache = cache
         let store = CalendarStore(cache: cache)
         self.managing = store

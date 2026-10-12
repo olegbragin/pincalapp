@@ -116,13 +116,13 @@ public extension CalendarStore {
         }
     }
 
-    nonisolated func loadActive() async -> [PinCalendar] {
-        await cache.loadActive()
+    nonisolated func loadActive() async throws -> [PinCalendar] {
+        try await cache.loadActive()
         return await calendarSnapshot()
     }
 
-    nonisolated func loadArchived() async -> [PinCalendar] {
-        await cache.loadArchived()
+    nonisolated func loadArchived() async throws -> [PinCalendar] {
+        try await cache.loadArchived()
         return await calendarSnapshot()
     }
 

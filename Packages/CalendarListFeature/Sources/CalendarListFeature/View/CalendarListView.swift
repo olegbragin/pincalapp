@@ -99,7 +99,15 @@ public struct CalendarListView: View {
                 model.onCalendarRemoved = onCalendarRemoved
                 viewModel = model
             }
-            await viewModel?.fetch()
+            // The view model now records the failure in `loadFailure` and keeps the previous
+            // list, so a failed load no longer empties the screen — that is handled, and
+            // the catch is only discarding the rethrow.
+            //
+            // Still `try?`, deliberately and **not** finished business: nothing reads
+            // `loadFailure` yet, so the user is still not told. What is left is the
+            // presentation, which is this package's decision about its own words and the
+            // app's about how they are offered.
+            try? await viewModel?.fetch()
         }
     }
 
@@ -123,7 +131,15 @@ public struct CalendarListView: View {
                     onCalendarDelete: { viewModel.archiveCalendarInList($0) },
                     onCalendarRestore: { viewModel.restoreCalendarInList($0) },
                     onCalendarPermanentDelete: { viewModel.permanentlyDeleteCalendar($0) },
-                    onRefresh: { await model.fetch() },
+                    // `fetch` records the failure in `loadFailure` and rethrows; the rethrow is
+                    // what lets `safeRefreshable`'s spinner be taken down rather than stranded.
+                    onRefresh: { try await model.fetch() },
+                    onRefreshFailed: { _ in
+                        // Nothing extra to do here: `fetch` already recorded it, and the
+                        // load-failure toast below is driven off that. This callback exists to
+                        // keep the error from being discarded on the way past, not to add a
+                        // second place that reports the same thing.
+                    },
                     selectedCalendarID: selectedCalendarID,
                     onSelectCalendar: onSelectCalendar,
                     cardLayout: layout
@@ -191,5 +207,98 @@ public struct CalendarListView: View {
             identifier: "archive-undo-toast",
             actionIdentifier: "archive-undo-toast-button"
         )
+        /// A load that failed, offered with a retry.
+        ///
+        /// The same reasoning as `SingleCalendarView`'s failed-save toast, and for the same
+        /// reason: **no progress bar, so it does not fade unattended.** An error that times out
+        /// on its own is an error the user walks away from without knowing it happened, which is
+        /// the state this whole change exists to end. It clears on the next successful load
+        /// (`fetch` does that), not on a timer.
+        ///
+        /// The list stays visible underneath rather than being replaced — `fetch` keeps the last
+        /// known calendars — so the user sees stale data clearly marked as possibly-stale rather
+        /// than an empty screen that reads as data loss.
+        .pcToast(
+            isPresented: loadFailureBinding(for: model),
+            position: .bottom,
+            message: "Couldn't load your calendars",
+            actionTitle: "Retry",
+            action: { Task { try? await model.fetch() } },
+            backgroundColor: .black.opacity(0.85),
+            /// No progress: this toast has no deadline.
+            ///
+            /// The bar is the archive window's countdown — it shows how long Undo remains. This
+            /// one does not expire, so a bar would imply a timer that does not exist.
+            progress: 0,
+            identifier: "calendar-list-load-failed-toast",
+            actionIdentifier: "calendar-list-load-failed-retry"
+        )
+        /// A write that did not land, offered with a retry of *that* write.
+        ///
+        /// Two distinct toasts, and deliberately not one with a shared message: a failed read is
+        /// retried by re-reading, a failed write by re-doing the operation it was. Collapsing them
+        /// would mean a "Retry" that silently did something other than what the user just watched
+        /// fail.
+        ///
+        /// No progress bar and no timeout, for the same reason as the load toast: an error that
+        /// fades on its own is an error the user never learns about. It clears when the retry
+        /// succeeds or when a different write fails.
+        ///
+        /// The permanent delete's message says it plainly, because its retry is the only way back
+        /// and the user should not have to infer that from an icon.
+        .pcToast(
+            isPresented: writeFailureBinding(for: model),
+            position: .bottom,
+            message: writeFailureMessage(for: model),
+            actionTitle: "Retry",
+            action: { model.retryWriteFailure() },
+            backgroundColor: .black.opacity(0.85),
+            progress: 0,
+            identifier: "calendar-list-write-failed-toast",
+            actionIdentifier: "calendar-list-write-failed-retry"
+        )
+    }
+
+    /// The words for a failed write.
+    ///
+    /// Built here, in the view, rather than stored on the failure — the same split
+    /// `RootView`'s deep-link alert uses: the model says *what* failed, this decides what to say
+    /// about it. The permanent delete is called out separately because its retry is destructive
+    /// and irreversible, and a generic "Retry" on a delete is a trap.
+    private func writeFailureMessage(for model: CalendarListViewModel) -> String {
+        guard let failure = model.writeFailure else { return "" }
+        let name = failure.calendarName
+        switch failure.operation {
+        case .create:
+            return "Couldn't create the calendar"
+        case .rename:
+            return "Couldn't rename \(name ?? "the calendar")"
+        case .archive:
+            return "Couldn't archive \(name ?? "the calendar")"
+        case .restore:
+            return "Couldn't restore \(name ?? "the calendar")"
+        case .permanentlyDelete:
+            return "Couldn't delete \(name ?? "the calendar"). This can't be undone."
+        }
+    }
+
+    /// `loadFailure` as something the toast can bind to.
+    ///
+    /// `pcToast` takes a `Binding<Bool>` and the model stores a `Bool` that it owns; this is the
+    /// adapter, and `set` is empty because nothing here *clears* the failure — `fetch` does, on
+    /// success. A binding that could write it would let a dismissed toast look like a resolved
+    /// one.
+    private func loadFailureBinding(for model: CalendarListViewModel) -> Binding<Bool> {
+        Binding(get: { model.loadFailure }, set: { _ in })
+    }
+
+    /// `writeFailure`'s presence as something the toast can bind to.
+    ///
+    /// Same one-way shape as the load binding, and for a sharper reason: dismissing this toast
+    /// must not clear the failure, because the write did not happen and the only thing that can
+    /// clear it is a write succeeding. A dismissible-looking failure that a swipe could remove
+    /// would put the app back to swallowing errors.
+    private func writeFailureBinding(for model: CalendarListViewModel) -> Binding<Bool> {
+        Binding(get: { model.writeFailure != nil }, set: { _ in })
     }
 }

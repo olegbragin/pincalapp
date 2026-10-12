@@ -65,10 +65,28 @@ public class ObjectBoxCalendarStorage: CalendarRepository, @unchecked Sendable {
 
                 for batch in calendar.eventBatches {
                     let ppBatch: PPEventBatch
-                    if batch.id != 0, let existing = try? batchEntityBox.get(UInt64(batch.id)) {
-                        ppBatch = existing
-                    } else {
+                    if batch.id == 0 {
+                        // Genuinely new — `id == 0` is what a batch that has never been
+                        // persisted carries, and this is the only legitimate reason to build one.
                         ppBatch = PPEventBatch()
+                    } else {
+                        // **Throws** if the lookup fails, rather than falling back to a new
+                        // `PPEventBatch()`.
+                        //
+                        // The old `try?` here fell through to the `else` on *any* error, and
+                        // that was reached after the destructive delete phase above had already
+                        // run. So a transient read failure produced a brand-new row with the
+                        // batch's own id, which either collided with the primary key or — more
+                        // likely — duplicated it and orphaned the original, with the calendar
+                        // left pointing at rows the caller never wrote.
+                        //
+                        // Throwing rolls the transaction back, which is the only safe answer:
+                        // the whole operation is read-modify-write and there is no partial version
+                        // of it that is better than not doing it.
+                        guard let existing = try batchEntityBox.get(UInt64(batch.id)) else {
+                            throw StorageError.batchMissing(id: batch.id)
+                        }
+                        ppBatch = existing
                     }
                     ppBatch.title = batch.name
                     ppBatch.color = batch.colorName

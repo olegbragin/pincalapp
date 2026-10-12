@@ -204,11 +204,19 @@ actor InMemoryCalendarManaging: CalendarManaging {
 
     /// The remaining operations are not what this fake exists for; a test that starts
     /// driving them belongs in the list's suite, which has its own fake.
-    func loadActive() async -> [PinCalendar] {
+    ///
+    /// `throws` to match `CalendarManaging`. A non-throwing function cannot satisfy an
+    /// `async throws` requirement, so leaving these off does not make this fake simpler — it
+    /// makes the whole `SingleCalendarFeatureTests` target fail to compile, which it did.
+    ///
+    /// They never throw in practice, which is itself worth stating: nothing in this suite can
+    /// currently observe a failed load, because no fake here has a failure mode. That is the gap
+    /// the next step of this work closes.
+    func loadActive() throws -> [PinCalendar] {
         [calendar]
     }
 
-    func loadArchived() async -> [PinCalendar] {
+    func loadArchived() throws -> [PinCalendar] {
         calendar.isArchived ? [calendar] : []
     }
 

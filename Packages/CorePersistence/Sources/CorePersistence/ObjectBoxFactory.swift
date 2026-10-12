@@ -23,14 +23,27 @@ public enum ObjectBoxFactory {
     /// Naming the directory also makes independent stores safe by construction rather than by
     /// convention. `makeInMemoryStore(named:)` depends on every caller remembering to pass a
     /// unique name; this does not.
-    public static func makePersistentStore(directory: URL? = nil) -> Store {
-        let url = directory ?? defaultDirectory()
-        try! FileManager.default.createDirectory(
+    ///
+    /// **Throws**, where it used to `try!` on all three failure points.
+    ///
+    /// This is the only function that opens the user's real database, and with `try!` it had no
+    /// way to report anything: a full disk, a locked container or a broken home directory ended
+    /// the process at launch, with no message the user could read and no state to recover. The
+    /// sibling `makeInMemoryStore` already threw, which is what makes this an oversight rather
+    /// than a decision — the throwing path existed and was right there.
+    ///
+    /// `defaultDirectory()` throwing is the likeliest of the three to fire, because it is the
+    /// one that *creates* the application-support directory.
+    public static func makePersistentStore(directory: URL? = nil) throws -> Store {
+        // `try` on the call rather than the whole expression: `directory` is already a `URL`, so
+        // covering the `??` would imply the nil-coalescing itself can throw.
+        let url = try directory ?? defaultDirectory()
+        try FileManager.default.createDirectory(
             at: url,
             withIntermediateDirectories: true,
             attributes: nil
         )
-        return try! Store(directoryPath: url.path)
+        return try Store(directoryPath: url.path)
     }
 
     /// In-memory store for tests/previews — uses ObjectBox `memory:` prefix (no disk I/O)
@@ -46,10 +59,14 @@ public enum ObjectBoxFactory {
     /// `bundleIdentifier` is a parameter for the same reason: the real value comes from the host
     /// app, and a test running inside a bundle-less xctest process would otherwise resolve to the
     /// fallback and be comparing against the wrong path.
+    ///
+    /// Throws, and this is the call that most needs to: `create: true` means this *creates* the
+    /// application-support directory, so it fails on a full or unavailable volume rather than
+    /// merely resolving to something odd.
     public static func defaultDirectory(
         bundleIdentifier: String = Bundle.main.bundleIdentifier ?? "com.crucialsoftware.PinCalApp"
-    ) -> URL {
-        let appSupport = try! FileManager.default.url(
+    ) throws -> URL {
+        let appSupport = try FileManager.default.url(
             for: .applicationSupportDirectory,
             in: .userDomainMask,
             appropriateFor: nil,

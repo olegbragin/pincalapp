@@ -87,9 +87,9 @@ struct SingleCalendarModelTests {
     }
 
     @Test("fetch loads the calendar and builds the year model")
-    func fetchBuildsYearModel() async {
+    func fetchBuildsYearModel() async throws {
         let (_, _, _, model) = makeFixture(calendar: makeCalendar(year: 2026))
-        await model.fetch(force: true)
+        try await model.fetch(force: true)
 
         #expect(model.state == .content)
         #expect(model.label == "Calendar")
@@ -98,19 +98,19 @@ struct SingleCalendarModelTests {
     }
 
     @Test("fetch without force does not reload existing content")
-    func fetchWithoutForceIsSkipped() async {
+    func fetchWithoutForceIsSkipped() async throws {
         let (_, _, _, model) = makeFixture(calendar: makeCalendar(name: "Original"))
-        await model.fetch(force: true)
+        try await model.fetch(force: true)
         #expect(model.label == "Original")
 
-        await model.fetch()
+        try await model.fetch()
         #expect(model.label == "Original")
     }
 
     @Test("fetch reloads after a metadata change is published")
-    func fetchReloadsFromManaging() async {
+    func fetchReloadsFromManaging() async throws {
         let (persistence, managing, _, model) = makeFixture(calendar: makeCalendar(name: "Original"))
-        await model.fetch(force: true)
+        try await model.fetch(force: true)
         #expect(model.label == "Original")
 
         // The feed, not a read. This is the path that needed the cache: a push stream has
@@ -125,9 +125,9 @@ struct SingleCalendarModelTests {
     }
 
     @Test("A metadata change about a different calendar is ignored")
-    func ignoresOtherCalendarsChanges() async {
+    func ignoresOtherCalendarsChanges() async throws {
         let (_, managing, _, model) = makeFixture(calendar: makeCalendar(id: 42, name: "Mine"))
-        await model.fetch(force: true)
+        try await model.fetch(force: true)
 
         await managing.publish(
             .changed(makeCalendar(id: 7, name: "Theirs")),
@@ -140,9 +140,9 @@ struct SingleCalendarModelTests {
     }
 
     @Test("A removed calendar empties the panel rather than leaving a stale one")
-    func removedCalendarGoesEmpty() async {
+    func removedCalendarGoesEmpty() async throws {
         let (persistence, managing, _, model) = makeFixture(calendar: makeCalendar(name: "Doomed"))
-        await model.fetch(force: true)
+        try await model.fetch(force: true)
         #expect(model.state == .content)
 
         await managing.publish(.removed(makeCalendar(name: "Doomed")), onto: persistence)
@@ -152,7 +152,7 @@ struct SingleCalendarModelTests {
     }
 
     @Test("fetch marks the state empty when the calendar is missing")
-    func fetchMissingCalendar() async {
+    func fetchMissingCalendar() async throws {
         // The model reads its metadata through `CalendarPersisting`, so the calendar has to
         // be absent *there*. A fixture that seeded it would answer the read and leave the
         // model legitimately `.content` — which is a different test.
@@ -166,22 +166,22 @@ struct SingleCalendarModelTests {
                 daySelectionManager: PCCalendarDaySelectionManager()
             )
         )
-        await model.fetch(force: true)
+        try await model.fetch(force: true)
 
         #expect(model.state == .empty)
     }
 
     @Test("An archived calendar is reported as archived")
-    func reportsArchived() async {
+    func reportsArchived() async throws {
         let (_, _, _, model) = makeFixture(calendar: makeCalendar(archived: true))
-        await model.fetch(force: true)
+        try await model.fetch(force: true)
         #expect(model.isArchived)
     }
 
     @Test("fetch hands the store the calendar's batches")
-    func fetchSyncsTheStore() async {
+    func fetchSyncsTheStore() async throws {
         let (_, _, store, model) = makeFixture(calendar: makeCalendar())
-        await model.fetch(force: true)
+        try await model.fetch(force: true)
 
         #expect(store.state.calendarID == 42, "the store now knows which calendar it is")
     }
@@ -201,9 +201,9 @@ struct SingleCalendarModelTests {
     // MARK: - Multi-select session, projected
 
     @Test("The multi-select session is off until it is turned on")
-    func multiSelectDefaultsOff() async {
+    func multiSelectDefaultsOff() async throws {
         let (_, _, _, model) = makeFixture(calendar: makeCalendar())
-        await model.fetch(force: true)
+        try await model.fetch(force: true)
 
         #expect(!model.isMultiSelectMode)
         #expect(model.selectedColor == nil)
@@ -211,9 +211,9 @@ struct SingleCalendarModelTests {
     }
 
     @Test("Turning multi-select on and off is dispatched to the store")
-    func multiSelectDispatch() async {
+    func multiSelectDispatch() async throws {
         let (_, _, store, model) = makeFixture(calendar: makeCalendar())
-        await model.fetch(force: true)
+        try await model.fetch(force: true)
 
         model.setMultiSelectMode(true)
         #expect(model.isMultiSelectMode)
@@ -225,9 +225,9 @@ struct SingleCalendarModelTests {
     }
 
     @Test("The colour binding dispatches into the store's session")
-    func multiSelectColorBinding() async {
+    func multiSelectColorBinding() async throws {
         let (_, _, store, model) = makeFixture(calendar: makeCalendar())
-        await model.fetch(force: true)
+        try await model.fetch(force: true)
 
         model.multiSelectColorBinding.wrappedValue = .option3
 
@@ -236,9 +236,9 @@ struct SingleCalendarModelTests {
     }
 
     @Test("The picker is disabled once days and a colour are chosen")
-    func pickerDisabledOnceSeeded() async {
+    func pickerDisabledOnceSeeded() async throws {
         let (_, _, _, model) = makeFixture(calendar: makeCalendar())
-        await model.fetch(force: true)
+        try await model.fetch(force: true)
 
         model.setMultiSelectMode(true)
         #expect(!model.isColorPickerDisabled, "no days yet")
@@ -251,9 +251,9 @@ struct SingleCalendarModelTests {
     }
 
     @Test("Cancelling multi-select empties the session")
-    func cancelMultiSelect() async {
+    func cancelMultiSelect() async throws {
         let (_, _, store, model) = makeFixture(calendar: makeCalendar())
-        await model.fetch(force: true)
+        try await model.fetch(force: true)
         model.setMultiSelectMode(true)
         model.setMultiSelectColor(.option1)
         model.send(.dayTappedInCalendar(Fixture.day(4)))
@@ -268,9 +268,9 @@ struct SingleCalendarModelTests {
     // MARK: - Year matrix
 
     @Test("Switching year rebuilds the month matrix")
-    func switchYearRebuilds() async {
+    func switchYearRebuilds() async throws {
         let (_, _, _, model) = makeFixture(calendar: makeCalendar(year: 2026))
-        await model.fetch(force: true)
+        try await model.fetch(force: true)
         #expect(model.yearModel.year == 2026)
 
         model.switchYear(to: 2027)
@@ -281,9 +281,9 @@ struct SingleCalendarModelTests {
     }
 
     @Test("Changing the column count is dispatched, so the store persists it")
-    func columnCountDispatch() async {
+    func columnCountDispatch() async throws {
         let (_, _, store, model) = makeFixture(calendar: makeCalendar())
-        await model.fetch(force: true)
+        try await model.fetch(force: true)
 
         model.setNumberOfColumns(2)
 
@@ -291,9 +291,9 @@ struct SingleCalendarModelTests {
     }
 
     @Test("Markers from the store appear on the main matrix")
-    func markersAreProjected() async {
+    func markersAreProjected() async throws {
         let (_, _, store, model) = makeFixture(calendar: makeCalendar())
-        await model.fetch(force: true)
+        try await model.fetch(force: true)
 
         store.send(.syncCalendar(calendarID: 42, batches: [Fixture.batch("Morning", on: 4, color: "eventColorOption3")]))
         model.send(.ensureAssemblyStarted) // any dispatch re-projects
@@ -307,9 +307,9 @@ struct SingleCalendarModelTests {
     }
 
     @Test("reset clears loaded content")
-    func resetClearsContent() async {
+    func resetClearsContent() async throws {
         let (_, _, _, model) = makeFixture(calendar: makeCalendar(name: "Original"))
-        await model.fetch(force: true)
+        try await model.fetch(force: true)
 
         model.reset()
 

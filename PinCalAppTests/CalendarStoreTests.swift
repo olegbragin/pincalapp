@@ -465,9 +465,9 @@ struct CalendarStoreManagingTests {
         defer { store.close() }
         let fixture = makeFixture(store: store)
 
-        #expect(await fixture.port.loadActive().isEmpty)
+        #expect(try await fixture.port.loadActive().isEmpty)
         try await fixture.port.createCalendar(name: "Work", year: 2026, numberOfColumns: 3)
-        #expect(await fixture.port.loadActive().count == 1)
+        #expect(try await fixture.port.loadActive().count == 1)
     }
 
     @Test("loadActive and loadArchived partition by archive state")
@@ -480,8 +480,8 @@ struct CalendarStoreManagingTests {
         let oldId = try await createCalendar(fixture.cache, name: "Old")
         try await fixture.port.archiveCalendar(id: oldId)
 
-        let active = await fixture.port.loadActive()
-        let archived = await fixture.port.loadArchived()
+        let active = try await fixture.port.loadActive()
+        let archived = try await fixture.port.loadArchived()
         #expect(active.map(\.id) == [workId])
         #expect(active.allSatisfy { !$0.isArchived })
         #expect(archived.map(\.id) == [oldId])
@@ -529,15 +529,15 @@ struct CalendarStoreManagingTests {
         let id = try await createCalendar(fixture.cache)
 
         try await fixture.port.archiveCalendar(id: id)
-        #expect(await fixture.port.loadActive().isEmpty)
-        #expect(await fixture.port.loadArchived().count == 1)
+        #expect(try await fixture.port.loadActive().isEmpty)
+        #expect(try await fixture.port.loadArchived().count == 1)
 
         try await fixture.port.restoreCalendar(id: id)
-        #expect(await fixture.port.loadActive().count == 1)
-        #expect(await fixture.port.loadArchived().isEmpty)
+        #expect(try await fixture.port.loadActive().count == 1)
+        #expect(try await fixture.port.loadArchived().isEmpty)
 
         try await fixture.port.permanentlyDeleteCalendar(id: id)
-        #expect(await fixture.port.loadActive().isEmpty)
+        #expect(try await fixture.port.loadActive().isEmpty)
         // Read through the cache: the management port deliberately offers no
         // single-calendar read, so the test cannot accidentally depend on one.
         #expect(try await fixture.cache.getCalendar(id: id) == nil)
@@ -584,7 +584,7 @@ struct CalendarStoreManagingTests {
         let id = try await createCalendar(cache)
         try await port.archiveCalendar(id: id)
 
-        #expect(await port.loadArchived().first?.name == "WORK")
+        #expect(try await port.loadArchived().first?.name == "WORK")
     }
 }
 

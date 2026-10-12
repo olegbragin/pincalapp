@@ -67,4 +67,22 @@ public final class PCCalendarCardViewModel {
         editingName = name
         onEditCancelled?()
     }
+
+    /// Puts back a name that `confirmEdit` applied optimistically and the write then rejected.
+    ///
+    /// `confirmEdit` sets `name` *before* calling `onEditCommitted`, so the card shows the new
+    /// name straight away. That is the right behaviour when the write succeeds and the wrong one
+    /// when it fails: the row would be labelled with a name that is not in storage, and the next
+    /// successful write for this calendar — which carries this card's copy — would overwrite the
+    /// stored name with it.
+    ///
+    /// So a rejected rename is rolled back here rather than left to agree with a database it no
+    /// longer matches. Not the same as `cancelEdit`: this is called after editing has finished,
+    /// so it must not report a user cancellation.
+    public func restoreName(_ stored: String) {
+        guard stored != name else { return }
+        withAnimation(.easeInOut(duration: 0.2)) {
+            name = stored
+        }
+    }
 }
