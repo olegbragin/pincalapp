@@ -15,6 +15,15 @@ public struct PCCalendarYearView: View {
     @Environment(\.pcVibe) private var vibe
     @State private var isYearPickerPresented = false
 
+    /// Which month row is at the top of the year grid, as an index into `viewModel.months`.
+    ///
+    /// Doubles as an input and an output: writing it scrolls, and SwiftUI writes back
+    /// whichever row the user actually scrolls to. The write-back is why the column and size
+    /// observers below re-assign `viewModel.targetMonthIndex` rather than trusting the stored
+    /// value — after the user scrolls away, this holds where they *are*, not where the calendar
+    /// wants them.
+    @State private var scrollPosition: Int?
+
     /// The year-picker sheet's navigation title, supplied by the caller.
     ///
     /// Required, not defaulted: `DSKit` does not localize, so there is no word here that would be
@@ -81,86 +90,110 @@ public struct PCCalendarYearView: View {
             yearHeader
             GeometryReader { proxy in
                 let cellSize = max(1, (proxy.size.width - Self.monthColumnSpacing * CGFloat(viewModel.numberOfColumns - 1)) / CGFloat(viewModel.numberOfColumns) / 7)
-                ScrollViewReader { scrollProxy in
-                    ScrollView {
-                        LazyVGrid(
-                            columns: gridColumns,
-                            spacing: 16
-                        ) {
-                            ForEach(viewModel.months.indices, id: \.self) { index in
-                                let month = viewModel.months[index]
-                                PCCalendarMonthView(
-                                    viewModel: month,
-                                    cellSize: cellSize
-                                )
-                                .id(index)
-                            }
+                ScrollView {
+                    LazyVGrid(
+                        columns: gridColumns,
+                        spacing: 16
+                    ) {
+                        ForEach(viewModel.months.indices, id: \.self) { index in
+                            let month = viewModel.months[index]
+                            PCCalendarMonthView(
+                                viewModel: month,
+                                cellSize: cellSize
+                            )
+                            .id(index)
                         }
-                        .scrollTargetLayout()
-                        // The month rows are keyed by index (0...11), so replacing
-                        // `months` with a new same-length array (e.g. when the year
-                        // changes) leaves the ids unchanged and SwiftUI would reuse
-                        // the stale rows. Rebinding the grid to the year forces it to
-                        // rebuild against the newly generated month matrix.
-                        .id(viewModel.year)
                     }
-                    .onAppear {
-                        viewModel.maximumNumberOfColumns = Self.maxColumns(forWidth: proxy.size.width)
-                        scrollToTargetMonth(using: scrollProxy)
-                    }
-                    .onChange(of: proxy.size.width) { _, newWidth in
-                        viewModel.maximumNumberOfColumns = Self.maxColumns(forWidth: newWidth)
-                    }
-                    .onChange(of: viewModel.numberOfColumns) {
-                        scrollToCurrentMonth(using: scrollProxy)
-                    }
-                    .onChange(of: proxy.size) { oldSize, newSize in
-                        guard oldSize != newSize else { return }
-                        scrollToCurrentMonth(using: scrollProxy)
-                    }
-                    .onChange(of: viewModel.scrollTargetMonth) {
-                        scrollToTargetMonth(using: scrollProxy)
-                    }
-                    .highPriorityGesture(
-                        PCPinchToZoomGesture(
-                            tempMagnification: $tempMagnification,
-                            onPinchedToZoomIn: {
-                                let next = viewModel.numberOfColumns + 1
-                                viewModel.numberOfColumns = min(viewModel.maximumNumberOfColumns, next)
-                            },
-                            onPinchedToZoomOut: {
-                                let next = viewModel.numberOfColumns - 1
-                                viewModel.numberOfColumns = max(1, next)
-                            }
-                        )
-                    )
-                    .simultaneousGesture(
-                        LongPressGesture()
-                            .onEnded { _ in
-                                onLongPress?()
-                            },
-                        isEnabled: onLongPress != nil
-                    )
-                    // Horizontal swipe switches the year (left = next, right =
-                    // previous). It runs simultaneously with the vertical scroll
-                    // so swiping doesn't block scrolling or pinch-to-zoom. It only
-                    // commits on a clearly horizontal swipe (the horizontal
-                    // displacement must dominate by a wide margin and exceed a
-                    // larger threshold), so a near-vertical scroll or a
-                    // UI-test swipe can't accidentally change the year.
-                    .simultaneousGesture(
-                        DragGesture(minimumDistance: 40)
-                            .onEnded { value in
-                                let horizontal = abs(value.translation.width)
-                                let vertical = abs(value.translation.height)
-                                guard horizontal > vertical * 2, horizontal > 70 else { return }
-                                goToAdjacentYear(value.translation.width < 0 ? 1 : -1)
-                            }
-                    )
-                    .sensoryFeedback(.success, trigger: viewModel.numberOfColumns)
-                    .sensoryFeedback(.selection, trigger: viewModel.year)
-                    .animation(.easeOut(duration: 0.3), value: viewModel.numberOfColumns)
+                    .scrollTargetLayout()
+                    // The month rows are keyed by index (0...11), so replacing
+                    // `months` with a new same-length array (e.g. when the year
+                    // changes) leaves the ids unchanged and SwiftUI would reuse
+                    // the stale rows. Rebinding the grid to the year forces it to
+                    // rebuild against the newly generated month matrix.
+                    .id(viewModel.year)
                 }
+                // The scroll position is state, not an imperative `scrollTo`.
+                //
+                // This replaces four call sites against a `ScrollViewProxy`, two of which
+                // deferred behind a 50ms sleep. The sleep existed because a `scrollTo`
+                // issued *during* a relayout was being lost: the grid re-lays out when the
+                // column count changes, and the old code fired its scroll 50ms into a 300ms
+                // layout animation and hoped the two settled. Declaring the position makes
+                // keeping that identity visible SwiftUI's job — it holds the position across
+                // exactly the events that used to lose it, including the size changes and
+                // rotation the `proxy.size` observer was watching for. So there is no longer
+                // a moment to wait for, and no offset to guess.
+                .scrollPosition(id: $scrollPosition, anchor: .top)
+                .onAppear {
+                    viewModel.maximumNumberOfColumns = Self.maxColumns(forWidth: proxy.size.width)
+                    scrollPosition = viewModel.targetMonthIndex
+                }
+                .onChange(of: proxy.size.width) { _, newWidth in
+                    viewModel.maximumNumberOfColumns = Self.maxColumns(forWidth: newWidth)
+                }
+                // Animated explicitly, as the old `scrollToCurrentMonth` was. Kept rather
+                // than relying on the `.animation(_:value: numberOfColumns)` modifier below,
+                // which is keyed to the column change and does not necessarily reach a
+                // scroll-position write. Porting the mechanism that demonstrably worked
+                // beats assuming a broader one also does.
+                .onChange(of: viewModel.numberOfColumns) {
+                    withAnimation(.easeOut(duration: 0.3)) {
+                        scrollPosition = viewModel.targetMonthIndex
+                    }
+                }
+                // No `oldSize != newSize` guard: `onChange(of:)` does not invoke its closure
+                // when the tracked value is equal, so the check could never trip.
+                .onChange(of: proxy.size) {
+                    withAnimation(.easeOut(duration: 0.3)) {
+                        scrollPosition = viewModel.targetMonthIndex
+                    }
+                }
+                .onChange(of: viewModel.scrollTargetMonth) {
+                    // Not animated, matching the old `scrollToTargetMonth` — which unlike
+                    // `scrollToCurrentMonth` never wrapped its `scrollTo` in `withAnimation`.
+                    // The distinction was incidental rather than chosen, but preserving it
+                    // keeps this a pure refactor and nothing more.
+                    scrollPosition = viewModel.targetMonthIndex
+                }
+                .highPriorityGesture(
+                    PCPinchToZoomGesture(
+                        tempMagnification: $tempMagnification,
+                        onPinchedToZoomIn: {
+                            let next = viewModel.numberOfColumns + 1
+                            viewModel.numberOfColumns = min(viewModel.maximumNumberOfColumns, next)
+                        },
+                        onPinchedToZoomOut: {
+                            let next = viewModel.numberOfColumns - 1
+                            viewModel.numberOfColumns = max(1, next)
+                        }
+                    )
+                )
+                .simultaneousGesture(
+                    LongPressGesture()
+                        .onEnded { _ in
+                            onLongPress?()
+                        },
+                    isEnabled: onLongPress != nil
+                )
+                // Horizontal swipe switches the year (left = next, right =
+                // previous). It runs simultaneously with the vertical scroll
+                // so swiping doesn't block scrolling or pinch-to-zoom. It only
+                // commits on a clearly horizontal swipe (the horizontal
+                // displacement must dominate by a wide margin and exceed a
+                // larger threshold), so a near-vertical scroll or a
+                // UI-test swipe can't accidentally change the year.
+                .simultaneousGesture(
+                    DragGesture(minimumDistance: 40)
+                        .onEnded { value in
+                            let horizontal = abs(value.translation.width)
+                            let vertical = abs(value.translation.height)
+                            guard horizontal > vertical * 2, horizontal > 70 else { return }
+                            goToAdjacentYear(value.translation.width < 0 ? 1 : -1)
+                        }
+                )
+                .sensoryFeedback(.success, trigger: viewModel.numberOfColumns)
+                .sensoryFeedback(.selection, trigger: viewModel.year)
+                .animation(.easeOut(duration: 0.3), value: viewModel.numberOfColumns)
             }
         }
     }
@@ -196,11 +229,6 @@ public struct PCCalendarYearView: View {
         }
     }
 
-    private func scrollToTargetMonth(using proxy: ScrollViewProxy) {
-        guard let target = viewModel.targetMonthIndex else { return }
-        proxy.scrollTo(target, anchor: .top)
-    }
-
     ///// Switches to the adjacent year (delta of -1 or +1) on a horizontal swipe,
     ///// clamped to the supported year range. Reuses `onYearSelect` so the feature
     ///// layer's existing `switchYear` rebuilds the month matrix.
@@ -208,20 +236,6 @@ public struct PCCalendarYearView: View {
         let next = viewModel.year + delta
         guard Self.yearRange.contains(next) else { return }
         onYearSelect?(next)
-    }
-
-    /// Scrolls to the current month of today's date after a pinch-to-zoom or a
-    /// device/window rotation, so the user's focus stays on the current month.
-    /// The scroll is deferred a tick so the grid re-layout (from the column /
-    /// size change) settles first; otherwise the programmatic scroll is lost.
-    private func scrollToCurrentMonth(using proxy: ScrollViewProxy) {
-        guard let target = viewModel.targetMonthIndex else { return }
-        Task { @MainActor in
-            try? await Task.sleep(for: .milliseconds(50))
-            withAnimation(.easeOut(duration: 0.3)) {
-                proxy.scrollTo(target, anchor: .top)
-            }
-        }
     }
 }
 
