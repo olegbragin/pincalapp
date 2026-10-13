@@ -8,6 +8,7 @@ import SettingsFeature
 struct RootContentView: View {
     @Environment(RootNavigation.self) var navigation
     @Environment(\.pcVibe) private var vibe
+    @Environment(\.pcErrorRecorder) private var errorRecorder
 
     var selectedCalendarID: Int64? {
         navigation.detailCalendarID
@@ -59,6 +60,14 @@ struct RootContentView: View {
                 Task { await navigation.switchCalendar(to: id) }
             },
             onCalendarRemoved: { id in closeIfSelected(id) },
+            onLoadFailed: { error in
+                errorRecorder.record(error, operation: "calendarList.fetch")
+            },
+            onWriteFailed: { failure in
+                // Already a `PCError`, so the operation is carried by the failure itself and this
+                // label is never used. Passed rather than left out so the intent is explicit.
+                errorRecorder.record(failure, operation: "calendarList.write")
+            },
             undoWindowDuration: PCAppSession.makeUndoWindowDuration(),
             layout: .compact
         )
@@ -154,6 +163,12 @@ struct RootContentView: View {
                     Task { await navigation.switchCalendar(to: id) }
                 },
                 onCalendarRemoved: { id in closeIfSelected(id) },
+                onLoadFailed: { error in
+                    errorRecorder.record(error, operation: "calendarList.fetch")
+                },
+                onWriteFailed: { failure in
+                    errorRecorder.record(failure, operation: "calendarList.write")
+                },
                 undoWindowDuration: PCAppSession.makeUndoWindowDuration()
             )
         case .archived:
@@ -172,6 +187,13 @@ struct RootContentView: View {
             )
         case .settings:
             SettingsView()
+        case .diagnostics:
+            // Reachable only through the gated sidebar row. This still has to render something for
+            // the route to be total, and a deep link that got here without the gate is treated as
+            // unavailable rather than quietly granted a screen the build did not advertise.
+            if PCDiagnosticsGate.isAvailable {
+                DiagnosticsView()
+            }
         }
     }
 }

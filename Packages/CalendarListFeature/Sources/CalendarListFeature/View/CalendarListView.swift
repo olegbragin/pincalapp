@@ -19,6 +19,23 @@ public struct CalendarListView: View {
     /// embedded anywhere without a detail column behind it needs no wiring.
     public var onCalendarRemoved: (Int64) -> Void = { _ in }
 
+    /// Told when a load fails, with the error that came back.
+    ///
+    /// Reporting rather than recording from inside this package: the reporter lives in
+    /// `CorePersistence`, which this package does not depend on and should not. What this package
+    /// knows is *that* a load failed, and the owner of the data — the app target, which imports
+    /// everything — decides what to do with that. Optional, and `nil` by default, so a caller that
+    /// does not care is unaffected.
+    public var onLoadFailed: ((any Error) -> Void)?
+
+    /// Told when a write fails, with the failure that has to be retried.
+    ///
+    /// Separate from `onLoadFailed` because the two are not the same event: a write failure carries
+    /// its own retry payload and is offered to the user, whereas a load failure keeps the last
+    /// known calendars and only says they may be stale. Collapsing them would hand the owner one
+    /// shape and force it to re-derive which kind it was looking at.
+    public var onWriteFailed: ((PCCalendarListWriteFailure) -> Void)?
+
     let mode: CalendarListMode
 
     /// How long the undo toast stays up. See `CalendarListViewModel.undoWindowDuration`.
@@ -32,6 +49,8 @@ public struct CalendarListView: View {
         selectedCalendarID: Int64? = nil,
         onSelectCalendar: @escaping (Int64) -> Void = { _ in },
         onCalendarRemoved: @escaping (Int64) -> Void = { _ in },
+        onLoadFailed: ((any Error) -> Void)? = nil,
+        onWriteFailed: ((PCCalendarListWriteFailure) -> Void)? = nil,
         undoWindowDuration: TimeInterval = 5,
         layout: PCCardLayout = .full
     ) {
@@ -39,6 +58,8 @@ public struct CalendarListView: View {
         self.selectedCalendarID = selectedCalendarID
         self.onSelectCalendar = onSelectCalendar
         self.onCalendarRemoved = onCalendarRemoved
+        self.onLoadFailed = onLoadFailed
+        self.onWriteFailed = onWriteFailed
         self.undoWindowDuration = undoWindowDuration
         self.layout = layout
     }
@@ -107,7 +128,14 @@ public struct CalendarListView: View {
             // `loadFailure` yet, so the user is still not told. What is left is the
             // presentation, which is this package's decision about its own words and the
             // app's about how they are offered.
-            try? await viewModel?.fetch()
+            do {
+                try await viewModel?.fetch()
+            } catch {
+                // `fetch` already recorded the failure and kept the last known calendars, so
+                // this is reporting, not recovery. The `try?` this replaces discarded the very
+                // thing the owner most wants to hear about.
+                onLoadFailed?(error)
+            }
         }
     }
 
@@ -134,11 +162,18 @@ public struct CalendarListView: View {
                     // `fetch` records the failure in `loadFailure` and rethrows; the rethrow is
                     // what lets `safeRefreshable`'s spinner be taken down rather than stranded.
                     onRefresh: { try await model.fetch() },
-                    onRefreshFailed: { _ in
-                        // Nothing extra to do here: `fetch` already recorded it, and the
-                        // load-failure toast below is driven off that. This callback exists to
-                        // keep the error from being discarded on the way past, not to add a
-                        // second place that reports the same thing.
+                    onRefreshFailed: { error in
+                        // Reported upward rather than swallowed. `CalendarListContent` is a
+                        // presentational list with no vocabulary of its own, so it hands the error
+                        // to whoever owns the model and can say something about it.
+                        //
+                        // Hopped back to the main actor because that closure is `@Sendable` and
+                        // this property is main-actor-isolated — it belongs to a `View`, and the
+                        // compiler will not let a Sendable closure read it directly. The refresh
+                        // that produced this error always runs on the main actor anyway, so
+                        // `assumeIsolated` is true by construction; the alternative, a `Task`, would
+                        // make the report land a runloop later than the failure for no gain.
+                        MainActor.assumeIsolated { onLoadFailed?(error) }
                     },
                     selectedCalendarID: selectedCalendarID,
                     onSelectCalendar: onSelectCalendar,
@@ -159,6 +194,19 @@ public struct CalendarListView: View {
         // `#F4F0EA` in light and carries its own dark variant, which is also what the launch
         // screen paints.
         .background(vibe.color(for: .backgroundMain))
+        /// Reports write failures upward.
+        ///
+        /// Observed rather than caught, because a write failure does not throw: `recordWriteFailure`
+        /// stores it and returns, so the failure *is* the state. Reading it here rather than at each
+        /// call site is what keeps this to one place — there are five write entry points, and a
+        /// `do/catch` in each would be five chances to forget one.
+        ///
+        /// Fires on the `nil -> failure` edge only. Re-assigning the same failure — which a retry
+        /// does when it fails the same way — would otherwise report the same failure twice.
+        .onChange(of: viewModel.writeFailure) { _, failure in
+            guard let failure else { return }
+            onWriteFailed?(failure)
+        }
         .ignoresSafeArea(edges: .bottom)
         .overlay(alignment: .bottomTrailing) {
             addButton(for: viewModel)
@@ -223,7 +271,15 @@ public struct CalendarListView: View {
             position: .bottom,
             message: "Couldn't load your calendars",
             actionTitle: "Retry",
-            action: { Task { try? await model.fetch() } },
+            action: {
+                Task {
+                    do {
+                        try await model.fetch()
+                    } catch {
+                        onLoadFailed?(error)
+                    }
+                }
+            },
             backgroundColor: .black.opacity(0.85),
             /// No progress: this toast has no deadline.
             ///

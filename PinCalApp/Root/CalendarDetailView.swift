@@ -22,14 +22,20 @@ import SingleCalendarFeature
 struct CalendarDetailView: View {
     let calendarId: Int64
     @Environment(PCAppSession.self) private var session
+    @Environment(\.pcErrorRecorder) private var errorRecorder
     @State private var model: SingleCalendarModel?
 
     var body: some View {
         Group {
             if let model {
-                SingleCalendarView(viewModel: model)
-                    .id(calendarId)
-                    .accessibilityIdentifier("calendar-detail-\(calendarId)")
+                SingleCalendarView(
+                    viewModel: model,
+                    onSaveFailed: { failure in
+                        errorRecorder.record(failure, operation: "eventBatch.save")
+                    }
+                )
+                .id(calendarId)
+                .accessibilityIdentifier("calendar-detail-\(calendarId)")
             } else {
                 ProgressView()
             }

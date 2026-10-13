@@ -22,8 +22,18 @@ public struct SingleCalendarView: View {
     /// write succeeds, and this follows it down.
     @State private var isSaveFailedToastPresented = false
 
-    public init(viewModel: SingleCalendarModel) {
+    /// Told when a batch write does not land, so the app target can record it.
+    ///
+    /// Optional and `nil` by default: a caller that does not collect failures is unaffected, and
+    /// this view still owns presenting the retry to the user. Recording is somebody else's job.
+    public var onSaveFailed: ((PCFailedSave) -> Void)?
+
+    public init(
+        viewModel: SingleCalendarModel,
+        onSaveFailed: ((PCFailedSave) -> Void)? = nil
+    ) {
         self.viewModel = viewModel
+        self.onSaveFailed = onSaveFailed
     }
 
     public var body: some View {
@@ -130,7 +140,16 @@ public struct SingleCalendarView: View {
                 in: store
             )
         }
+        /// Reports the failed write upward, alongside showing it.
+        ///
+        /// Reported rather than recorded here: the reporter lives in `CorePersistence`, which this
+        /// package does not depend on. Observed rather than caught, because a failed save does not
+        /// throw — `PCFailedSave` *is* the state, and it has to stay resident so the retry can
+        /// replay exactly what failed.
         .onChange(of: store.failedSave) { _, failure in
+            if let failure {
+                onSaveFailed?(failure)
+            }
             // Raised by the store when a write did not land. The toast is the only way the
             // user learns their work is not saved, and Retry is the only way out — which is
             // why there is no timeout here: a failed save must not fade away unattended,

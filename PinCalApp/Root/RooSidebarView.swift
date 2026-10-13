@@ -20,6 +20,16 @@ struct RootSidebarView: View {
                 Label("Settings", systemImage: "gearshape")
                     .tag(SidebarCategory.settings)
                     .accessibilityIdentifier("sidebar-settings")
+                /// Shown only where `PCDiagnosticsGate` allows it.
+                ///
+                /// The row is hidden rather than the destination disabled: an entry that is
+                /// visible and does nothing is worse than one that is absent, because it reads as a
+                /// broken feature rather than an absent one.
+                if PCDiagnosticsGate.isAvailable {
+                    Label("Diagnostics", systemImage: "stethoscope")
+                        .tag(SidebarCategory.diagnostics)
+                        .accessibilityIdentifier("sidebar-diagnostics")
+                }
             }
         }
         .onChange(of: bindableNavigation.selectedSidebarCategory) { _, newCategory in

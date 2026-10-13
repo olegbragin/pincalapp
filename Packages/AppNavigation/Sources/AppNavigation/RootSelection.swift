@@ -14,6 +14,10 @@ public enum SidebarCategory: Equatable, Hashable {
     case calendarList
     case archived
     case settings
+    /// The error report. Present on every platform, but *shown* only where `PCDiagnosticsGate`
+    /// allows it — the case has to exist for the route to typecheck, and hiding the row is what
+    /// actually keeps it out of a shipped app.
+    case diagnostics
 }
 
 /// Single global enum for all possible navigation routes in the app.

@@ -9,7 +9,23 @@ import Foundation
 import ObjectBox
 
 public enum CalendarRepositoryFactory {
-    /// Returns the repository instance for the current run: a seeded store when
+    /// The two things that share one database, returned together.
+    ///
+    /// A struct rather than two factories because they cannot be built independently: ObjectBox
+    /// allows one `Store` per directory, so a caller wanting both would otherwise either open the
+    /// database twice or have to know that they must. Returning them together is what makes
+    /// "one store" a property of the wiring rather than something to remember.
+    public struct Stack {
+        public let repository: any CalendarRepository
+        public let reporter: any PCErrorReporting
+
+        public init(repository: any CalendarRepository, reporter: any PCErrorReporting) {
+            self.repository = repository
+            self.reporter = reporter
+        }
+    }
+
+    /// Returns the storage stack for the current run: a seeded store when
     /// running under UI tests, otherwise the persistent production store. Keeps
     /// the test-vs-production branching out of `PinCalAppApp`.
     ///
@@ -23,10 +39,16 @@ public enum CalendarRepositoryFactory {
     /// the user could not report one: this is the production wiring, and opening the database is
     /// the first thing it does. A failure here used to trap at launch (via `try!` further down)
     /// rather than surface as anything a person could read or recover from.
-    public static func makeDefault(directory: URL? = nil) throws -> any CalendarRepository {
+    public static func makeDefault(directory: URL? = nil) throws -> Stack {
+        let store: Store
         if UITestStoreFactory.shouldSeedForUITests() {
-            return try ObjectBoxCalendarStorage(store: UITestStoreFactory.makeSeededStore())
+            store = try UITestStoreFactory.makeSeededStore()
+        } else {
+            store = try ObjectBoxFactory.makePersistentStore(directory: directory)
         }
-        return try ObjectBoxCalendarStorage(store: ObjectBoxFactory.makePersistentStore(directory: directory))
+        return Stack(
+            repository: ObjectBoxCalendarStorage(store: store),
+            reporter: ObjectBoxPCErrorReporter(store: store)
+        )
     }
 }

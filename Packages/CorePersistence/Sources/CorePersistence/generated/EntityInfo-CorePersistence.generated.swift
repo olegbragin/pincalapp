@@ -212,6 +212,177 @@ internal final class PPCalendarBinding: ObjectBox.EntityBinding, Sendable {
 
 
 
+extension PPErrorEntry: ObjectBox.__EntityRelatable {
+    internal typealias EntityType = PPErrorEntry
+
+    internal var _id: EntityId<PPErrorEntry> {
+        return EntityId<PPErrorEntry>(self.id.value)
+    }
+}
+
+extension PPErrorEntry: ObjectBox.EntityInspectable {
+    internal typealias EntityBindingType = PPErrorEntryBinding
+
+    /// Generated metadata used by ObjectBox to persist the entity.
+    internal static let entityInfo = ObjectBox.EntityInfo(name: "PPErrorEntry", id: 4)
+
+    internal static let entityBinding = EntityBindingType()
+
+    fileprivate static func buildEntity(modelBuilder: ObjectBox.ModelBuilder) throws {
+        let entityBuilder = try modelBuilder.entityBuilder(for: PPErrorEntry.self, id: 4, uid: 7842760028027684864)
+        try entityBuilder.addProperty(name: "id", type: PropertyType.long, flags: [.id], id: 1, uid: 5391107280391051264)
+        try entityBuilder.addProperty(name: "subjectKind", type: PropertyType.string, id: 2, uid: 3450559246349342464)
+        try entityBuilder.addProperty(name: "subjectID", type: PropertyType.long, id: 3, uid: 3137702148496731648)
+        try entityBuilder.addProperty(name: "operation", type: PropertyType.string, id: 4, uid: 1884433025422839296)
+        try entityBuilder.addProperty(name: "message", type: PropertyType.string, id: 5, uid: 3060708786492583168)
+        try entityBuilder.addProperty(name: "timestamp", type: PropertyType.date, id: 6, uid: 2900594979975866112)
+
+        try entityBuilder.lastProperty(id: 6, uid: 2900594979975866112)
+    }
+}
+
+extension PPErrorEntry {
+    /// Generated entity property information.
+    ///
+    /// You may want to use this in queries to specify fetch conditions, for example:
+    ///
+    ///     box.query { PPErrorEntry.id == myId }
+    internal static var id: Property<PPErrorEntry, Id, Id> { return Property<PPErrorEntry, Id, Id>(propertyId: 1, isPrimaryKey: true) }
+    /// Generated entity property information.
+    ///
+    /// You may want to use this in queries to specify fetch conditions, for example:
+    ///
+    ///     box.query { PPErrorEntry.subjectKind.startsWith("X") }
+    internal static var subjectKind: Property<PPErrorEntry, String, Void> { return Property<PPErrorEntry, String, Void>(propertyId: 2, isPrimaryKey: false) }
+    /// Generated entity property information.
+    ///
+    /// You may want to use this in queries to specify fetch conditions, for example:
+    ///
+    ///     box.query { PPErrorEntry.subjectID > 1234 }
+    internal static var subjectID: Property<PPErrorEntry, Int64, Void> { return Property<PPErrorEntry, Int64, Void>(propertyId: 3, isPrimaryKey: false) }
+    /// Generated entity property information.
+    ///
+    /// You may want to use this in queries to specify fetch conditions, for example:
+    ///
+    ///     box.query { PPErrorEntry.operation.startsWith("X") }
+    internal static var operation: Property<PPErrorEntry, String, Void> { return Property<PPErrorEntry, String, Void>(propertyId: 4, isPrimaryKey: false) }
+    /// Generated entity property information.
+    ///
+    /// You may want to use this in queries to specify fetch conditions, for example:
+    ///
+    ///     box.query { PPErrorEntry.message.startsWith("X") }
+    internal static var message: Property<PPErrorEntry, String, Void> { return Property<PPErrorEntry, String, Void>(propertyId: 5, isPrimaryKey: false) }
+    /// Generated entity property information.
+    ///
+    /// You may want to use this in queries to specify fetch conditions, for example:
+    ///
+    ///     box.query { PPErrorEntry.timestamp > 1234 }
+    internal static var timestamp: Property<PPErrorEntry, Date, Void> { return Property<PPErrorEntry, Date, Void>(propertyId: 6, isPrimaryKey: false) }
+
+    fileprivate func __setId(identifier: ObjectBox.Id) {
+        self.id = Id(identifier)
+    }
+}
+
+extension ObjectBox.Property where E == PPErrorEntry {
+    /// Generated entity property information.
+    ///
+    /// You may want to use this in queries to specify fetch conditions, for example:
+    ///
+    ///     box.query { .id == myId }
+
+    internal static var id: Property<PPErrorEntry, Id, Id> { return Property<PPErrorEntry, Id, Id>(propertyId: 1, isPrimaryKey: true) }
+
+    /// Generated entity property information.
+    ///
+    /// You may want to use this in queries to specify fetch conditions, for example:
+    ///
+    ///     box.query { .subjectKind.startsWith("X") }
+
+    internal static var subjectKind: Property<PPErrorEntry, String, Void> { return Property<PPErrorEntry, String, Void>(propertyId: 2, isPrimaryKey: false) }
+
+    /// Generated entity property information.
+    ///
+    /// You may want to use this in queries to specify fetch conditions, for example:
+    ///
+    ///     box.query { .subjectID > 1234 }
+
+    internal static var subjectID: Property<PPErrorEntry, Int64, Void> { return Property<PPErrorEntry, Int64, Void>(propertyId: 3, isPrimaryKey: false) }
+
+    /// Generated entity property information.
+    ///
+    /// You may want to use this in queries to specify fetch conditions, for example:
+    ///
+    ///     box.query { .operation.startsWith("X") }
+
+    internal static var operation: Property<PPErrorEntry, String, Void> { return Property<PPErrorEntry, String, Void>(propertyId: 4, isPrimaryKey: false) }
+
+    /// Generated entity property information.
+    ///
+    /// You may want to use this in queries to specify fetch conditions, for example:
+    ///
+    ///     box.query { .message.startsWith("X") }
+
+    internal static var message: Property<PPErrorEntry, String, Void> { return Property<PPErrorEntry, String, Void>(propertyId: 5, isPrimaryKey: false) }
+
+    /// Generated entity property information.
+    ///
+    /// You may want to use this in queries to specify fetch conditions, for example:
+    ///
+    ///     box.query { .timestamp > 1234 }
+
+    internal static var timestamp: Property<PPErrorEntry, Date, Void> { return Property<PPErrorEntry, Date, Void>(propertyId: 6, isPrimaryKey: false) }
+
+}
+
+
+/// Generated service type to handle persisting and reading entity data. Exposed through `PPErrorEntry.EntityBindingType`.
+internal final class PPErrorEntryBinding: ObjectBox.EntityBinding, Sendable {
+    internal typealias EntityType = PPErrorEntry
+    internal typealias IdType = Id
+
+    internal required init() {}
+
+    internal func generatorBindingVersion() -> Int { 1 }
+
+    internal func setEntityIdUnlessStruct(of entity: EntityType, to entityId: ObjectBox.Id) {
+        entity.__setId(identifier: entityId)
+    }
+
+    internal func entityId(of entity: EntityType) -> ObjectBox.Id {
+        return entity.id.value
+    }
+
+    internal func collect(fromEntity entity: EntityType, id: ObjectBox.Id,
+                                  propertyCollector: ObjectBox.FlatBufferBuilder, store: ObjectBox.Store) throws {
+        let propertyOffset_subjectKind = propertyCollector.prepare(string: entity.subjectKind)
+        let propertyOffset_operation = propertyCollector.prepare(string: entity.operation)
+        let propertyOffset_message = propertyCollector.prepare(string: entity.message)
+
+        propertyCollector.collect(id, at: 2 + 2 * 1)
+        propertyCollector.collect(entity.subjectID, at: 2 + 2 * 3)
+        propertyCollector.collect(entity.timestamp, at: 2 + 2 * 6)
+        propertyCollector.collect(dataOffset: propertyOffset_subjectKind, at: 2 + 2 * 2)
+        propertyCollector.collect(dataOffset: propertyOffset_operation, at: 2 + 2 * 4)
+        propertyCollector.collect(dataOffset: propertyOffset_message, at: 2 + 2 * 5)
+    }
+
+    internal func createEntity(entityReader: ObjectBox.FlatBufferReader, store: ObjectBox.Store) -> EntityType {
+        let entity = PPErrorEntry()
+
+        entity.id = entityReader.read(at: 2 + 2 * 1)
+        entity.subjectKind = entityReader.read(at: 2 + 2 * 2)
+        entity.subjectID = entityReader.read(at: 2 + 2 * 3)
+        entity.operation = entityReader.read(at: 2 + 2 * 4)
+        entity.message = entityReader.read(at: 2 + 2 * 5)
+        entity.timestamp = entityReader.read(at: 2 + 2 * 6)
+
+        return entity
+    }
+}
+
+
+
 extension PPEvent: ObjectBox.__EntityRelatable {
     internal typealias EntityType = PPEvent
 
@@ -575,9 +746,10 @@ fileprivate func optConstruct<T: RawRepresentable>(_ type: T.Type, rawValue: T.R
 fileprivate func cModel() throws -> OpaquePointer {
     let modelBuilder = try ObjectBox.ModelBuilder()
     try PPCalendar.buildEntity(modelBuilder: modelBuilder)
+    try PPErrorEntry.buildEntity(modelBuilder: modelBuilder)
     try PPEvent.buildEntity(modelBuilder: modelBuilder)
     try PPEventBatch.buildEntity(modelBuilder: modelBuilder)
-    modelBuilder.lastEntity(id: 3, uid: 5085436393158582016)
+    modelBuilder.lastEntity(id: 4, uid: 7842760028027684864)
     modelBuilder.lastRelation(id: 3, uid: 1313922441448171264)
     return modelBuilder.finish()
 }
@@ -586,7 +758,7 @@ extension ObjectBox.Store {
     /// A store with a fully configured model. Created by the code generator with your model's metadata in place.
     ///
     /// # In-memory database
-    /// To use a file-less in-memory database, instead of a directory path pass `memory:`
+    /// To use a file-less in-memory database, instead of a directory path pass `memory:` 
     /// together with an identifier string:
     /// ```swift
     /// let inMemoryStore = try Store(directoryPath: "memory:test-db")

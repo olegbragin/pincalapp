@@ -31,3 +31,26 @@ public enum StorageError: Error, Equatable {
     /// A calendar referenced by id was not in storage. See `batchMissing` for why this throws.
     case calendarMissing(id: Int64)
 }
+
+/// The only conformance this package makes on its own errors.
+///
+/// Every other type that adopts `PCError` belongs to a package above this one and is conformed in
+/// the app target instead — see `PCError`.
+extension StorageError: PCError {
+    public func pcRecord() -> PCErrorRecord {
+        switch self {
+        case let .batchMissing(id):
+            PCErrorRecord(
+                subject: .batch(id: id),
+                operation: "storage.saveCalendar",
+                message: pcFallbackMessage
+            )
+        case let .calendarMissing(id):
+            PCErrorRecord(
+                subject: .calendar(id: id),
+                operation: "storage.saveCalendar",
+                message: pcFallbackMessage
+            )
+        }
+    }
+}

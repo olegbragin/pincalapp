@@ -31,6 +31,14 @@ struct PinCalAppApp: App {
     /// `@AppStorage`; neither needs a model handed down from here, and the model is `internal` to
     /// `SettingsFeature` so that stays true.
     private let settingsStore: any SettingsPersisting
+    /// Where failures go.
+    ///
+    /// Held but **not yet injected** — nothing calls it yet. Recording is the next piece of work,
+    /// and the reason this is plumbed now is that the reporter has to be built from the same
+    /// `Store` as the repository, which is decided here and nowhere else.
+    private let errorReporter: any PCErrorReporting
+    /// The same reporter, wrapped for the environment. See `PCErrorRecorder`.
+    private let errorRecorder: PCErrorRecorder
 
     init() {
         #if os(iOS)
@@ -58,9 +66,16 @@ struct PinCalAppApp: App {
         // An `App.init` cannot present a recovery UI, so an honest trap with the reason is the
         // most this layer can do. Doing better means failing *after* launch, behind a screen —
         // which is the right shape and is not this change.
+        //
+        // The reporter rides along here rather than opening a database of its own, which is why
+        // the factory returns a `Stack`: ObjectBox permits one `Store` per directory, so the two
+        // have to be built from the same one.
         let repository: any CalendarRepository
+        let errorReporter: any PCErrorReporting
         do {
-            repository = try CalendarRepositoryFactory.makeDefault()
+            let stack = try CalendarRepositoryFactory.makeDefault()
+            repository = stack.repository
+            errorReporter = stack.reporter
         } catch {
             // Logged before trapping: `fatalError` output reaches the device console but not
             // anywhere a person reads it.
@@ -73,6 +88,10 @@ struct PinCalAppApp: App {
         self.cache = cache
         let store = CalendarStore(cache: cache)
         self.managing = store
+        self.errorReporter = errorReporter
+        // Injected once, here, rather than constructed at each site: a second recorder would mean
+        // a second thing that looks like the reporter and may not be it.
+        self.errorRecorder = PCErrorRecorder(reporter: errorReporter)
         self.settingsStore = PCAppSession.makeSettingsStore()
         let dataProvider = PCCalendarDataProvider()
         let columnCountResolver = PCAppSession.makeColumnCountResolver()
@@ -121,6 +140,8 @@ struct PinCalAppApp: App {
                 .environment(\.calendarCache, cache)
                 .environment(\.calendarManaging, managing)
                 .environment(\.settingsPersisting, settingsStore)
+                .environment(\.pcErrorRecorder, errorRecorder)
+                .environment(\.pcErrorReporting, errorReporter)
                 // No localization injection, because there is nothing to inject: every string in
                 // the app is resolved by `String(localized:)` or a SwiftUI `LocalizedStringKey`,
                 // both of which read the main bundle — which is where `Localizable.xcstrings`
