@@ -29,12 +29,19 @@ public struct PCCalendarDataProvider: Equatable {
         year(of: Date())
     }
 
+    /// The injected `calendar` is used verbatim.
+    ///
+    /// The defaults previously re-stamped `timeZone` and `locale` with `.current`, which
+    /// silently defeated `Calendar.autoupdatingCurrent`: `.current` resolves *once*, at init,
+    /// so a provider built before a travel or a DST-zone change kept the old zone for its
+    /// whole lifetime — and this type is stored inside `PCEventSelectionState`, so that
+    /// lifetime is the edit session. Defaulting to `.autoupdatingCurrent` and touching
+    /// neither property keeps both following the device. A caller that wants a *fixed*
+    /// zone or locale (tests, seeded fixtures) passes its own `Calendar`.
     public init(
         calendar: Calendar = .autoupdatingCurrent
     ) {
         self.calendar = calendar
-        self.calendar.timeZone = .current
-        self.calendar.locale = .current
     }
 
     public func months(forYear year: Int) -> [PCCalendarMonthDataSource] {
