@@ -196,6 +196,28 @@ Pass these so runs are deterministic; all seeded launches should set the first o
 
 ## Style
 
+### Logging
+
+**`print` is for tools, not for app code.** Anything the app logs at runtime goes behind
+`#if DEBUG`, so a Debug run tells you what happened and a release run says nothing on stdout.
+
+The reason is the console rather than privacy: `print` writes to stdout, which lands in the
+Xcode console, in `AutoTestRunner`'s output, and in anyone's device log — where real test
+results get buried and a failure that scrolled past is a failure you cannot reproduce.
+
+Two things are **not** subject to this, and the distinction is why:
+
+- **`Logger` (os_log) is already console-clean.** It goes to the unified log, not stdout, so it
+  is readable in Console.app and on-device without polluting anything. `RootNavigation`'s
+  `navLog.debug` and the `fault` logged just before `fatalError` in `PinCalAppApp` are
+  deliberate and stay in release builds — gating the `fault` would remove the one line that
+  survives a crash that otherwise prints nothing readable.
+- **A CLI tool's `print` is its output.** `AutoTestRunner` and the standalone
+  `GenerateObjectBox/main.swift` script print their results because that is what they are for.
+
+This file is the `print` in app code that existed and was missed. Adding a new one behind
+`#if DEBUG` is the rule; a bare `print` reaching `PinCalApp/` or a package's `Sources/` is a bug.
+
 ### Formatting is a tool, not a habit
 
 `SwiftFormat` owns formatting; `SwiftLint` reports everything else. Both are **global

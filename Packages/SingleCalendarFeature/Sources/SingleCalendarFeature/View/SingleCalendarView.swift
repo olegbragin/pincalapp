@@ -22,18 +22,10 @@ public struct SingleCalendarView: View {
     /// write succeeds, and this follows it down.
     @State private var isSaveFailedToastPresented = false
 
-    /// Told when a batch write does not land, so the app target can record it.
-    ///
-    /// Optional and `nil` by default: a caller that does not collect failures is unaffected, and
-    /// this view still owns presenting the retry to the user. Recording is somebody else's job.
-    public var onSaveFailed: ((PCFailedSave) -> Void)?
-
     public init(
-        viewModel: SingleCalendarModel,
-        onSaveFailed: ((PCFailedSave) -> Void)? = nil
+        viewModel: SingleCalendarModel
     ) {
         self.viewModel = viewModel
-        self.onSaveFailed = onSaveFailed
     }
 
     public var body: some View {
@@ -140,16 +132,19 @@ public struct SingleCalendarView: View {
                 in: store
             )
         }
-        /// Reports the failed write upward, alongside showing it.
+        /// Shows the failed write. Reporting it is no longer this view's job.
         ///
-        /// Reported rather than recorded here: the reporter lives in `CorePersistence`, which this
-        /// package does not depend on. Observed rather than caught, because a failed save does not
-        /// throw — `PCFailedSave` *is* the state, and it has to stay resident so the retry can
-        /// replay exactly what failed.
+        /// There used to be an `onSaveFailed` callback here as well, raised from this same
+        /// `onChange` so the app target could record the failure. It was a relay for something
+        /// `failedSave` already made public and observable: `CalendarDetailView` holds the same
+        /// store and can observe it directly, so the callback added a second owner of one event
+        /// and nothing else. The reporter still lives in `CorePersistence`, which this package
+        /// does not depend on — that constraint is unchanged, it is just now honoured by whoever
+        /// actually holds the store.
+        ///
+        /// Observed rather than caught, because a failed save does not throw — `PCFailedSave` *is*
+        /// the state, and it has to stay resident so the retry can replay exactly what failed.
         .onChange(of: store.failedSave) { _, failure in
-            if let failure {
-                onSaveFailed?(failure)
-            }
             // Raised by the store when a write did not land. The toast is the only way the
             // user learns their work is not saved, and Retry is the only way out — which is
             // why there is no timeout here: a failed save must not fade away unattended,

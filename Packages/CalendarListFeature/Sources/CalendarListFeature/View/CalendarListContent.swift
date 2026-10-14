@@ -15,11 +15,15 @@ public struct CalendarListContent: View {
     public var onCalendarPermanentDelete: (PinCalendar) -> Void
     /// `@Sendable` because the pull-to-refresh gesture fires it from a `Task` that
     /// `PCSafeRefreshableModifier` owns.
+    ///
+    /// Throws so a failed refresh can be told from a successful one, which is what lets the
+    /// modifier put its spinner away. There is deliberately **no** `onRefreshFailed` beside it:
+    /// the caller that loads already reports its own failure before rethrowing, so a callback
+    /// here would have had nothing to do — and a parameter nothing can pass is an affordance
+    /// no screen can exercise.
     public var onRefresh: @Sendable () async throws -> Void
     public var selectedCalendarID: Int64?
     public var onSelectCalendar: (Int64) -> Void = { _ in }
-    /// Told when a pull-to-refresh fails, so the owner of the data can surface it.
-    public var onRefreshFailed: (@Sendable (any Error) -> Void)?
 
     /// Which card to draw. `.compact` is for the collapsed landscape rail; see `PCCardLayout`.
     ///
@@ -37,7 +41,6 @@ public struct CalendarListContent: View {
         onCalendarRestore: @escaping (PinCalendar) -> Void,
         onCalendarPermanentDelete: @escaping (PinCalendar) -> Void,
         onRefresh: @escaping @Sendable () async throws -> Void,
-        onRefreshFailed: (@Sendable (any Error) -> Void)? = nil,
         selectedCalendarID: Int64? = nil,
         onSelectCalendar: @escaping (Int64) -> Void = { _ in },
         cardLayout: PCCardLayout = .full
@@ -50,7 +53,6 @@ public struct CalendarListContent: View {
         self.onCalendarRestore = onCalendarRestore
         self.onCalendarPermanentDelete = onCalendarPermanentDelete
         self.onRefresh = onRefresh
-        self.onRefreshFailed = onRefreshFailed
         self.selectedCalendarID = selectedCalendarID
         self.onSelectCalendar = onSelectCalendar
         self.cardLayout = cardLayout
@@ -163,14 +165,14 @@ public struct CalendarListContent: View {
             // `safeRefreshable`, not `.refreshable`: plain `.refreshable` on a
             // ScrollView is the thing that misbehaves on iOS 26+ (contentOffset
             // jumps), which is what PCSafeRefreshableModifier exists to work around.
-            // The failure is reported upward rather than swallowed here.
-            // `CalendarListContent` is a presentational list with no vocabulary of its
-            // own, so it hands the error to whoever owns the model and can say something
-            // about it.
+            //
+            // No `onRefreshFailed`, and the error is not being lost here. `onRefresh` reports
+            // its own failure before it rethrows, and the modifier optional-chains the callback
+            // while still taking its spinner down either way — so this list has nothing left to
+            // say about it. It used to hand the error upward from here, which is what made it
+            // need a vocabulary of its own for something that was never its to describe.
             .safeRefreshable {
                 try await onRefresh()
-            } onRefreshFailed: { error in
-                onRefreshFailed?(error)
             }
             .scrollDismissesKeyboard(.interactively)
             .keyboardAvoidable(focusedItem: $focusedCardID)

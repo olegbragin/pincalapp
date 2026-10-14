@@ -183,7 +183,57 @@ actor InMemoryCalendarManaging: CalendarManaging {
         broadcast(.changed(calendar))
     }
 
-    func archiveCalendar(id: Int64) throws {
+    // MARK: Write-order recording
+
+    /// Whether to record write ordering. Off until a test asks, so the other tests pay nothing.
+    private var recordOrder = false
+    private var order: [String] = []
+    private var inFlight = 0
+    private var overlapped = false
+
+    /// Arms the recorder. See `writesAreSerialised` for why the fake needed this at all.
+    func startRecordingOrder() {
+        recordOrder = true
+        order = []
+        inFlight = 0
+        overlapped = false
+    }
+
+    /// The labels of the writes, in the order they *entered*.
+    func recordedOrder() -> [String] {
+        order
+    }
+
+    /// Whether two writes were ever inside the port at the same time.
+    func wereAnyWritesOverlapping() -> Bool {
+        overlapped
+    }
+
+    /// Marks a write as started, and suspends long enough for an overlap to be possible.
+    ///
+    /// The suspension is the whole point. Every fake write was previously a synchronous method
+    /// inside an actor, so it ran to completion without ever yielding — which means two
+    /// concurrent callers could not have interleaved however the store was written, and a
+    /// serialisation test would have passed no matter what. A test that cannot fail is worse
+    /// than no test, because it reads as coverage.
+    private func enter(_ label: String) async {
+        guard recordOrder else { return }
+        order.append(label)
+        inFlight += 1
+        if inFlight > 1 {
+            overlapped = true
+        }
+        try? await Task.sleep(for: .milliseconds(5))
+    }
+
+    private func exit() {
+        guard recordOrder else { return }
+        inFlight -= 1
+    }
+
+    func archiveCalendar(id: Int64) async throws {
+        await enter("archive:\(id)")
+        defer { exit() }
         if let writeError {
             throw writeError
         }
@@ -203,12 +253,446 @@ actor InMemoryCalendarManaging: CalendarManaging {
         broadcast(.added(calendar))
     }
 
-    func permanentlyDeleteCalendar(id: Int64) throws {
+    func permanentlyDeleteCalendar(id: Int64) async throws {
+        await enter("delete:\(id)")
+        defer { exit() }
         if let writeError {
             throw writeError
         }
         guard let calendar = calendars.removeValue(forKey: id) else { return }
         broadcast(.removed(calendar))
+    }
+}
+
+// MARK: - Failure reporting
+
+/// The view model raises the failure callbacks the app target records from.
+///
+/// These are the only tests covering them. The reporting used to be raised by the *view* from a
+/// `do/catch` and an `onChange`, neither of which a view-model test could reach — so nothing
+/// asserted that a failure was reported at all, and the wiring was only ever exercised by hand.
+/// Having the model raise them is what makes this testable at all.
+@MainActor
+@Suite("CalendarListViewModel Failure Reporting Tests")
+struct CalendarListViewModelFailureReportingTests {
+    /// A failed load is reported, carrying the error that came back.
+    ///
+    /// Asserted on the error and not merely on "something was raised", because the app target
+    /// builds its record from it — an owner told only *that* it failed would have nothing to put
+    /// in the diagnostics table.
+    @Test("a failed load raises onLoadFailed with the error")
+    func failedLoadRaisesOnLoadFailed() async throws {
+        let (managing, vm) = await makeFixture(seed: [
+            PinCalendar(id: 1, name: "Calendar 1", year: 2026, numberOfColumns: 3),
+        ])
+        var reported: [any Error] = []
+        vm.store.onLoadFailed = { reported.append($0) }
+
+        await managing.setLoadFailure(TestError.readFailed)
+        await #expect(throws: TestError.readFailed) { try await vm.fetch() }
+
+        #expect(reported.count == 1)
+        #expect(reported.first as? TestError == .readFailed)
+    }
+
+    /// A load that worked must not report anything.
+    ///
+    /// The other half of the pairing, and the one that would be missed by a test that only ever
+    /// fails: a stale report is as wrong as a missing one, and the app target writes a row per
+    /// report.
+    @Test("a successful load raises nothing")
+    func successfulLoadRaisesNothing() async throws {
+        let (_, vm) = await makeFixture(seed: [
+            PinCalendar(id: 1, name: "Calendar 1", year: 2026, numberOfColumns: 3),
+        ])
+        var reported = 0
+        vm.store.onLoadFailed = { _ in reported += 1 }
+
+        try await vm.fetch()
+
+        #expect(reported == 0)
+    }
+
+    /// A failed write is reported, carrying the operation that has to be retried.
+    @Test("a failed write raises onWriteFailed")
+    func failedWriteRaisesOnWriteFailed() async throws {
+        let calendar = PinCalendar(id: 1, name: "Test", year: 2026, numberOfColumns: 3)
+        let (managing, vm) = await makeFixture(seed: [calendar])
+        try await vm.fetch()
+
+        var reported: [PCCalendarListWriteFailure] = []
+        vm.store.onWriteFailed = { reported.append($0) }
+
+        await managing.setWriteFailure(TestError.writeFailed)
+        vm.archiveCalendarInList(calendar)
+
+        await waitUntil { !reported.isEmpty }
+        #expect(reported.count == 1)
+        #expect(reported.first?.operation == .archive(calendarID: 1))
+    }
+
+    /// The same failure, twice over, is reported twice.
+    ///
+    /// This was a real gap and it is why the raise moved off the view. Reporting used to be
+    /// driven by observing `writeFailure` *changing*, so two identical failures in a row left
+    /// the stored value equal and the second was silently dropped — which is precisely the case
+    /// worth counting, since "it failed, I retried, it failed again" is the shape of a real
+    /// problem and the shape a diagnostics table most needs to show.
+    ///
+    /// Driven through two genuine failing writes rather than by injecting the failure twice,
+    /// because the report is now raised by the failing effect and an injected action would not
+    /// reach it — the test would pass for the wrong reason.
+    @Test("the same write failure twice over is reported twice")
+    func repeatedIdenticalWriteFailureIsReportedEachTime() async throws {
+        let calendar = PinCalendar(id: 1, name: "Test", year: 2026, numberOfColumns: 3)
+        let (managing, vm) = await makeFixture(seed: [calendar])
+        try await vm.fetch()
+
+        var reported = 0
+        vm.store.onWriteFailed = { _ in reported += 1 }
+        await managing.setWriteFailure(TestError.writeFailed)
+
+        vm.archiveCalendarInList(calendar)
+        await waitUntil { reported == 1 }
+        vm.retryWriteFailure()
+        await waitUntil { reported == 2 }
+
+        #expect(reported == 2)
+        #expect(vm.writeFailure?.operation == .archive(calendarID: 1))
+    }
+
+    /// Every write entry point reports through the same store helper, so one raise covers all
+    /// of them. This pins the entry point the other tests here do not touch, because a future
+    /// edit that reported from `archiveCalendarInList` alone would pass them all while silently
+    /// dropping this one.
+    @Test("a permanent delete failure is reported too")
+    func permanentDeleteFailureIsReported() async throws {
+        let calendar = PinCalendar(id: 1, name: "Doomed", year: 2026, numberOfColumns: 3)
+        let (managing, vm) = await makeFixture(seed: [calendar])
+        try await vm.fetch()
+
+        var reported: [PCCalendarListWriteFailure] = []
+        vm.store.onWriteFailed = { reported.append($0) }
+
+        await managing.setWriteFailure(TestError.writeFailed)
+        vm.permanentlyDeleteCalendar(calendar)
+
+        await waitUntil { !reported.isEmpty }
+        #expect(reported.first?.operation == .permanentlyDelete(calendarID: 1))
+    }
+
+    /// Two writes issued back to back run one after the other, not concurrently.
+    ///
+    /// This is the defect the chain exists to prevent, and it is invisible to every other test
+    /// here: they issue one write and wait for it. The port cannot safely interleave — every
+    /// write in `CalendarCache` is a read-modify-write split by an `await` — so two unstructured
+    /// tasks let a restore's refetch be interleaved by an archive, which makes the restore
+    /// append an archived calendar back into the active list.
+    ///
+    /// Asserted by ordering the two writes' own side effects rather than by timing, so a slow
+    /// machine cannot fail it: the fake records the order writes *start* in, and the second is
+    /// only allowed to start once the first has finished.
+    @Test("writes issued back to back run in order, never concurrently")
+    func writesAreSerialised() async throws {
+        let first = PinCalendar(id: 1, name: "First", year: 2026, numberOfColumns: 3)
+        let second = PinCalendar(id: 2, name: "Second", year: 2026, numberOfColumns: 3)
+        let (managing, vm) = await makeFixture(seed: [first, second])
+        try await vm.fetch()
+
+        await managing.startRecordingOrder()
+        vm.archiveCalendarInList(first)
+        vm.permanentlyDeleteCalendar(second)
+
+        await waitUntil { await managing.recordedOrder().count >= 2 }
+        #expect(await managing.recordedOrder() == ["archive:1", "delete:2"])
+        #expect(await managing.wereAnyWritesOverlapping() == false)
+    }
+
+    /// A caller that sets no callback is unaffected.
+    ///
+    /// All three callbacks are optional and default to absent, so a view model built without
+    /// them must not trap when they are raised.
+    @Test("raising with no callback set is harmless")
+    func raisingWithoutCallbacksIsHarmless() async throws {
+        let calendar = PinCalendar(id: 1, name: "Test", year: 2026, numberOfColumns: 3)
+        let (managing, vm) = await makeFixture(seed: [calendar])
+        try await vm.fetch()
+
+        await managing.setWriteFailure(TestError.writeFailed)
+        vm.archiveCalendarInList(calendar)
+        await waitUntil { vm.writeFailure != nil }
+
+        await managing.setLoadFailure(TestError.readFailed)
+        await #expect(throws: TestError.readFailed) { try await vm.fetch() }
+
+        // Both raise points ran with nobody listening, and both still recorded their state.
+        #expect(vm.writeFailure != nil)
+        #expect(vm.loadFailure)
+    }
+}
+
+// MARK: - Reducer and effects
+
+/// The pure functions, with no port, no timer and no view.
+///
+/// This is what the reducer split bought: every rule below used to be reachable only by
+/// standing up a view model over a fake `CalendarManaging` and waiting for an effect to land.
+/// Asserting them here is both faster and stricter — these tests cannot pass by accident
+/// through a scheduled write, and a transition that is wrong in isolation is now visible
+/// without anything else having to be right.
+@Suite("CalendarListReducer Tests")
+struct CalendarListReducerTests {
+    private func state(_ configure: (inout CalendarListState) -> Void = { _ in }) -> CalendarListState {
+        var state = CalendarListState(mode: .active)
+        configure(&state)
+        return state
+    }
+
+    // MARK: The loading rule
+
+    /// A load with nothing behind it is a spinner.
+    @Test("a load with no calendars shows the spinner")
+    func loadWithNothingToShowIsLoading() {
+        let next = calendarListReducer(state(), .loadStarted)
+        #expect(next.stage == .loading)
+    }
+
+    /// A load over a populated list must not replace it with a spinner.
+    ///
+    /// The conjunction lived in the view body before (`isLoading && calendars.isEmpty`), so this
+    /// is the rule that was one edit away from flickering the whole screen on every
+    /// pull-to-refresh.
+    @Test("a load over a populated list leaves the content alone")
+    func loadOverContentIsNotLoading() {
+        let seeded = state { $0.calendars = [makeCalendar(1)] }
+        #expect(seeded.stage == .loading)
+        let next = calendarListReducer(seeded, .loadStarted)
+        #expect(next.stage == .loading)
+        #expect(next.calendars.count == 1)
+    }
+
+    /// The failure toast has to survive the retry it was offering.
+    ///
+    /// If `.loadStarted` cleared `loadFailure`, the toast would vanish the instant the user
+    /// pressed Retry — replacing "your calendars could not be read, try again" with a spinner
+    /// and no explanation of what it is waiting for.
+    @Test("starting a load does not clear a previous failure")
+    func loadStartedKeepsTheFailureToast() {
+        let failed = state { $0.loadFailure = true }
+        let next = calendarListReducer(failed, .loadStarted)
+        #expect(next.loadFailure)
+    }
+
+    /// A landed load clears the failure and shows content.
+    @Test("a successful load clears the failure")
+    func successClearsFailure() {
+        let failed = state {
+            $0.loadFailure = true
+            $0.stage = .loading
+        }
+        let next = calendarListReducer(failed, .loadSucceeded([makeCalendar(1)]))
+        #expect(next.loadFailure == false)
+        #expect(next.stage == .content)
+        #expect(next.calendars.count == 1)
+    }
+
+    /// A failed load keeps the last known list.
+    ///
+    /// The regression this whole failure-reporting work exists to prevent: a failed read
+    /// returning `[]` made a database error indistinguishable from an account with no calendars.
+    @Test("a failed load does not empty the list")
+    func failureKeepsTheLastKnownList() {
+        let loaded = state {
+            $0.calendars = [makeCalendar(1)]
+            $0.stage = .content
+        }
+        let next = calendarListReducer(loaded, .loadFailed)
+        #expect(next.calendars.count == 1)
+        #expect(next.loadFailure)
+    }
+
+    // MARK: The archive window
+
+    /// Archiving opens nothing on its own.
+    ///
+    /// The whole reason for `.archiveConfirmed`: the toast used to appear before the write was
+    /// attempted, so a failed archive left the calendar sitting there under a banner claiming it
+    /// had gone, with five seconds of Undo counting down over nothing.
+    @Test("archiving alone opens no toast")
+    func archiveTappedOpensNoToast() {
+        let seeded = state { $0.calendars = [makeCalendar(1)] }
+        let next = calendarListReducer(seeded, .archiveTapped(makeCalendar(1)))
+        #expect(next.isArchiveToastPresented == false)
+        #expect(next.pendingArchive == nil)
+    }
+
+    @Test("a landed archive opens the undo window")
+    func archiveConfirmedOpensTheWindow() {
+        let seeded = state { $0.calendars = [makeCalendar(1)] }
+        let next = calendarListReducer(seeded, .archiveConfirmed(makeCalendar(1)))
+        #expect(next.isArchiveToastPresented)
+        #expect(next.pendingArchive?.id == 1)
+    }
+
+    @Test("the window elapsed leaves the calendar archived")
+    func undoWindowElapsedClosesTheWindow() {
+        let opened = state {
+            $0.pendingArchive = makeCalendar(1)
+            $0.isArchiveToastPresented = true
+        }
+        let next = calendarListReducer(opened, .undoWindowElapsed)
+        #expect(next.isArchiveToastPresented == false)
+        #expect(next.pendingArchive == nil)
+    }
+
+    // MARK: Retry
+
+    /// A retry reads the operation it must re-run out of the state it just cleared.
+    ///
+    /// Asserted through `calendarListEffects`, because that is the only place the two halves
+    /// are visible together: the reducer's job is to clear `writeFailure`, and the effect's is
+    /// to have already read it.
+    @Test("a retry re-runs the operation that failed")
+    func retryReRunsTheFailedOperation() {
+        let failure = PCCalendarListWriteFailure(
+            operation: .rename(calendarID: 7, newName: "Work"),
+            calendarName: "Work",
+            message: "disk full"
+        )
+        let previous = state { $0.writeFailure = failure }
+        let next = calendarListReducer(previous, .retryWriteFailure)
+
+        #expect(next.writeFailure == nil, "so a failure that recurs is recorded afresh")
+        #expect(
+            calendarListEffects(.retryWriteFailure, previous, next)
+                == [.renameCalendar(calendarID: 7, newName: "Work")]
+        )
+    }
+
+    /// Every retryable operation maps to its own effect, and no two share one.
+    ///
+    /// Parameterised because the five are otherwise five separate copy-pasted `switch` arms,
+    /// and a copy-pasted switch is how the archive undo and the rename came to disagree about
+    /// what "retry" meant.
+    @Test(
+        "each retryable operation maps to its own effect",
+        arguments: [
+            (PCCalendarListWriteFailure.Operation.create(name: "New"), CalendarListEffect.createCalendar(name: "New")),
+            (.rename(calendarID: 3, newName: "Renamed"), .renameCalendar(calendarID: 3, newName: "Renamed")),
+            (.archive(calendarID: 4), .archiveCalendar(calendarID: 4)),
+            (.restore(calendarID: 5), .restoreCalendar(calendarID: 5)),
+            (.permanentlyDelete(calendarID: 6), .permanentlyDeleteCalendar(calendarID: 6)),
+        ] as [(PCCalendarListWriteFailure.Operation, CalendarListEffect)]
+    )
+    func retryMapsToItsOwnEffect(
+        operation: PCCalendarListWriteFailure.Operation,
+        expected: CalendarListEffect
+    ) {
+        let previous = state {
+            $0.writeFailure = .init(operation: operation, calendarName: nil, message: "no")
+        }
+        let next = calendarListReducer(previous, .retryWriteFailure)
+        #expect(calendarListEffects(.retryWriteFailure, previous, next) == [expected])
+    }
+
+    /// A retry with nothing to retry does nothing.
+    ///
+    /// Not a hypothetical: `.retryWriteFailure` reaches the store from a toast's action, and a
+    /// stale tap on a dismissed toast would otherwise re-run nothing at best.
+    @Test("a retry with no failure runs no effect")
+    func retryWithNothingToRetry() {
+        let previous = state()
+        let next = calendarListReducer(previous, .retryWriteFailure)
+        #expect(calendarListEffects(.retryWriteFailure, previous, next).isEmpty)
+    }
+
+    // MARK: The change feed
+
+    /// A removal announces itself only when the list actually lost the calendar.
+    ///
+    /// Load-bearing, and once wrong: a permanent delete that *failed* used to still close the
+    /// detail column, tearing down a screen over a row that never went anywhere.
+    @Test("a removal announces the id once the list has dropped it")
+    func removalIsAnnounced() {
+        let seeded = state {
+            $0.calendars = [makeCalendar(1)]
+            $0.stage = .content
+        }
+        let removed = makeCalendar(1)
+        let next = calendarListReducer(seeded, .changeApplied(.removed(removed)))
+        #expect(next.calendars.isEmpty)
+        #expect(calendarListEffects(.changeApplied(.removed(removed)), seeded, next) == [.announceRemoval(1)])
+    }
+
+    /// A change about another mode's list must not announce anything.
+    @Test("an add that is filtered out announces nothing")
+    func filteredAddAnnouncesNothing() {
+        let archived = CalendarListState(mode: .archived)
+        let change = PinCalendarChange.added(makeCalendar(9)) // not archived, so not visible here
+        let next = calendarListReducer(archived, .changeApplied(change))
+        #expect(next.calendars.isEmpty)
+        #expect(calendarListEffects(.changeApplied(change), archived, next).isEmpty)
+    }
+
+    /// A store's change feed is relative to whichever list *it* loaded, so a restore seen from
+    /// Archived reads as an addition even though the result is that it leaves this list.
+    @Test("a change is resolved against this screen's mode, not its shape")
+    func changeIsResolvedAgainstMode() {
+        let archived = CalendarListState(mode: .archived)
+        let restored = makeCalendar(5, isArchived: false)
+        let next = calendarListReducer(archived, .changeApplied(.changed(restored)))
+        #expect(next.calendars.isEmpty, "an unarchived calendar does not belong in the archived list")
+    }
+
+    /// An upsert into a list that already holds the row replaces it rather than duplicating it.
+    @Test("an upsert replaces rather than appends")
+    func upsertReplaces() {
+        let seeded = state {
+            $0.calendars = [makeCalendar(1, name: "Old")]
+            $0.stage = .content
+        }
+        let next = calendarListReducer(seeded, .changeApplied(.changed(makeCalendar(1, name: "New"))))
+        #expect(next.calendars.count == 1)
+        #expect(next.calendars.first?.name == "New")
+    }
+
+    /// A create that lands while the screen is a spinner has to take the spinner down.
+    ///
+    /// Nothing else can: a create does not call `loadSucceeded`, and the screen may never send
+    /// another load. Without this the list stays a spinner over a calendar that is right there.
+    @Test("an added calendar fills the spinner")
+    func addedCalendarFillsTheSpinner() {
+        let spinner = state()
+        #expect(spinner.stage == .loading)
+        let next = calendarListReducer(spinner, .changeApplied(.added(makeCalendar(2))))
+        #expect(next.stage == .content)
+        #expect(next.calendars.count == 1)
+    }
+
+    // MARK: View-only
+
+    @Test("the display mode toggles both ways")
+    func displayModeToggles() {
+        let list = state { $0.displayMode = .list }
+        let grid = calendarListReducer(list, .displayModeToggled)
+        #expect(grid.displayMode == .grid)
+        #expect(calendarListReducer(grid, .displayModeToggled).displayMode == .list)
+    }
+
+    /// A rejected action returns the state it was given, unchanged and equal.
+    ///
+    /// This is what makes `send` skip the commit *and* the effects: `next == previous` is the
+    /// test, so an action the reducer declines must be a true no-op rather than merely a
+    /// visually similar one.
+    @Test("an action for an absent calendar changes nothing")
+    func renameOfAnAbsentCalendarIsANoOp() {
+        let seeded = state { $0.calendars = [makeCalendar(1)] }
+        let next = calendarListReducer(seeded, .renameCommitted(calendarID: 99, newName: "X"))
+        #expect(next == seeded)
+    }
+
+    private func makeCalendar(_ id: Int64, name: String = "Test", isArchived: Bool = false) -> PinCalendar {
+        PinCalendar(id: id, name: name, year: 2026, numberOfColumns: 3, isArchived: isArchived)
     }
 }
 
@@ -234,6 +718,22 @@ private func waitUntil(
 ) async {
     let deadline = Date().addingTimeInterval(timeout)
     while !condition(), Date() < deadline {
+        try? await Task.sleep(for: .milliseconds(20))
+    }
+}
+
+/// The same, for a condition that has to await the port to answer.
+///
+/// Separate because `waitUntil` takes a synchronous closure — a condition that awaits cannot be
+/// passed to it at all — and folding the two together would have meant making every existing
+/// call site `async` for the sake of the handful that need it.
+@MainActor
+private func waitUntil(
+    timeout: TimeInterval = 2,
+    _ condition: @MainActor () async -> Bool
+) async {
+    let deadline = Date().addingTimeInterval(timeout)
+    while await condition() == false, Date() < deadline {
         try? await Task.sleep(for: .milliseconds(20))
     }
 }
@@ -611,7 +1111,7 @@ struct CalendarListViewModelIntegrationTests {
         let (_, vm) = await makeFixture(seed: [archived])
 
         var removed: [Int64] = []
-        vm.onCalendarRemoved = { removed.append($0) }
+        vm.store.onCalendarRemoved = { removed.append($0) }
 
         try await vm.fetch()
         vm.archiveCalendarInList(archived)
@@ -628,7 +1128,7 @@ struct CalendarListViewModelIntegrationTests {
         let (_, vm) = await makeFixture(seed: [calendar])
 
         var wasAlreadyGone: Bool?
-        vm.onCalendarRemoved = { [weak vm] _ in wasAlreadyGone = vm?.calendars.isEmpty }
+        vm.store.onCalendarRemoved = { [weak vm] _ in wasAlreadyGone = vm?.calendars.isEmpty }
 
         try await vm.fetch()
         vm.permanentlyDeleteCalendar(calendar)
@@ -646,7 +1146,7 @@ struct CalendarListViewModelIntegrationTests {
         let (managing, vm) = await makeFixture(seed: [calendar])
 
         var removed: [Int64] = []
-        vm.onCalendarRemoved = { removed.append($0) }
+        vm.store.onCalendarRemoved = { removed.append($0) }
 
         try await vm.fetch()
         vm.archiveCalendarInList(calendar)
@@ -669,7 +1169,7 @@ struct CalendarListViewModelIntegrationTests {
         let (_, vm) = await makeFixture(seed: [calendar], mode: .archived)
 
         var removed: [Int64] = []
-        vm.onCalendarRemoved = { removed.append($0) }
+        vm.store.onCalendarRemoved = { removed.append($0) }
 
         try await vm.fetch()
         vm.permanentlyDeleteCalendar(calendar)
@@ -693,7 +1193,11 @@ struct CalendarListViewModelIntegrationTests {
         card.editingName = "New Name"
         card.confirmEdit()
 
-        await waitUntil { vm.calendars.first?.name == "New Name" }
+        // Waits on the *store*, not on `calendars`. The reducer applies the new name to the
+        // list synchronously — that is the optimistic update the revert exists for — so
+        // `calendars` is already correct before the write has been issued, and waiting on it
+        // would let the assertion below run against storage the write has not reached yet.
+        await waitUntil { await managing.calendar(id: 1)?.name == "New Name" }
         #expect(await managing.calendar(id: 1)?.name == "New Name")
     }
 }

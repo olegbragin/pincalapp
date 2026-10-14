@@ -29,10 +29,7 @@ struct CalendarDetailView: View {
         Group {
             if let model {
                 SingleCalendarView(
-                    viewModel: model,
-                    onSaveFailed: { failure in
-                        errorRecorder.record(failure, operation: "eventBatch.save")
-                    }
+                    viewModel: model
                 )
                 .id(calendarId)
                 .accessibilityIdentifier("calendar-detail-\(calendarId)")
@@ -59,6 +56,20 @@ struct CalendarDetailView: View {
             // still shows a blank column. It just no longer *replaces* good content with
             // nothing. Giving `.empty` a failure case, and telling the user, is still to do.
             try? await model?.fetch(force: true)
+        }
+        /// Records a batch write that did not land.
+        ///
+        /// Observed here rather than taken as an `onSaveFailed` callback on `SingleCalendarView`,
+        /// which is where it used to come from. That view does not own `failedSave` — the store
+        /// does — so the callback was the view relaying an event it had merely observed, and the
+        /// app target already holds the very store it was being told about. One owner now: this
+        /// view, reading the same observable state the retry toast reads.
+        ///
+        /// Fires on the `nil -> failure` edge only, because `onChange` gives the new value rather
+        /// than the transition. Re-recording the same failure would otherwise write a second row.
+        .onChange(of: session.eventSelection(for: calendarId).failedSave) { _, failure in
+            guard let failure else { return }
+            errorRecorder.record(failure, operation: "eventBatch.save")
         }
         .onDisappear {
             // Leaving the calendar ends any multi-select session, on both platforms: on iPhone

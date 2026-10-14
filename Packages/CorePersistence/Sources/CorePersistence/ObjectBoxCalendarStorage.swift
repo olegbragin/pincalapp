@@ -128,7 +128,9 @@ public class ObjectBoxCalendarStorage: CalendarRepository, @unchecked Sendable {
                 return Int64(ppcalendar.id)
             }
         } catch {
-            print(error)
+            #if DEBUG
+                print("[ObjectBoxCalendarStorage] write failed: \(error).")
+            #endif
             throw error
         }
     }
@@ -175,7 +177,9 @@ public class ObjectBoxCalendarStorage: CalendarRepository, @unchecked Sendable {
             return try calendarEntityBox.query { PPCalendar.isArchived == false }
                 .build().find().compactMap { CalendarDataSource($0) }
         } catch {
-            print("[ObjectBoxCalendarStorage] getActiveCalendars query failed: \(error). Falling back to getAllCalendars.")
+            #if DEBUG
+                print("[ObjectBoxCalendarStorage] getActiveCalendars query failed: \(error). Falling back to getAllCalendars.")
+            #endif
             return try await getAllCalendars().filter { !$0.isArchived }
         }
     }
@@ -185,7 +189,9 @@ public class ObjectBoxCalendarStorage: CalendarRepository, @unchecked Sendable {
             return try calendarEntityBox.query { PPCalendar.isArchived == true }
                 .build().find().compactMap { CalendarDataSource($0) }
         } catch {
-            print("[ObjectBoxCalendarStorage] getArchivedCalendars query failed: \(error). Falling back to getAllCalendars.")
+            #if DEBUG
+                print("[ObjectBoxCalendarStorage] getArchivedCalendars query failed: \(error). Falling back to getAllCalendars.")
+            #endif
             return try await getAllCalendars().filter { $0.isArchived }
         }
     }

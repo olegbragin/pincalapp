@@ -19,7 +19,8 @@ public struct CalendarListView: View {
     /// embedded anywhere without a detail column behind it needs no wiring.
     public var onCalendarRemoved: (Int64) -> Void = { _ in }
 
-    /// Told when a load fails, with the error that came back.
+    /// Told when a load fails, with the error that came back. Handed to the view model in `.task`;
+    /// see `CalendarListViewModel.onLoadFailed`.
     ///
     /// Reporting rather than recording from inside this package: the reporter lives in
     /// `CorePersistence`, which this package does not depend on and should not. What this package
@@ -28,7 +29,8 @@ public struct CalendarListView: View {
     /// does not care is unaffected.
     public var onLoadFailed: ((any Error) -> Void)?
 
-    /// Told when a write fails, with the failure that has to be retried.
+    /// Told when a write fails, with the failure that has to be retried. Handed to the view model
+    /// in `.task`; see `CalendarListViewModel.onWriteFailed`.
     ///
     /// Separate from `onLoadFailed` because the two are not the same event: a write failure carries
     /// its own retry payload and is offered to the user, whereas a load failure keeps the last
@@ -113,29 +115,19 @@ public struct CalendarListView: View {
             if viewModel == nil {
                 guard let managing else { return }
                 let model = CalendarListViewModel(mode: mode, managing: managing, undoWindowDuration: undoWindowDuration)
-                // Assigned here rather than folded into `init`: the callback closes over this
-                // view's parameter, and the view model is only ever built once. A list that
-                // swapped modes would keep the first model's callback — which is why `RootContentView`
-                // tears the view down between modes instead of reconfiguring it.
-                model.onCalendarRemoved = onCalendarRemoved
+                // Assigned here rather than folded into `init`: the callbacks close over this
+                // view's parameters, and the view model is only ever built once. A list that
+                // swapped modes would keep the first model's callbacks — which is why
+                // `RootContentView` tears the view down between modes instead of reconfiguring it.
+                model.store.onCalendarRemoved = onCalendarRemoved
+                model.store.onLoadFailed = onLoadFailed
+                model.store.onWriteFailed = onWriteFailed
                 viewModel = model
             }
-            // The view model now records the failure in `loadFailure` and keeps the previous
-            // list, so a failed load no longer empties the screen — that is handled, and
-            // the catch is only discarding the rethrow.
-            //
-            // Still `try?`, deliberately and **not** finished business: nothing reads
-            // `loadFailure` yet, so the user is still not told. What is left is the
-            // presentation, which is this package's decision about its own words and the
-            // app's about how they are offered.
-            do {
-                try await viewModel?.fetch()
-            } catch {
-                // `fetch` already recorded the failure and kept the last known calendars, so
-                // this is reporting, not recovery. The `try?` this replaces discarded the very
-                // thing the owner most wants to hear about.
-                onLoadFailed?(error)
-            }
+            // `fetch` dispatches `.loadStarted` and then awaits the load, rethrowing. There is
+            // no caller left here to branch on that: the failure is already recorded in
+            // `loadFailure` for the toast and raised to `onLoadFailed` for the app target.
+            try? await viewModel?.fetch()
         }
     }
 
@@ -159,22 +151,19 @@ public struct CalendarListView: View {
                     onCalendarDelete: { viewModel.archiveCalendarInList($0) },
                     onCalendarRestore: { viewModel.restoreCalendarInList($0) },
                     onCalendarPermanentDelete: { viewModel.permanentlyDeleteCalendar($0) },
-                    // `fetch` records the failure in `loadFailure` and rethrows; the rethrow is
-                    // what lets `safeRefreshable`'s spinner be taken down rather than stranded.
+                    // `fetch` records the failure and raises `onLoadFailed` from its own catch,
+                    // then rethrows. The rethrow is what lets `safeRefreshable` take its spinner
+                    // down rather than strand it.
+                    //
+                    // No `onRefreshFailed` is passed, and that is deliberate rather than an
+                    // omission: the error is already reported by the time it arrives here, and
+                    // `PCSafeRefreshableModifier` optional-chains the callback and puts the
+                    // spinner away unconditionally either way — so a closure that did nothing
+                    // would be indistinguishable from passing none. This used to be where the
+                    // reporting happened, which is why it needed `MainActor.assumeIsolated` to
+                    // reach a main-actor property from a `@Sendable` closure; the report moved
+                    // into the store and the hop went with it.
                     onRefresh: { try await model.fetch() },
-                    onRefreshFailed: { error in
-                        // Reported upward rather than swallowed. `CalendarListContent` is a
-                        // presentational list with no vocabulary of its own, so it hands the error
-                        // to whoever owns the model and can say something about it.
-                        //
-                        // Hopped back to the main actor because that closure is `@Sendable` and
-                        // this property is main-actor-isolated — it belongs to a `View`, and the
-                        // compiler will not let a Sendable closure read it directly. The refresh
-                        // that produced this error always runs on the main actor anyway, so
-                        // `assumeIsolated` is true by construction; the alternative, a `Task`, would
-                        // make the report land a runloop later than the failure for no gain.
-                        MainActor.assumeIsolated { onLoadFailed?(error) }
-                    },
                     selectedCalendarID: selectedCalendarID,
                     onSelectCalendar: onSelectCalendar,
                     cardLayout: layout
@@ -194,19 +183,6 @@ public struct CalendarListView: View {
         // `#F4F0EA` in light and carries its own dark variant, which is also what the launch
         // screen paints.
         .background(vibe.color(for: .backgroundMain))
-        /// Reports write failures upward.
-        ///
-        /// Observed rather than caught, because a write failure does not throw: `recordWriteFailure`
-        /// stores it and returns, so the failure *is* the state. Reading it here rather than at each
-        /// call site is what keeps this to one place — there are five write entry points, and a
-        /// `do/catch` in each would be five chances to forget one.
-        ///
-        /// Fires on the `nil -> failure` edge only. Re-assigning the same failure — which a retry
-        /// does when it fails the same way — would otherwise report the same failure twice.
-        .onChange(of: viewModel.writeFailure) { _, failure in
-            guard let failure else { return }
-            onWriteFailed?(failure)
-        }
         .ignoresSafeArea(edges: .bottom)
         .overlay(alignment: .bottomTrailing) {
             addButton(for: viewModel)
@@ -226,7 +202,7 @@ public struct CalendarListView: View {
                 ToolbarItem(placement: .pcTrailing) {
                     Button {
                         withAnimation(.easeInOut(duration: 0.3)) {
-                            viewModel.displayMode = viewModel.displayMode.toggled
+                            viewModel.toggleDisplayMode()
                         }
                     } label: {
                         Label(viewModel.displayMode.toggled.label, systemImage: viewModel.displayMode.toggled.icon)
@@ -243,7 +219,7 @@ public struct CalendarListView: View {
             AddEditCalendarView(viewModel: viewModel.addEditCalendarViewModel)
         }
         .pcToast(
-            isPresented: $viewModel.isArchiveToastPresented,
+            isPresented: viewModel.archiveToastPresentedBinding,
             position: .bottom,
             message: viewModel.archiveToastMessage,
             actionTitle: "Undo",
@@ -267,18 +243,14 @@ public struct CalendarListView: View {
         /// known calendars — so the user sees stale data clearly marked as possibly-stale rather
         /// than an empty screen that reads as data loss.
         .pcToast(
-            isPresented: loadFailureBinding(for: model),
+            isPresented: model.loadFailureBinding,
             position: .bottom,
             message: "Couldn't load your calendars",
             actionTitle: "Retry",
             action: {
-                Task {
-                    do {
-                        try await model.fetch()
-                    } catch {
-                        onLoadFailed?(error)
-                    }
-                }
+                // A retry is a plain re-read. Its outcome is state: `loadFailure` clears only
+                // if this retry landed, and `onLoadFailed` has already been told either way.
+                Task { try? await model.fetch() }
             },
             backgroundColor: .black.opacity(0.85),
             /// No progress: this toast has no deadline.
@@ -303,7 +275,7 @@ public struct CalendarListView: View {
         /// The permanent delete's message says it plainly, because its retry is the only way back
         /// and the user should not have to infer that from an icon.
         .pcToast(
-            isPresented: writeFailureBinding(for: model),
+            isPresented: model.writeFailureBinding,
             position: .bottom,
             message: writeFailureMessage(for: model),
             actionTitle: "Retry",
@@ -336,25 +308,5 @@ public struct CalendarListView: View {
         case .permanentlyDelete:
             return "Couldn't delete \(name ?? "the calendar"). This can't be undone."
         }
-    }
-
-    /// `loadFailure` as something the toast can bind to.
-    ///
-    /// `pcToast` takes a `Binding<Bool>` and the model stores a `Bool` that it owns; this is the
-    /// adapter, and `set` is empty because nothing here *clears* the failure — `fetch` does, on
-    /// success. A binding that could write it would let a dismissed toast look like a resolved
-    /// one.
-    private func loadFailureBinding(for model: CalendarListViewModel) -> Binding<Bool> {
-        Binding(get: { model.loadFailure }, set: { _ in })
-    }
-
-    /// `writeFailure`'s presence as something the toast can bind to.
-    ///
-    /// Same one-way shape as the load binding, and for a sharper reason: dismissing this toast
-    /// must not clear the failure, because the write did not happen and the only thing that can
-    /// clear it is a write succeeding. A dismissible-looking failure that a swipe could remove
-    /// would put the app back to swallowing errors.
-    private func writeFailureBinding(for model: CalendarListViewModel) -> Binding<Bool> {
-        Binding(get: { model.writeFailure != nil }, set: { _ in })
     }
 }
