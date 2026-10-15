@@ -224,16 +224,21 @@ struct PCEventSelectionManagerTests {
         // one thing a batch cannot do without — the name is optional and always has been since
         // names stopped gating `canSave`, so clearing the name would no longer produce a
         // refusal. It has to be cleared explicitly to reach a declined transition at all.
+        //
+        // The batch is made real by the colour it is about to lose: a new batch is a draft
+        // until it is edited, so without that step there would be no row to keep and Back
+        // would be discarding an untouched draft rather than declining to delete one.
         store.send(.startNewBatch(on: day(4)))
+        store.send(.setBatchColor(.option1))
         store.send(.setBatchColor(nil))
         #expect(store.state.assembly?.canSave == false, "precondition: the batch is unwritable")
 
         store.send(.backTapped)
 
-        // An unwritable batch is still a batch: a tap wrote it immediately, and clearing the
-        // colour afterwards leaves the row as it was written. So this does not assert that
-        // nothing happened — the colour change wrote nothing new, because a batch with no
-        // colour resolves to no row. The point being kept is that Back did not read the
+        // An unwritable batch is still a batch: it was written when the colour was chosen, and
+        // clearing the colour afterwards leaves the row as it was written. So this does not
+        // assert that nothing happened — the colour change wrote nothing new, because a batch
+        // with no colour resolves to no row. The point being kept is that Back did not read the
         // unwritable batch as a reason to unwind past the day list.
         //
         // Compared as a *day*. `backTapped` re-anchors on the registry row's `date`, which is
@@ -450,6 +455,64 @@ struct PCEventSelectionManagerTests {
         #expect(
             written.last == "Swimming",
             "the last keystroke before a switch is the one most at risk of being lost"
+        )
+    }
+
+    /// The same flush, reached by submitting the field rather than by leaving.
+    ///
+    /// The autosave delay here is 30s, so nothing would be written for the whole test unless
+    /// the submit did it — which is the point. Everything that *leaves* the editor already
+    /// flushes, so this covers the case they cannot: the user finishes typing, submits, and
+    /// then neither navigates nor switches calendars.
+    @Test("Submitting the name field flushes the debounced write without leaving")
+    func submittingFlushesPendingNameWrite() async {
+        let persistence = RecordingCalendarPersisting()
+        let store = PCEventSelectionManager(
+            initialState: PCEventSelectionState(dataProvider: PCCalendarDataProvider()),
+            persistence: persistence,
+            daySelectionManager: PCCalendarDaySelectionManager(),
+            nameAutosaveDelay: .seconds(30)
+        )
+        store.send(.syncCalendar(calendarID: 42, batches: []))
+        store.send(.startNewBatch(on: day(4)))
+        store.send(.setBatchName("Swimming"))
+
+        // Typed and submitted, then nothing at all happens for a while.
+        store.send(.setBatchName("Swimming laps"))
+        store.send(.nameEditingFinished)
+
+        // Polled, not slept: the flush enqueues onto the write chain, so the port is asked
+        // asynchronously and reading `names` straight after `send` would be reading it before
+        // the write had been issued rather than before it had landed.
+        _ = await persistence.waitForWrites(1)
+        let written = await persistence.names
+        #expect(
+            written.last == "Swimming laps",
+            "the submitted name landed without waiting out a 30s debounce and without leaving"
+        )
+    }
+
+    /// Submitting with nothing pending must be inert, not a write.
+    @Test("Submitting the name field with nothing pending writes nothing")
+    func submittingWithNothingPendingWritesNothing() async {
+        let persistence = RecordingCalendarPersisting()
+        let store = PCEventSelectionManager(
+            initialState: PCEventSelectionState(dataProvider: PCCalendarDataProvider()),
+            persistence: persistence,
+            daySelectionManager: PCCalendarDaySelectionManager(),
+            nameAutosaveDelay: .seconds(30)
+        )
+        store.send(.syncCalendar(calendarID: 42, batches: []))
+        store.send(.startNewBatch(on: day(4)))
+        _ = await persistence.waitForWrites(0)
+        let writesBefore = await persistence.writtenColumns.count
+
+        store.send(.nameEditingFinished)
+
+        let written = await persistence.writtenColumns
+        #expect(
+            written.count == writesBefore,
+            "a flush of nothing is not a write — got \(written.count), had \(writesBefore)"
         )
     }
 

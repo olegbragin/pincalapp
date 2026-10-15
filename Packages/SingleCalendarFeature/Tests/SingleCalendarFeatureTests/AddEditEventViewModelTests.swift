@@ -42,6 +42,48 @@ struct AddEditEventViewModelTests {
         #expect(vm.nameBinding.wrappedValue == "Swim")
     }
 
+    /// The default name is shown as a placeholder, not as text the user has to clear.
+    ///
+    /// The event keeps its default in the store — masking it on read is the whole point — so
+    /// this is the assertion that the *projection* and the *stored value* are allowed to
+    /// disagree, and to disagree in exactly one direction.
+    @Test("The default event name projects as an empty field, with the default as placeholder")
+    func defaultNameProjectsAsPlaceholder() {
+        let (vm, store) = makeContext()
+
+        #expect(
+            store.state.eventDraft?.name == PCEventBatchAssembleUnitOfWork.defaultEventName,
+            "the stored value is still the default"
+        )
+        #expect(vm.nameBinding.wrappedValue.isEmpty, "but the field shows nothing")
+        #expect(vm.namePlaceholder == "New event day", "and offers it instead")
+    }
+
+    /// The other direction, which is the one that matters: once the user has typed, the name
+    /// shows. If masking ever leaked the other way the field would be permanently empty and
+    /// typing would appear to do nothing.
+    @Test("A typed name projects as itself")
+    func typedNameProjectsVerbatim() {
+        let (vm, _) = makeContext()
+
+        vm.nameBinding.wrappedValue = "Swim"
+
+        #expect(vm.nameBinding.wrappedValue == "Swim")
+    }
+
+    /// A deliberate trade-off, stated as a test so it cannot be forgotten: an event genuinely
+    /// named "New event day" reopens as an empty-looking field. Making the two distinguishable
+    /// needs a second flag recording "has been edited", which is the kind of state that
+    /// disagrees with the value it describes the first time either is cleared directly.
+    @Test("An event named exactly the default reopens looking unset")
+    func aNameEqualToTheDefaultLooksUnset() {
+        let (vm, store) = makeContext()
+        store.send(.setEventName(PCEventBatchAssembleUnitOfWork.defaultEventName))
+
+        #expect(store.state.eventDraft?.name == "New event day", "stored verbatim")
+        #expect(vm.nameBinding.wrappedValue.isEmpty, "but indistinguishable from untouched")
+    }
+
     @Test("The colour binding dispatches a colour option")
     func colorBindingDispatches() {
         let (vm, store) = makeContext()

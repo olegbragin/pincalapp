@@ -49,20 +49,13 @@ public struct AddEditEventView: View {
                         .font(.headline)
                         .fontWeight(.medium)
 
-                    PCTextField(title: String(localized: .enterName), text: viewModel.nameBinding, identifier: "event-name-field")
+                    // The event's default name, shown as the placeholder. The field itself
+                    // opens empty: the default is masked out in `nameBinding`, so this is an
+                    // offer rather than text to delete.
+                    PCTextField(title: viewModel.namePlaceholder, text: viewModel.nameBinding, identifier: "event-name-field")
+                        .onSubmit { store.send(.nameEditingFinished) }
                 }
 
-                VStack(alignment: .leading, spacing: 8) {
-                    Text(.selectColor)
-                        .font(.headline)
-                        .fontWeight(.medium)
-
-                    PCColorPickerView(
-                        selectedColor: viewModel.colorBinding,
-                        selectColorLabel: String(localized: .selectColor),
-                        optionNames: pcColorOptionNames()
-                    )
-                }
                 Spacer()
             }
             .padding()

@@ -122,13 +122,18 @@ struct SingleCalendarModelObjectBoxIntegrationTests {
         let context = makeContext()
         commitNewBatch(context, on: day(1), name: "Swim")
 
-        // Writing the name is debounced: a rename coalesces into one write once typing
-        // settles, rather than one per keystroke. The suite runs on a real clock, so the wait
-        // is for the debounce to elapse rather than for a fixed count — `waitForWrites`
-        // already polls, so it returns as soon as the writes it wants have landed.
-        let writes = await context.persistence.waitForWrites(2)
+        // Writing the name is debounced: a rename coalesces into one write once typing settles, rather
+        // than one per keystroke. The suite runs on a real clock, so the wait is for the
+        // debounce to elapse rather than for a fixed count — `waitForWrites` already polls, so
+        // it returns as soon as the writes it wants have landed.
+        //
+        // **Premise changed.** This used to wait for two: the tap wrote the batch, and the
+        // colour wrote it again. A tap writes nothing now, and the colour write supersedes the
+        // pending name write — it carries the same batches with the name already folded in — so
+        // the whole commit is one write.
+        let writes = await context.persistence.waitForWrites(1)
         let rows = await context.persistence.storedBatches(calendarID: 42)
-        #expect(writes >= 2, "creation and colouring write at once; the name follows the debounce")
+        #expect(writes >= 1, "the colour write supersedes the debounced name write, so one is enough")
         #expect(rows.count == 1)
         #expect(rows[0].name == "Swim", "the debounced write still landed the name")
         #expect(rows[0].name == "Swim")

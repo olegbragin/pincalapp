@@ -57,14 +57,20 @@ final class SaveFailedToastTests: XCTestCase {
         app.launch()
         KeyboardAvoidanceTestSupport.openCalendarDetail(app, named: "UI Test Calendar")
 
-        // Editing is what triggers the write. The tap on an empty day alone already writes,
-        // so there may be a failure on screen before the editor even opens.
+        // A tapped day is a draft and writes nothing, so there is nothing to fail yet.
+        // Naming it is what issues a write, and a write is what this test needs in order to
+        // fail. (This comment used to say the opposite — "the tap on an empty day alone
+        // already writes" — which is why no editing was needed here.)
         let day = try firstEmptyDay(in: app, from: [20, 21, 22, 23, 24])
         KeyboardAvoidanceTestSupport.tapDay(day: day, in: app)
         XCTAssertTrue(
             app.buttons["batch-editor-back-button"].waitForExistence(timeout: 10),
             "the batch editor should open"
         )
+
+        let nameField = app.textFields["batch-name-field"]
+        XCTAssertTrue(nameField.waitForExistence(timeout: 5), "the batch editor should offer a name field")
+        KeyboardAvoidanceTestSupport.replaceText(in: nameField, with: "Cycle")
 
         // The toast is anchored to the calendar, which the editor is pushed on top of. So the
         // editor is closed before looking for it — the failure is recorded either way, but a

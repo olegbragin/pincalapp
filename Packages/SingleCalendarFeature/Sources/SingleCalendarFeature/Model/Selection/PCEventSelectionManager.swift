@@ -203,6 +203,17 @@ public final class PCEventSelectionManager {
         for effect in pcEventSelectionEffects(action, previous, next) {
             perform(effect, isNameEdit: nameEdit)
         }
+
+        // "Finished typing" answered here rather than by an effect, because it is not a write
+        // — it is the absence of a wait. The keystrokes already enqueued their own write; this
+        // only lands the one still sitting on the debounce.
+        //
+        // Ordered after the loop deliberately: a flush that ran first could write the
+        // pre-transition batches and then let the effect's own write supersede it, which is two
+        // writes of the same thing in the wrong order for no benefit.
+        if case .nameEditingFinished = action {
+            nameAutosave.flush()
+        }
     }
 
     // MARK: - Day taps in the editor's calendar

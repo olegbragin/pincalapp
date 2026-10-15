@@ -59,24 +59,33 @@ struct PCEventBatchAssembleUnitOfWorkTests {
 
     // MARK: - Identity
 
-    /// The default a new batch arrives with, pinned because a great deal rides on it: it
-    /// is what makes a merely-tapped day savable, and it is what a user sees before they
-    /// type anything.
-    @Test("new(anchor:) arrives named and coloured, so a tapped day is savable immediately")
+    /// The default a new batch arrives with, pinned because a great deal rides on it: the
+    /// **colour** is what makes a merely-tapped day writable, and the **empty name** is what
+    /// makes it a draft rather than a row.
+    ///
+    /// **Premise changed.** This asserted the batch arrived named `defaultBatchName`, "so a
+    /// tapped day is savable immediately". Both halves of that are now false on purpose: a
+    /// tapped day is *not* savable immediately, because that made the app's most common
+    /// accident permanent. See `isDraft`.
+    @Test("new(anchor:) arrives unnamed and coloured, so a tapped day is a draft")
     func newSeedsOneEvent() {
         let assembler = PCEventBatchAssembleUnitOfWork.new(anchor: day(6, 1), using: provider)
 
         #expect(assembler.origin == .new)
         #expect(assembler.isNew)
         #expect(assembler.batch.events.count == 1)
-        #expect(assembler.batch.name == PCEventBatchAssembleUnitOfWork.defaultBatchName)
+        #expect(
+            assembler.batch.name.isEmpty,
+            "unnamed, which is the whole of `isDraft` — and the reason nothing is written yet"
+        )
+        #expect(assembler.isDraft)
         #expect(assembler.batch.colorName == PCColorOption.firstAvailable.colorName)
         #expect(assembler.batch.events[0].name == PCEventBatchAssembleUnitOfWork.defaultEventName)
         #expect(
             assembler.batch.events[0].colorName == assembler.batch.colorName,
-            "the event inherits the batch's colour, so the event editor's own Save is enabled too"
+            "the event inherits the batch's colour, so recolouring one recolours the other"
         )
-        #expect(assembler.canSave, "a merely-tapped day must be committable without any editing")
+        #expect(assembler.canSave, "a colour alone makes it writable — the name is not the gate")
         #expect(assembler.adoptedPersistedID == nil)
     }
 
@@ -112,7 +121,7 @@ struct PCEventBatchAssembleUnitOfWorkTests {
         #expect(assembler.batch.colorName == PCColorOption.option2.colorName)
         #expect(assembler.batch.events.allSatisfy { $0.colorName == PCColorOption.option2.colorName })
         #expect(assembler.batch.events.allSatisfy { $0.name == PCEventBatchAssembleUnitOfWork.defaultEventName })
-        #expect(assembler.batch.name == PCEventBatchAssembleUnitOfWork.defaultBatchName)
+        #expect(assembler.batch.name.isEmpty, "a session's batch is unnamed too")
         #expect(assembler.canSave)
         let dates = assembler.batch.events.map(\.date)
         #expect(dates == dates.sorted(), "order must not depend on tap order")

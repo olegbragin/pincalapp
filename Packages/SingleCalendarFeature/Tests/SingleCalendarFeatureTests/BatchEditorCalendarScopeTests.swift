@@ -121,6 +121,10 @@ struct BatchEditorCalendarScopeTests {
         store.send(.toggleDay(day(3)))
         store.send(.backTapped)
         store.send(.startNewBatch(on: day(20)))
+        // Named, so it is a batch rather than a draft. An untouched second batch would be
+        // correctly absent here — nothing was written for it — and the assertion below would
+        // be measuring the draft rule instead of the payload scoping.
+        store.send(.setBatchName("Later"))
         store.send(.backTapped)
         model.send(.ensureAssemblyStarted)
 

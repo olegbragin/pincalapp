@@ -111,21 +111,28 @@ public func pcEventSelectionReducer(
             requesting(&next, .pushDayList)
         } else {
             next.day = day
-            // Named and coloured by default (§5.4), so a merely-tapped day is already
-            // savable. It used to be staged deliberately uncoloured, on the reasoning that
-            // `canSave` would refuse to commit it until the user filled both in — which
-            // also meant the editor opened with Save disabled, and the only way out of an
-            // accidental tap was to type a name and pick a colour before backing out.
+            // Staged **unnamed**, so a merely-tapped day is still a draft and nothing is
+            // written for it yet.
+            //
+            // It used to be named `defaultBatchName` and merged immediately, on the reasoning
+            // that tapping a day is a decision to add a batch and is already fully determined
+            // by a day and the default colour. That reasoning was sound and the consequence
+            // was not: it made the app's single most common mistake permanent. A misclick on a
+            // day cell — which is easy, because the calendar is a grid of them — wrote a batch
+            // to ObjectBox before the user had decided they wanted one, and `deleteBatches` has
+            // no undo anywhere in the app, so the only recovery was tapping the day, the day
+            // list, the batch, and deleting, four taps to undo one.
+            //
+            // The write is implied by the row being *merged* (see `pcEventSelectionEffects`),
+            // so not merging is the whole of not writing: there is no flag and no second path.
+            // The first real edit — a name, a colour, a day, a time — goes through `editing`
+            // and merges as it always did, and the batch becomes real at that moment rather
+            // than at the tap.
+            //
+            // The day stays marked while the editor is open either way: `derivedDayEventColors`
+            // folds the staged assembly in, so the calendar does not look like the tap did
+            // nothing.
             next.assembly = PCEventBatchAssembleUnitOfWork.new(anchor: day, using: provider)
-            // Written on creation, not on Save. Tapping a day is a decision to add a batch,
-            // and it is a decision that already has everything needed to write one: a day
-            // and the default colour. Making the user confirm it again meant the batch could
-            // be abandoned by navigating away, which is the save-or-discard question this
-            // feature no longer has.
-            next.batches = merging(
-                next.assembly!.resolved()!,
-                into: state.batches
-            )
             next.stage = .batchEditor
             next.scrollAnchor = day
             next.editorYear = nil
@@ -135,13 +142,11 @@ public func pcEventSelectionReducer(
 
     case let .startNewBatch(on: day):
         next.day = day
+        // Same as a tapped day, and for the same reason. The plus button is the other way to
+        // say "add a batch here", so it has the same misclick profile as tapping the cell, and
+        // treating it differently would mean the accident is unrecoverable through one door
+        // and free through the other. Unnamed, staged, not merged: the first edit writes it.
         next.assembly = PCEventBatchAssembleUnitOfWork.new(anchor: day, using: provider)
-        // Same as a tapped day: the plus button already carries the day the batch list is
-        // scoped to, so the batch is fully determined and is written immediately.
-        next.batches = merging(
-            next.assembly!.resolved()!,
-            into: state.batches
-        )
         next.stage = .batchEditor
         next.scrollAnchor = day
         endingEventSelection(&next)
@@ -198,7 +203,19 @@ public func pcEventSelectionReducer(
             // is here so leaving cannot lose an edit that reached the assembly by any other
             // route, and because "the assembly holds something the registry does not describe"
             // is a state a fixture can build even though the reducer cannot reach it.
-            if let row = assembly.resolved(), assembly.canSave {
+            //
+            // **Except for a draft.** A batch staged by a tap or the plus button and left
+            // unnamed has no edit behind it, so `editing` never merged it and this is the
+            // only line that could — which would resurrect exactly the permanent misclick
+            // that staging it unnamed was meant to prevent. Skipping the merge is the whole of
+            // the discard, and it needs no delete: the row was never written, so there is
+            // nothing in the database to remove.
+            //
+            // This is safe for a batch that *was* written and then had its name erased: it is
+            // `isDraft` too, but `editing` already merged it, so skipping here changes
+            // nothing and the row survives. The gate only ever suppresses a merge, never a
+            // removal, which is why it cannot destroy user work.
+            if let row = assembly.resolved(), assembly.canSave, !assembly.isDraft {
                 next.batches = merging(row, into: state.batches)
             }
             // An emptied batch is the one thing Back does have to decide, because it is the
@@ -221,6 +238,22 @@ public func pcEventSelectionReducer(
                 // To the root, not to the day's list: the batch that list would have shown is
                 // the one just deleted, so the day list is now empty by construction. The
                 // root route also clears `presentedSheet`, so the editor's sheet goes with it.
+                requesting(&next, .popToCalendarRoot)
+            } else if !next.batches.contains(where: { $0.mergeKey == assembly.mergeKey }) {
+                // A draft that was never merged, so nothing was ever written for it. The tap
+                // did not happen as far as the calendar is concerned, and leaving says so by
+                // going back to the root rather than to the day's list — which would be empty,
+                // and would show the user a day list for a batch they do not have.
+                //
+                // The second clause of `isDraft` alone cannot decide this. A batch that was
+                // merged and *then* had its name erased is `isDraft` as well, and popping to
+                // the root would hide a real batch from a day the user is still working on.
+                // Presence in the registry is the thing that distinguishes "never written" from
+                // "written and untitled", and it is the same fact the merge gate above acted
+                // on.
+                next.assembly = nil
+                next.stage = .idle
+                next.day = nil
                 requesting(&next, .popToCalendarRoot)
             } else {
                 next.assembly = nil
@@ -261,6 +294,13 @@ public func pcEventSelectionReducer(
 
     case .navigationRequestHandled:
         next.navigationRequest = nil
+
+    // Declined, by design. "I finished typing that name" is a statement about *when*, and the
+    // reducer is pure — it has no debounce to end. The keystrokes already merged the batch, so
+    // there is genuinely nothing to change here; `PCEventSelectionManager` answers the action
+    // by flushing the write it is holding.
+    case .nameEditingFinished:
+        break
 
     // MARK: Batch editor
 

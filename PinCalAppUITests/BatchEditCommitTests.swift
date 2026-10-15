@@ -350,12 +350,23 @@ final class BatchEditCommitTests: XCTestCase {
         XCTAssertTrue(batchRow.waitForExistence(timeout: 5))
         batchRow.tap()
 
-        // The event now carries the batch color.
+        // The event is still there, and it is still in the recoloured batch.
+        //
+        // The assertion used to be read off the *event* editor's own picker. That picker is
+        // gone — the event editor no longer sets a colour, and the batch editor is the only
+        // place a colour is chosen — so the round trip is now read where the colour actually
+        // lives. Tapping into the event and back keeps the test checking what it always
+        // checked: the colour survived, not just the batch's own edit.
         let reopenedEventRow = app.buttons.containing(NSPredicate(format: "label CONTAINS %@", "Event1")).firstMatch
         XCTAssertTrue(reopenedEventRow.waitForExistence(timeout: 5))
         reopenedEventRow.tap()
 
         XCTAssertTrue(app.textFields["event-name-field"].waitForExistence(timeout: 5))
+        let eventEditorBack = app.buttons["event-editor-back-button"]
+        XCTAssertTrue(eventEditorBack.waitForExistence(timeout: 5))
+        eventEditorBack.tap()
+
+        XCTAssertTrue(picker.waitForExistence(timeout: 5), "Back in the batch editor")
         XCTAssertEqual(picker.value as? String ?? "", "eventColorOption2", "Persisted color must be option2 after save and reopen via calendar")
     }
 
@@ -387,6 +398,13 @@ final class BatchEditCommitTests: XCTestCase {
         let reopenedEventRow = app.buttons.containing(NSPredicate(format: "label CONTAINS %@", "Event1")).firstMatch
         XCTAssertTrue(reopenedEventRow.waitForExistence(timeout: 5))
         reopenedEventRow.tap()
+
+        XCTAssertTrue(app.textFields["event-name-field"].waitForExistence(timeout: 5))
+        // Back out to the batch editor — the only screen that carries a colour now, since the
+        // event editor's picker went.
+        let eventEditorBack = app.buttons["event-editor-back-button"]
+        XCTAssertTrue(eventEditorBack.waitForExistence(timeout: 5))
+        eventEditorBack.tap()
 
         XCTAssertTrue(picker.waitForExistence(timeout: 5))
         XCTAssertEqual(picker.value as? String ?? "", "eventColorOption3", "Persisted color must be option3 after immediate reopen")

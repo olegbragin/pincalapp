@@ -62,6 +62,18 @@ public enum PCEventSelectionAction: Equatable {
     case toggleDay(Date)
     case removeEvent(pendingID: UUID)
 
+    /// "I have finished typing that name."
+    ///
+    /// Carries nothing and changes nothing, because the keystrokes already merged the batch —
+    /// this exists only to end the debounce early, which is a function of time and so cannot
+    /// live in a pure reducer. The store answers it by flushing `nameAutosave`.
+    ///
+    /// Without it, "save as soon as the name is finished" is only true within 250 ms of the
+    /// last keystroke. Everything that leaves the editor already flushes — Back, the calendar
+    /// switch — so this only covers the user submitting the field and then not leaving:
+    /// switching apps, or sitting and looking at the batch they just named.
+    case nameEditingFinished
+
     /// The event list is selecting rather than opening. `false` also drops the selection —
     /// leaving selection mode and leaving a selection are one gesture, and keeping the ids
     /// would let the time picker apply to events the user can no longer see marked.

@@ -46,6 +46,25 @@ public struct PCEventBatchAssembleUnitOfWork: Equatable, Sendable {
         origin == .new
     }
 
+    /// Whether this assembly is still only a draft: started by a gesture, never named, and so
+    /// never written.
+    ///
+    /// An empty name is the whole of the test, and it has to be. The alternative — tracking a
+    /// separate "has been written" flag — is a second source of truth about something the
+    /// name already says, and the two would disagree the moment a user names a batch and then
+    /// erases the name.
+    ///
+    /// **It gates merging on the way out, never deletion.** A draft is simply not merged into
+    /// `state.batches`, so nothing was ever written and there is nothing to remove. A batch
+    /// that was written and *then* emptied of its name is still `isDraft` by this definition,
+    /// and that is harmless: it was already merged, so skipping the merge on Back is a no-op
+    /// and the row survives. Anchoring the rule to "not yet written" rather than to "empty
+    /// right now" is what keeps it from deleting real work — a batch a user deliberately left
+    /// untitled stays.
+    public var isDraft: Bool {
+        isNew && batch.name.isEmpty
+    }
+
     /// The key this assembly's row answers to, *including* an id it has adopted.
     ///
     /// Not the same as `batch.mergeKey`. An assembly opened from the registry already
@@ -95,7 +114,7 @@ public struct PCEventBatchAssembleUnitOfWork: Equatable, Sendable {
 
     // MARK: - Identity
 
-    /// A brand-new batch holding one day, arriving ready to save.
+    /// A brand-new batch holding one day, arriving **unnamed**.
     ///
     /// Named and coloured by default. This used to produce an *unnamed, uncoloured* batch,
     /// which combined with `canSave` to make a freshly-tapped day a dead end: the editor
@@ -104,8 +123,18 @@ public struct PCEventBatchAssembleUnitOfWork: Equatable, Sendable {
     /// common case — tap a day, notice the mistake, undo it — needs no edits, and a batch
     /// the user does want is savable straight away.
     ///
+    /// **The name is the exception, and deliberately so.** It used to be `defaultBatchName`,
+    /// which made a misclick permanent: tapping an empty day wrote a batch named "New event"
+    /// before the user had decided they wanted one, so the single most common accident in the
+    /// app left a row in the database that no undo could reach. An empty name instead reads as
+    /// *unset*, and an unset name is what keeps the batch a draft — see `isDraft`. The colour
+    /// still defaults, because a colour is not a decision, it is a rendering.
+    ///
+    /// The field shows `defaultBatchName` as its placeholder, so the starting point is still
+    /// offered — it is just offered as a suggestion rather than committed on their behalf.
+    ///
     /// Both parameters still take arguments, for the tests that assert the uncoloured and
-    /// unnamed shapes, but the defaults are what production callers get.
+    /// named shapes, but the defaults are what production callers get.
     ///
     /// The anchor is normalised to the start of its day, so a freshly created event sits at
     /// midnight until the user gives it a time. It has to be a whole day rather than
@@ -117,7 +146,7 @@ public struct PCEventBatchAssembleUnitOfWork: Equatable, Sendable {
     /// verbatim so a time the user picked survives.
     public static func new(
         anchor: Date,
-        name: String = PCEventBatchAssembleUnitOfWork.defaultBatchName,
+        name: String = "",
         colorName: String = PCColorOption.firstAvailable.colorName,
         using dataProvider: PCCalendarDataProvider
     ) -> PCEventBatchAssembleUnitOfWork {
@@ -147,7 +176,7 @@ public struct PCEventBatchAssembleUnitOfWork: Equatable, Sendable {
             .map { placeholder(on: dataProvider.startOfDay(for: $0), colorName: colorName) }
             .sorted { $0.date < $1.date }
         let batch = CalendarEventBatch(
-            name: PCEventBatchAssembleUnitOfWork.defaultBatchName,
+            name: "",
             colorName: colorName,
             events: events
         )
@@ -310,7 +339,8 @@ public struct PCEventBatchAssembleUnitOfWork: Equatable, Sendable {
     // honest place is a `BatchNaming` port injected alongside `dataProvider`, and this
     // constant becomes its English fallback.
 
-    /// What a new batch is called before the user says otherwise.
+    /// Shown in the name field as its placeholder for an unnamed batch — a suggestion, not a
+    /// value. What a new batch is actually *called* before the user says otherwise is nothing.
     public static let defaultBatchName = "New event"
 
     /// What a new event inside a batch is called.

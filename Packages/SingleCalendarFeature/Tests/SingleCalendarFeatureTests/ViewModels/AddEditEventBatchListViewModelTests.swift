@@ -62,20 +62,32 @@ struct AddEditEventBatchListViewModelTests {
         #expect(Set(vm.eventBatches.map(\.name)) == ["Evening", "Morning"])
     }
 
-    /// Tapping an empty day no longer leaves it empty.
+    /// Tapping an empty day leaves it empty.
     ///
-    /// This asserted the old contract: a tap staged a batch that nothing had written yet, so
-    /// the day's list was empty and the batch appeared only after Save. A tap now writes the
-    /// batch, which means the day genuinely has one — the assertion that mattered (the list
-    /// is derived from `batches`, not cached) is checked below instead.
-    @Test("Tapping an empty day writes a batch, and the list projects it")
-    func tappingAnEmptyDayWritesABatch() {
+    /// **Premise changed twice, and this is the older half.** The original contract was that a
+    /// tap staged a batch nothing had written yet, so the day's list was empty until Save. Then
+    /// a tap started writing the batch immediately, which is what this test was rewritten to
+    /// assert. Both are gone: a tapped day is a *draft*, and a draft is not in the registry, so
+    /// the list is empty again — and this time it stays that way, because the batch is written
+    /// on the first edit rather than on a Save.
+    ///
+    /// The thing worth keeping is the original one underneath: the list is derived from
+    /// `batches`, so it moves when the store does. The second half proves that by making the
+    /// batch real.
+    @Test("Tapping an empty day adds nothing, and naming it makes the list show it")
+    func tappingAnEmptyDayAddsNothingUntilItIsNamed() {
         let (vm, store) = makeContext(day: Fixture.day(20))
 
         // The store still holds the two seeded batches on day 1; the point is that day 20
-        // gained one, so the assertion is scoped to the day rather than the whole registry.
-        #expect(vm.eventBatches.count == 1, "the tapped day gained exactly one batch")
-        #expect(vm.eventBatches.first?.name == "New event", "named by default")
+        // gained nothing, so the assertion is scoped to the day rather than the registry.
+        #expect(vm.eventBatches.isEmpty, "an untouched draft is not a batch on the day yet")
+        #expect(store.state.batches.count == 2, "and nothing was written")
+        #expect(store.state.assembly?.isDraft == true, "it is staged as a draft")
+
+        store.send(.setBatchName("Evening"))
+
+        #expect(vm.eventBatches.count == 1, "naming it makes it a batch the list can show")
+        #expect(vm.eventBatches.first?.name == "Evening")
         #expect(store.state.batches.count == 3, "written into the store, not just staged")
     }
 

@@ -45,7 +45,23 @@ struct AddEditEventBatchViewModelTests {
 
         #expect(vm.events.count == 1, "one placeholder day")
         #expect(vm.events.first?.date == store.state.dataProvider.startOfDay(for: Fixture.day(4)))
-        #expect(store.state.assembly?.canSave == true, "a new batch arrives named and coloured, so it is written at once")
+        #expect(store.state.assembly?.canSave == true, "a new batch arrives coloured, so the first edit can write it")
+    }
+
+    /// The field opens empty and offers the old default, rather than arriving pre-filled with it.
+    ///
+    /// This is the visible half of the draft rule. Pre-filling it would be read by `editing` as
+    /// a rename on the first unrelated keystroke and write the batch, which is precisely the
+    /// permanent-misclick behaviour the empty stored name exists to prevent.
+    @Test("A new batch's name field is empty and offers the default as a placeholder")
+    func newBatchProjectsAnEmptyNameWithAPlaceholder() {
+        let (vm, store, _) = makeContext()
+
+        store.send(.startNewBatch(on: Fixture.day(4)))
+
+        #expect(store.state.assembly?.batch.name.isEmpty == true, "stored empty, so it stays a draft")
+        #expect(vm.name.isEmpty, "so the field shows nothing")
+        #expect(vm.namePlaceholder == "New event", "and offers the default instead")
     }
 
     /// Colour is what `PCEventBatchAssembleUnitOfWork.canSave` reads. The name deliberately is
@@ -130,20 +146,25 @@ struct AddEditEventBatchViewModelTests {
     /// An uncoloured batch has no row to write, and clearing the colour must not pretend
     /// otherwise.
     ///
-    /// **Premise changed.** This used to assert that *Save* on an uncoloured batch wrote
-    /// nothing and left the editor open — the checkmark's `isEnabled` was
-    /// `!canSave`, so the guard had a button and the test had something to press. The
-    /// checkmark is gone, so the fact worth pinning is the one underneath it: the row the
-    /// batch was created with is still there, still coloured as it was, and clearing the
-    /// colour is staged but not persisted — because `editing` declines to merge a batch with
-    /// no colour rather than writing one the user cannot see.
+    /// **Premise changed twice.** This used to assert that *Save* on an uncoloured batch wrote
+    /// nothing and left the editor open — the checkmark's `isEnabled` was `!canSave`, so the
+    /// guard had a button and the test had something to press. The checkmark is gone. Then it
+    /// came to rely on the creation step having written the row ("the row the batch was created
+    /// with"), which is also gone: a new batch is a draft until it is edited. The row is now
+    /// written by a colour change, which is a discrete write rather than a debounced name, and
+    /// the claim underneath is unchanged — an uncoloured batch has no row to write, and
+    /// clearing the colour leaves the committed row as it was.
     @Test("Clearing a batch's colour writes nothing and leaves the committed row coloured")
     func clearingColourWritesNothing() async {
         let (_, store, persistence) = makeContext()
         store.send(.startNewBatch(on: Fixture.day(4)))
-        // Settle the writes from creating the batch before counting, or the count races the
+        // A colour is the edit that makes a draft real. A name would do too, but that is
+        // debounced, and this test counts writes.
+        store.send(.setBatchColor(.option2))
+        #expect(store.state.batches.count == 1, "setup: the batch is committed")
+        // Settle the write from colouring the batch before counting, or the count races the
         // chain rather than measuring the edit.
-        _ = await persistence.waitForWrites(2)
+        _ = await persistence.waitForWrites(1)
         let writesBefore = await persistence.writes.count
 
         store.send(.setBatchColor(nil))
@@ -154,7 +175,7 @@ struct AddEditEventBatchViewModelTests {
             "an uncoloured batch resolves to no row, so there is nothing to write"
         )
         #expect(
-            store.state.batches.first?.colorName == PCColorOption.firstAvailable.colorName,
+            store.state.batches.first?.colorName == PCColorOption.option2.colorName,
             "and the row on the calendar keeps the colour it was written with"
         )
     }

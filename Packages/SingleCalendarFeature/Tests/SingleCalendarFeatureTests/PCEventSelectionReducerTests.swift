@@ -227,9 +227,19 @@ struct PCEventSelectionReducerTests {
         #expect(reduce(editing, .ensureAssemblyStarted).next == editing)
     }
 
-    @Test("Tapping an empty day starts a batch editor and asks for a sheet presentation")
+    /// **Premise changed.** This asserted `effects.count == 1` — "tapping a day writes the new
+    /// batch at once" — and the comment above it recorded having *reversed* that earlier
+    /// decision ("Was 'staging is not a write'"). The reversal is what made a misclick
+    /// permanent: the app's most common accident, on a grid of day cells, wrote a row before
+    /// the user had decided they wanted one, and there is no undo for a batch anywhere.
+    ///
+    /// A tapped day is now a *draft*: staged, coloured, marked in the editor's calendar, and
+    /// not written. `editing` merges it on the first real edit, and `pcEventSelectionEffects`
+    /// writes exactly when the registry moved, so "not merged" is the whole of "not written" —
+    /// there is no second mechanism to keep in step.
+    @Test("Tapping an empty day stages a draft and writes nothing")
     func dayTappedEmptyDay() {
-        let state = session()
+        let state = session(batches: [])
         let (next, effects) = reduce(state, .dayTappedInCalendar(day(4)))
 
         #expect(next.stage == .batchEditor)
@@ -237,15 +247,31 @@ struct PCEventSelectionReducerTests {
         #expect(next.day == day(4))
         #expect(next.scrollAnchor == day(4))
         #expect(next.editorYear == nil)
+        #expect(next.assembly?.batch.name.isEmpty == true, "unnamed, which is what makes it a draft")
         #expect(
             next.assembly?.canSave == true,
-            "a merely-tapped day arrives named and coloured, so it is written without any editing"
+            "it is coloured, so the first edit will write it — colour is not a decision, a name is"
         )
         #expect(next.navigationRequest?.target == .presentBatchEditor)
-        // Was "staging is not a write". Tapping a day now writes the batch immediately, so
-        // there is a row on disk before the editor has been touched — tapping a day is the
-        // decision to add a batch, and it has everything needed to make one.
-        #expect(effects.count == 1, "tapping an empty day writes the new batch at once")
+        #expect(next.batches.isEmpty, "not merged, so the registry does not describe it")
+        #expect(effects.isEmpty, "and nothing was written")
+    }
+
+    /// The other half of the same guarantee: a draft is promoted by the first edit, which is
+    /// what makes "tap a day and walk away costs nothing" true without also making "tap a day
+    /// and do anything is impossible".
+    @Test("Naming a tapped day's batch is what writes it")
+    func namingATappedDayPromotesTheDraft() {
+        let tapped = reduce(session(batches: []), .dayTappedInCalendar(day(4))).next
+
+        let (named, effects) = reduce(tapped, .setBatchName("Cycle"))
+
+        #expect(named.batches.count == 1, "the draft joined the registry")
+        #expect(named.batches.first?.name == "Cycle")
+        #expect(
+            effects == [.writeCalendar(calendarID: 42, numberOfColumns: 3, batches: named.batches)],
+            "and that is the write. It is marked as typed, so the store holds it on the debounce."
+        )
     }
 
     @Test("Tapping a day that has batches opens the day list instead")
@@ -289,16 +315,21 @@ struct PCEventSelectionReducerTests {
         )
     }
 
-    @Test("startNewBatch stages an assembly on the given day")
+    /// The plus button is the other way to say "add a batch here", so it is held to the same rule
+    /// as tapping the day cell. Treating it differently would mean the same accident is free
+    /// through one door and permanent through the other.
+    @Test("startNewBatch stages a draft and writes nothing")
     func startNewBatch() {
-        let state = session()
+        let state = session(batches: [])
         let (next, effects) = reduce(state, .startNewBatch(on: day(9)))
 
         #expect(next.stage == .batchEditor)
         #expect(next.day == day(9))
         #expect(next.scrollAnchor == day(9))
+        #expect(next.assembly?.batch.name.isEmpty == true)
         #expect(next.navigationRequest?.target == .presentBatchEditor)
-        #expect(effects.count == 1, "the plus button writes its new batch at once too")
+        #expect(next.batches.isEmpty)
+        #expect(effects.isEmpty, "the plus button writes its new batch on the first edit too")
     }
 
     @Test("openBatch stages the batch it found and asks for a sheet presentation")
@@ -525,6 +556,17 @@ struct PCEventSelectionReducerTests {
         #expect(reduce(state, .toggleDay(day(5))).next == state)
     }
 
+    /// The title has been right twice. The original report was that the editor opened with the
+    /// tapped day unmarked, and then that backing out left a marker for an event that was never
+    /// written — the first was fixed by projecting markers from the staged assembly, the second
+    /// by making the tap write the batch so the marker would have been true.
+    ///
+    /// **Premise changed.** The second fix is gone, and with it the reason the marker used to
+    /// survive: there is no longer a row behind it to be true about. A tapped day is a draft,
+    /// so its mark is the editor's own projection of a staged assembly
+    /// (`derivedDayEventColors` folds it in) and disappears with it. Both halves are asserted
+    /// here, because a draft that was marked only after being written would be the same bug
+    /// wearing the opposite sign — the editor showing a day it has not committed.
     @Test("Tapping an empty day marks it, and backing out takes the marker with it")
     func emptyDayTapThenBackClearsMarker() {
         // Reported as: the batch editor opens with the tapped day unmarked, and pressing back
@@ -541,16 +583,16 @@ struct PCEventSelectionReducerTests {
 
         let back = reduce(tapped, .backTapped).next
         #expect(back.assembly == nil, "back closes the editor")
-        // The marker used to be expected to vanish here, because tapping a day staged a
-        // batch that Back threw away. Tapping a day now writes the batch, so the marker is
-        // the truth: the event exists, and leaving the editor does not unmake it.
         #expect(
-            back.dayEventColors[provider.startOfDay(for: day(9))] != nil,
-            "the batch was written when the day was tapped, so the marker is real"
+            back.dayEventColors[provider.startOfDay(for: day(9))] == nil,
+            "and nothing was written, so there is no event for the marker to be about"
         )
+        #expect(back.batches.isEmpty, "the draft never entered the registry")
     }
 
-    @Test("Starting a new batch from the add button marks the day, and cancel leaves it written")
+    /// Cancelling is Back's sibling and has to agree with it, or the same untouched draft would
+    /// survive one exit route and not the other.
+    @Test("Cancelling an untouched draft takes its marker with it")
     func startNewBatchThenCancelClearsMarker() {
         let empty = session(batches: [])
 
@@ -561,16 +603,39 @@ struct PCEventSelectionReducerTests {
             "the staged event must be marked in the editor's calendar"
         )
 
-        // Cancel now only closes the editor. The test name said "cancel takes it away" and
-        // the marker did go — but the batch behind it had been written when the plus button
-        // was tapped, so what vanished was the marker for a row that was still on the day.
-        // Closing an editor is not undoing the edit that led to it.
         let cancelled = reduce(started, .cancelTapped).next
         #expect(
-            cancelled.dayEventColors[provider.startOfDay(for: day(9))] != nil,
-            "the batch was written on creation, so the marker outlives the editor"
+            cancelled.dayEventColors[provider.startOfDay(for: day(9))] == nil,
+            "nothing was written, so the marker has nothing behind it and goes"
         )
-        #expect(cancelled.assembly == nil, "but the editor is closed")
+        #expect(cancelled.batches.isEmpty)
+        #expect(cancelled.assembly == nil, "and the editor is closed")
+    }
+
+    /// The rule is anchored to "has not been written yet", not to "is empty right now". A batch
+    /// the user names and then renames back to nothing is a real batch they made, and Back must
+    /// not read the emptied name as an instruction to delete it.
+    @Test("A batch that was written and then had its name erased survives Back")
+    func erasingANameDoesNotDiscardAWrittenBatch() throws {
+        let named = reduce(session(batches: []), .startNewBatch(on: day(9))).next
+        let renamed = reduce(named, .setBatchName("Cycle")).next
+        #expect(renamed.batches.count == 1, "setup: naming wrote it")
+
+        let erased = reduce(renamed, .setBatchName("")).next
+        #expect(erased.batches.count == 1, "erasing the name leaves the row alone")
+
+        let back = reduce(erased, .backTapped).next
+        #expect(back.batches.count == 1, "and so does leaving — the row is the user's work")
+        #expect(back.batches.first?.name.isEmpty == true, "it is simply untitled now")
+        #expect(try back.stage == .dayList(day: #require(back.day)), "it lands on a day list")
+        #expect(
+            back.day == back.batches.first?.date,
+            "re-anchored on the day the row is on, which is the invariant `backTapped` already claims"
+        )
+        #expect(
+            back.dayEventColors[provider.startOfDay(for: day(9))] != nil,
+            "so the day is still marked: an untitled batch is a batch"
+        )
     }
 
     @Test("removeEvent drops the event and its marker")
@@ -789,6 +854,11 @@ struct PCEventSelectionReducerTests {
     /// the row survives every removal, so a mis-tap on the final remaining day is undone by
     /// tapping it again, and there is no undo for a batch anywhere in the app. Deleting on the
     /// removal would have made an accidental tap unrecoverable in exchange for consistency.
+    ///
+    /// **Premise changed.** This relied on the creation step writing the row ("setup: creation
+    /// wrote the row"). It does not any more: a new batch is born unnamed and stays a draft
+    /// until it is edited, so the test now names it — which is what a real user's first
+    /// keystroke does.
     @Test("Leaving an emptied batch editor deletes the row and unwinds to the root")
     func backFromEmptiedBatchEditorDeletes() throws {
         // Built through `startNewBatch` rather than the `editing` fixture, because the claim
@@ -796,10 +866,11 @@ struct PCEventSelectionReducerTests {
         // without merging it, which the reducer cannot produce and which would make "the row
         // outlives the removal" vacuous.
         let created = reduce(session(batches: []), .startNewBatch(on: day(1))).next
-        let pendingID = try #require(created.assembly?.batch.events.first?.pendingID)
-        #expect(created.batches.count == 1, "setup: creation wrote the row")
+        let written = reduce(created, .setBatchName("Cycle")).next
+        let pendingID = try #require(written.assembly?.batch.events.first?.pendingID)
+        #expect(written.batches.count == 1, "setup: naming the batch wrote the row")
 
-        let emptied = reduce(created, .removeEvent(pendingID: pendingID)).next
+        let emptied = reduce(written, .removeEvent(pendingID: pendingID)).next
 
         // Still there while the editor is open — that is the recoverable window.
         #expect(emptied.batches.count == 1, "the row outlives the removal")
@@ -829,10 +900,19 @@ struct PCEventSelectionReducerTests {
 
     /// A batch that is merely *unwritable* — no colour — is not emptied, so leaving must not
     /// delete it. Colour and emptiness are different failures and the branch is on emptiness.
+    ///
+    /// **Premise changed.** This staged a fresh `new(anchor:colorName:"")` and asserted the row
+    /// it "created" was still there. There was no such row: with no colour `canSave` is false,
+    /// so it was never merged, and the count of 1 was the unrelated batch the `session()`
+    /// fixture carries. It is now staged as `existing`, which is the case the test is really
+    /// about — a row that is already in the registry and unwritable, as a reload returning one
+    /// would give. A new uncoloured batch cannot reach that state at all, so under the draft
+    /// rule it correctly leaves to the calendar instead of to a day list that would be empty.
     @Test("Leaving an uncoloured but non-empty batch does not delete it")
     func backFromUnwritableBatchKeepsIt() {
-        var state = session()
-        state.assembly = PCEventBatchAssembleUnitOfWork.new(anchor: day(3), colorName: "", using: provider)
+        let stored = Fixture.batch("kept", on: 3, id: 11, color: "")
+        var state = session(batches: [stored])
+        state.assembly = PCEventBatchAssembleUnitOfWork.existing(stored)
         state.stage = .batchEditor
         state.day = day(3)
         state.dayEventColors = state.derivedDayEventColors
@@ -840,9 +920,27 @@ struct PCEventSelectionReducerTests {
         let (next, effects) = reduce(state, .backTapped)
 
         #expect(next.assembly == nil, "it does close the editor")
-        #expect(next.batches.count == 1, "but the row it created is still there")
+        #expect(next.batches.count == 1, "but the row is still there")
+        #expect(next.batches.first?.persistedID == 11, "and it is the same row, not a replacement")
         #expect(next.stage == .dayList(day: day(3)))
         #expect(effects.isEmpty)
+    }
+
+    /// The draft branch on Back: a batch staged by a tap and left alone was never merged, so
+    /// Back does not promote it on the way out — and unwinds to the calendar rather than to the
+    /// day's list, which would be empty for a batch the user does not have.
+    @Test("Leaving an untouched draft unwinds to the calendar, not to an empty day list")
+    func backFromUntouchedDraftUnwindsToTheCalendar() {
+        let tapped = reduce(session(batches: []), .dayTappedInCalendar(day(9))).next
+
+        let (next, effects) = reduce(tapped, .backTapped)
+
+        #expect(next.assembly == nil)
+        #expect(next.stage == .idle, "not a day list: there is no batch on that day to list")
+        #expect(next.day == nil)
+        #expect(next.batches.isEmpty)
+        #expect(effects.isEmpty, "and nothing was written, so there is nothing to delete")
+        #expect(next.navigationRequest?.target == .popToCalendarRoot)
     }
 
     @Test("deleteBatches removes the rows, writes, and unwinds when the day empties")
@@ -1162,6 +1260,15 @@ struct PCEventSelectionReducerTests {
     /// thing doing the deleting is the session that produced the content. Applied to the
     /// batch editor it would be a batch the user is editing removing a neighbour that
     /// happens to share its name and colour.
+    ///
+    /// **Premise changed.** The two batches here are both named "New event", which is what an
+    /// untouched batch used to be called — and a session that taps a day holding one of those
+    /// used to *adopt* it, because name plus colour plus day matched by content. That was the
+    /// weak-identity problem this very test exists to guard against, showing up as a feature:
+    /// a session starting on a day that already had a batch silently overwrote it instead of
+    /// adding a second one. An unnamed session batch no longer matches it, so the session
+    /// builds its own row and the pre-existing batch is left alone — which is what the
+    /// neighbour assertion has always asked for, now applied to the same-day case too.
     @Test("A session's reload leaves unrelated rows alone")
     func sessionReloadDoesNotTouchUnrelatedRows() {
         // Two "New event" batches in the chosen colour, one on a day the session holds and
@@ -1175,11 +1282,53 @@ struct PCEventSelectionReducerTests {
 
         state = reduce(state, .syncCalendar(calendarID: 42, batches: reloaded(state.batches))).next
 
-        #expect(state.batches.count == 2, "the neighbour is not the session's history — got \(state.batches.count)")
         #expect(
             state.batches.contains { $0.events.contains { provider.isSameDay($0.date, day(21)) } },
             "day 21 still has its batch"
         )
+        #expect(
+            state.batches.contains { $0.events.contains { provider.isSameDay($0.date, day(17)) } && !$0.name.isEmpty },
+            "and so does the pre-existing batch on day 17 — the session did not adopt it"
+        )
+    }
+
+    /// The same-day adoption case, stated directly. The session writes a row, the write comes
+    /// back under a real id, and the session has to settle on it — or the next tap's write
+    /// appends a second row and one session becomes several batches, which is the §6.5 bug.
+    @Test("A session still adopts the row it wrote, even now that it is unnamed")
+    func sessionAdoptsItsOwnUnnamedRow() throws {
+        var state = multiSelecting(session(batches: []), days: [], color: .option2)
+        state = reduce(state, .dayTappedInCalendar(day(17))).next
+        #expect(state.multiSelectAssembly?.batch.name.isEmpty == true, "setup: a session's batch is unnamed")
+
+        let written = reloaded(state.batches)
+        let reloadedState = reduce(state, .syncCalendar(calendarID: 42, batches: written)).next
+
+        let adopted = try #require(reloadedState.multiSelectAssembly?.adoptedPersistedID)
+        #expect(adopted == written.first?.persistedID, "content matching still identifies its own row")
+        #expect(
+            reloadedState.batches.count == 1,
+            "one row, not one per tap — got \(reloadedState.batches.count)"
+        )
+    }
+
+    /// Two untitled batches in the same colour are now the *common* case rather than an exotic
+    /// one, because a batch that was written and then had its name erased looks exactly like a
+    /// freshly-created one. They must not be able to adopt each other across a reload, which is
+    /// the collision `isSnapshot`-based matching is vulnerable to.
+    @Test("Two untitled batches are not confused with each other by a reload")
+    func untitledBatchesDoNotCollideAcrossAReload() {
+        let first = Fixture.batch("", on: 17, id: 1, color: "eventColorOption2")
+        let second = Fixture.batch("", on: 21, id: 2, color: "eventColorOption2")
+
+        let state = reduce(
+            session(batches: [first, second]),
+            .syncCalendar(calendarID: 42, batches: [Fixture.batch("", on: 17, id: 1, color: "eventColorOption2"), Fixture.batch("", on: 21, id: 2, color: "eventColorOption2")])
+        ).next
+
+        #expect(state.batches.count == 2, "both rows survive — got \(state.batches.count)")
+        #expect(state.batches.contains { $0.persistedID == 1 })
+        #expect(state.batches.contains { $0.persistedID == 2 })
     }
 
     /// Days must not be tappable before a colour is chosen.

@@ -84,7 +84,7 @@ public func pcEventSelectionEffects(
         return next.batches == previous.batches ? [] : write()
 
     case .openEvent, .discardEventTapped, .openBatch,
-         .closeTapped, .cancelTapped,
+         .closeTapped, .cancelTapped, .nameEditingFinished,
          .ensureAssemblyStarted, .navigationRequestHandled, .resetSession,
          .setMultiSelectMode,
          .setEventSelectionMode, .toggleEventSelection, .selectAllEvents, .clearEventSelection,
@@ -93,8 +93,10 @@ public func pcEventSelectionEffects(
         // without changing it; `discardEventTapped` drops that draft; the selection actions
         // move ids around without touching a batch — which is why applying a time to a
         // selection is a *write* and selecting it is not, even though the second is what
-        // enables the first. The rest move between stages. None of them alter a batch, so
-        // none of them have anything to write.
+        // enables the first. `nameEditingFinished` has no write of its own at all: the
+        // keystrokes produced theirs, and the store's answer is to flush the one it is
+        // holding rather than to derive another. The rest move between stages. None of them
+        // alter a batch, so none of them have anything to write.
         return []
     }
 }

@@ -35,7 +35,13 @@ public struct AddEditEventBatchView: View {
             VStack(spacing: 12) {
                 Group {
                     HStack(spacing: 12) {
-                        PCTextField(title: String(localized: .enterName), text: viewModel.nameBinding, identifier: "batch-name-field")
+                        PCTextField(title: viewModel.namePlaceholder, text: viewModel.nameBinding, identifier: "batch-name-field")
+                            // "As soon as the user finishes entering the name, save everything."
+                            // The keystrokes already merged the batch, so this is only about the
+                            // debounce: without it a name typed in the last quarter-second is
+                            // still sitting on `nameAutosave` when the user puts the phone down,
+                            // and nothing has asked for it to be written yet.
+                            .onSubmit { store.send(.nameEditingFinished) }
 
                         PCColorPickerView(
                             selectedColor: viewModel.colorBinding,

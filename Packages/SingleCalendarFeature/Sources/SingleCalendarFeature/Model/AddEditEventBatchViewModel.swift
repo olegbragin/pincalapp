@@ -40,6 +40,13 @@ public struct AddEditEventBatchViewModel {
         batch?.name ?? ""
     }
 
+    /// What the empty field offers instead. The suggestion, not a value: a batch is created
+    /// unnamed so that a misclick writes nothing, and pre-filling the field would put the name
+    /// back on its behalf the moment the user touched anything else.
+    var namePlaceholder: String {
+        PCEventBatchAssembleUnitOfWork.defaultBatchName
+    }
+
     var events: [CalendarEvent] {
         batch?.events ?? []
     }
