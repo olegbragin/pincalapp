@@ -69,7 +69,7 @@ public struct AddEditEventBatchView: View {
                 }
             }
             .frame(maxWidth: .infinity)
-            .padding(8)
+            .padding(16)
         }
         // The panel is drawn on the **`ScrollView`**, not on its content.
         //

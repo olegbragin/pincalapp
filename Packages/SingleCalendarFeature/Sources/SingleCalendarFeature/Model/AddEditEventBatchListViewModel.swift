@@ -55,6 +55,16 @@ public final class AddEditEventBatchListViewModel {
         store.state.day
     }
 
+    /// How a card's event row is stamped: the event's date *and* time, e.g.
+    /// "Jul 15, 2026 at 3:45 PM".
+    ///
+    /// The format itself belongs to `CalendarEvent.dateTimeText`, which the batch editor's
+    /// event list also reads — the two screens list the same event, and two copies of the
+    /// format is how they start disagreeing about it.
+    func dateTimeText(for event: CalendarEvent) -> String {
+        event.dateTimeText
+    }
+
     // MARK: - Commands
 
     /// Stages a batch for deletion. It stays in the list until `confirmDelete`, which is

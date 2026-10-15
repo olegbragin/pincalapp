@@ -60,7 +60,8 @@ public struct AddEditEventBatchListView: View {
                     HStack(spacing: 12) {
                         BatchEventCard(
                             eventBatch: eventBatch,
-                            onOpen: { viewModel.open(eventBatch) }
+                            onOpen: { viewModel.open(eventBatch) },
+                            dateTimeText: { viewModel.dateTimeText(for: $0) }
                         )
 
                         Button {
@@ -119,12 +120,18 @@ public struct AddEditEventBatchListView: View {
 }
 
 /// A single batch card in the list. It shows the batch name and the events it
-/// includes (a colored dot + "Name at time" row). The card is capped at
+/// includes (a colored dot + a "<date> at <time>" row). The card is capped at
 /// `collapsedMaxHeight` when collapsed; if its content overflows that limit a
 /// "Show more"/"Show less" toggle is shown so the user can expand it to full height.
 private struct BatchEventCard: View {
     let eventBatch: CalendarEventBatch
     let onOpen: () -> Void
+
+    /// Only for the row stamp — see `dateTimeText(for:)`.
+    ///
+    /// The card is handed the view model rather than the formatted string so the *format*
+    /// stays in the model layer; a card with the formatter inlined is the second copy.
+    let dateTimeText: (CalendarEvent) -> String
 
     @Environment(\.pcVibe) private var vibe
 
@@ -203,7 +210,7 @@ private struct BatchEventCard: View {
                 Circle()
                     .fill(eventColor(event))
                     .frame(width: 10, height: 10)
-                Text(String(format: String(localized: .at(event.name, event.date.formatted(date: .omitted, time: .shortened)))))
+                Text(dateTimeText(event))
                     .font(.subheadline)
                     .lineLimit(1)
                     .foregroundStyle(vibe.color(for: .foregroundOnEventCard))

@@ -85,7 +85,14 @@ public struct AddEditEventListView: View {
                     viewModel.open(event)
                 } label: {
                     HStack(spacing: 12) {
-                        Text(String(format: String(localized: .at(event.name, event.date.formatted(date: .omitted, time: .shortened)))))
+                        // The row states *when* the event is, not what it is called.
+                        //
+                        // The name used to be the row's whole label, with the time appended
+                        // to it — so a batch read as one undated list of names, and there was
+                        // no way to tell which day a row belonged to without opening every
+                        // event. The date is shown even though `date` always carries one, and
+                        // the formatting is the view model's — see `dateTimeText(for:)`.
+                        Text(viewModel.dateTimeText(for: event))
                             .foregroundStyle(vibe.color(for: .foregroundOnEventCard))
 
                         Spacer()

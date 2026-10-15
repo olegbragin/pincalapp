@@ -33,6 +33,15 @@ public struct AddEditEventListViewModel {
         store.state.assembly?.batch.events ?? []
     }
 
+    /// The row's second line: the event's date *and* time, e.g. "Jul 15, 2026 at 3:45 PM".
+    ///
+    /// The format itself belongs to `CalendarEvent.dateTimeText`, which the batch card's
+    /// view model also reads — two screens list the same event, and two copies of the format
+    /// is how they start disagreeing about it. Projecting it here keeps the view free of it.
+    func dateTimeText(for event: CalendarEvent) -> String {
+        event.dateTimeText
+    }
+
     // MARK: - Selection
 
     var selectedIDs: Set<UUID> {
