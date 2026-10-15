@@ -77,6 +77,23 @@ public struct CalendarEventBatch: Identifiable, Hashable, Sendable {
         events.contains { dataProvider.isSameDay($0.date, day) }
     }
 
+    /// This batch as it looks from one day: the same row, holding only that day's events.
+    ///
+    /// A batch is a set of days, so a card that shows all of it is answering a different
+    /// question from the screen it is on. The day list is scoped to `state.day` — it already
+    /// filters *which* batches appear by `occurs(on:)` — and then drew every event of each
+    /// one, so a batch of four days listed under the first of them showed three events the
+    /// user was not looking at, and opening one of those days' events from here led
+    /// somewhere else on the calendar entirely.
+    ///
+    /// Only the projection is narrowed. Identity is untouched — `pendingID`, `persistedID`
+    /// and `mergeKey` all survive — so a narrowed row still opens, deletes and merges as the
+    /// row it came from. Handing this to `with(events:)`-style *writes* would be data loss;
+    /// reading it is a view.
+    public func on(_ day: Date, using dataProvider: PCCalendarDataProvider) -> CalendarEventBatch {
+        with(events: events.filter { dataProvider.isSameDay($0.date, day) })
+    }
+
     public func with(name: String) -> CalendarEventBatch {
         var copy = self
         copy.name = name

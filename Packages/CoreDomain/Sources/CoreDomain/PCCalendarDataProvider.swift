@@ -73,6 +73,40 @@ public struct PCCalendarDataProvider: Equatable {
         calendar.startOfDay(for: date)
     }
 
+    /// The instant on `day`'s calendar day carrying `time`'s time of day.
+    ///
+    /// This exists so that "give these events the time the user just picked" is expressed
+    /// once, here, rather than at each call site with a hand-built `DateComponents`. A
+    /// call site doing it itself has to decide three things this type already decides: which
+    /// time zone the day is read in, whether the picked time is 12-hour or 24-hour, and what
+    /// to do with the sub-minute components it does not mean. Getting any of them wrong does
+    /// not fail loudly — it moves an event by a day, or leaves it on yesterday at 23:00 —
+    /// which is why the arithmetic lives next to the `Calendar` that performs it and nowhere
+    /// else (see this type's own doc comment).
+    ///
+    /// The *day* is read from `day` and the *time* from `time`; neither is normalised to the
+    /// other. Seconds and sub-seconds are zeroed rather than carried over from `time`,
+    /// because a `DatePicker` never produces them and inheriting them would make the result
+    /// depend on the instant the user happened to finish scrolling.
+    public func date(onDay day: Date, atTime time: Date) -> Date? {
+        var components = calendar.dateComponents([.year, .month, .day], from: day)
+        let clock = calendar.dateComponents([.hour, .minute], from: time)
+        components.hour = clock.hour
+        components.minute = clock.minute
+        return calendar.date(from: components)
+    }
+
+    /// Whether `date` sits at the very start of its day — this type's "no time set".
+    ///
+    /// Midnight is the honest representation of an unset time and is what
+    /// `PCEventBatchAssembleUnitOfWork.placeholder(on:colorName:)` produces for a freshly
+    /// toggled day, so "is this event's time unset?" has an exact answer rather than
+    /// needing a separate optional field. A time picker reading an unset event therefore
+    /// shows 12:00 AM, and applying 12:00 AM to a selection is a *clear*, not a no-op.
+    public func hasTimeOfDay(_ date: Date) -> Bool {
+        date != startOfDay(for: date)
+    }
+
     public func year(of date: Date) -> Int {
         calendar.component(.year, from: date)
     }

@@ -53,6 +53,17 @@ final class BatchEditorKnownBugTests: XCTestCase {
             .containing(NSPredicate(format: "label CONTAINS %@", "at"))
             .firstMatch
         XCTAssertTrue(placeholderRow.waitForExistence(timeout: 5), "The batch should list its placeholder event")
+        // Wait for the row to stop moving before tapping it.
+        //
+        // The colour sheet is still dismissing at this point, and the row's frame is not final
+        // until it is. `selectColor` waits for the *picker* to come back and then sleeps 0.3s,
+        // which used to be enough while the editor was pushed — the sheet's own presentation
+        // ends when its content does, and the content was the whole screen. As a sheet the
+        // editor animates into place behind it, so the row lands, moves and settles after the
+        // picker is already back. A tap at a stale centre hits nothing, and XCTest reports it
+        // as "not hittable" — which reads as the element being unreachable and is really the
+        // element being somewhere it no longer is.
+        _ = KeyboardAvoidanceTestSupport.stableFrame(of: placeholderRow, timeout: 4)
         placeholderRow.tap()
 
         let eventNameField = app.textFields["event-name-field"]
@@ -92,7 +103,19 @@ final class BatchEditorKnownBugTests: XCTestCase {
 
         // Sanity: the batch really did hold all four days before we remove any. If this
         // ever fails, steps 4 or the day taps moved and nothing below is about the bug.
-        XCTAssertEqual(eventRowCount(in: app), 4, "The batch should hold four events before the removals")
+        // Every one of the four days is marked, on both mounted calendars — the editor's and
+        // the one underneath the sheet.
+        //
+        // **Premise changed.** This used to count the editor's rows. `List` is lazy and
+        // realizes only what is on screen, so that counted *rows visible*, not events held:
+        // the batch editor gained a time picker under the name field, the fourth row stopped
+        // fitting above the fold, and the assertion began reporting a batch of three for a
+        // batch of four — with all four days marked on screen at that exact moment. Counting
+        // the markers measures the thing the test is about, and is unaffected by how tall the
+        // editor is.
+        for day in [anchorDay] + addedDays {
+            assertMarked(day, in: app, line: #line + 1)
+        }
 
         // §16.1 step 6 — remove the anchor and the first two added days, leaving one.
         for day in [anchorDay] + Array(addedDays.dropLast()) {
@@ -162,6 +185,12 @@ final class BatchEditorKnownBugTests: XCTestCase {
     ///
     /// Scoped to `collectionViews` on purpose: a global `app.buttons` search also matches
     /// the keyboard's dictation key, whose label contains "at".
+    /// How many events the batch editor is listing.
+    ///
+    /// Counts only what the lazy `List` has realized, so it is a floor and not the batch's
+    /// size — which is why §16.1's sanity check above asserts on day markers instead. It
+    /// survives here because the assertion that uses it is about a batch that has been
+    /// reduced to a single event, which fits on screen by a wide margin.
     @MainActor
     private func eventRowCount(in app: XCUIApplication) -> Int {
         app.collectionViews.buttons

@@ -129,7 +129,8 @@ public func pcEventSelectionReducer(
             next.stage = .batchEditor
             next.scrollAnchor = day
             next.editorYear = nil
-            requesting(&next, .pushBatchEditor)
+            endingEventSelection(&next)
+            requesting(&next, .presentBatchEditor)
         }
 
     case let .startNewBatch(on: day):
@@ -143,7 +144,8 @@ public func pcEventSelectionReducer(
         )
         next.stage = .batchEditor
         next.scrollAnchor = day
-        requesting(&next, .pushBatchEditor)
+        endingEventSelection(&next)
+        requesting(&next, .presentBatchEditor)
 
     case let .openBatch(id):
         guard let batch = state.batches.first(where: { $0.mergeKey == id }) else { break }
@@ -157,7 +159,8 @@ public func pcEventSelectionReducer(
         // markers it already had — which is exactly why it survived: the invariant is
         // "the markers describe the batches plus whatever is staged", and holding it in one
         // place is cheaper than reasoning about which actions happen to satisfy it.
-        requesting(&next, .pushBatchEditor)
+        endingEventSelection(&next)
+        requesting(&next, .presentBatchEditor)
 
     // MARK: Stage transitions
 
@@ -183,6 +186,11 @@ public func pcEventSelectionReducer(
             // row, not a pending alternative to it — which is why this comment used to talk
             // about discarding a staged edit and no longer has anything to refer to.
             guard let assembly = state.assembly else { break }
+            // Nothing survives the exit but the rows. A selection of `pendingID`s is scoped to
+            // the assembly that is going away, and the stores are cached per calendar — so a
+            // selection left behind would be waiting on the *next* batch this store stages,
+            // describing events that are not its own.
+            endingEventSelection(&next)
             // Whatever is staged joins the registry on the way out.
             //
             // In the real flow `editing` merged it the moment the edit was made and this is a
@@ -211,7 +219,8 @@ public func pcEventSelectionReducer(
                 next.day = nil
                 next.didSave = true
                 // To the root, not to the day's list: the batch that list would have shown is
-                // the one just deleted, so the day list is now empty by construction.
+                // the one just deleted, so the day list is now empty by construction. The
+                // root route also clears `presentedSheet`, so the editor's sheet goes with it.
                 requesting(&next, .popToCalendarRoot)
             } else {
                 next.assembly = nil
@@ -230,7 +239,7 @@ public func pcEventSelectionReducer(
                 next.day = anchor
                 next.stage = next.day.map(PCEventSelectionStage.dayList) ?? .idle
                 next.scrollAnchor = nil
-                requesting(&next, .pop)
+                requesting(&next, .dismissBatchEditor)
             }
         case .dayList:
             next.stage = .idle
@@ -246,6 +255,7 @@ public func pcEventSelectionReducer(
         next.day = nil
         next.assembly = nil
         next.eventDraft = nil
+        endingEventSelection(&next)
         // Back to the committed markers: whatever was staged is gone.
         requesting(&next, .popToCalendarRoot)
 
@@ -268,7 +278,74 @@ public func pcEventSelectionReducer(
         editing(state, &next) { $0.toggling(day: day, using: provider) }
 
     case let .removeEvent(pendingID):
+        // A removed event leaves the selection too. Its id would otherwise linger, keeping
+        // the picker enabled for a selection that resolves to nothing — so a pick would be
+        // accepted and change no event at all.
+        next.selectedEventIDs.remove(pendingID)
         editing(state, &next) { $0.removingEvent(pendingID: pendingID) }
+
+    // MARK: Event selection in the batch editor
+
+    case let .setEventSelectionMode(on):
+        guard state.stage == .batchEditor else { break }
+        next.isSelectingEvents = on
+        if !on {
+            next.selectedEventIDs = []
+        }
+
+    case let .toggleEventSelection(pendingID):
+        guard state.stage == .batchEditor else { break }
+        next.isSelectingEvents = true
+        if next.selectedEventIDs.contains(pendingID) {
+            next.selectedEventIDs.remove(pendingID)
+        } else {
+            next.selectedEventIDs.insert(pendingID)
+        }
+
+    case .selectAllEvents:
+        guard state.stage == .batchEditor, let events = state.assembly?.batch.events else { break }
+        next.isSelectingEvents = true
+        next.selectedEventIDs = Set(events.map(\.pendingID))
+
+    case .clearEventSelection:
+        next.selectedEventIDs = []
+        next.isSelectingEvents = false
+
+    case let .applyTimeToSelectedEvents(time):
+        guard state.stage == .batchEditor, !state.selectedEventIDs.isEmpty else { break }
+        let ids = state.selectedEventIDs
+        // One `editing`, so the whole selection lands in `batches` as a single change and the
+        // store enqueues a single write. Folding the loop into the closure rather than
+        // applying one action per event is what makes "picked 4 events, one write" hold —
+        // four separate sends would coalesce into one write anyway, but only by accident of
+        // the chain, and each would re-derive the markers.
+        editing(state, &next) { assembly in
+            var edited = assembly
+            // Read the events off the assembly *as it stands* rather than off `state`, and
+            // write each change straight back in: `applying` replaces by `pendingID`, so the
+            // list can be walked in one pass without collecting first. The day comes from
+            // the event and the clock from the picker, composed by the provider — which is
+            // the only thing in the app that owns that arithmetic.
+            for event in assembly.batch.events where ids.contains(event.pendingID) {
+                guard let moved = provider.date(onDay: event.date, atTime: time) else { continue }
+                edited = edited.applying(event.with(date: moved), using: provider)
+            }
+            return edited
+        }
+        // Not `persistsAsTyped`. This is one deliberate gesture, not typing, and a time the
+        // user is still dragging through a wheel must not be held back by the name debounce
+        // it has nothing to do with — that debounce coalesces keystrokes on one chain, and a
+        // second writer on it is how a write order stops being the order the gestures were
+        // made in.
+        //
+        // The selection is dropped afterwards, and that is the point of the whole gesture
+        // rather than tidiness. The picker is enabled by having a selection, so leaving the
+        // events ticked would leave it armed: the next box the user ticked — for whatever
+        // reason, possibly to look at the row before deciding — would silently pick up the
+        // time they had just set. Clearing it makes "pick a time for these events" a closed
+        // action that ends by itself, and the picker greys out again to say so.
+        next.selectedEventIDs = []
+        next.isSelectingEvents = false
 
     // MARK: Event editor
 
@@ -282,6 +359,11 @@ public func pcEventSelectionReducer(
             batchPendingID: assembly.batch.pendingID,
             eventPendingID: event.pendingID
         )
+        // Opening one event is the opposite of selecting several, and the two share the
+        // row's tap target. Clearing here means the list comes back from the event editor
+        // showing what it showed before, rather than a selection that the user made for a
+        // gesture they have since replaced.
+        endingEventSelection(&next)
         requesting(&next, .pushEventEditor)
 
     case let .setEventName(name):
@@ -459,6 +541,25 @@ public func pcEventSelectionReducer(
 /// `navigationRequestHandled` resets — a pure reducer has no counter to persist.
 private func requesting(_ state: inout PCEventSelectionState, _ target: NavigationRequest.Target) {
     state.navigationRequest = NavigationRequest(id: (state.navigationRequest?.id ?? 0) + 1, target: target)
+}
+
+/// Drops the batch editor's event selection and its selection mode.
+///
+/// One helper for every boundary the selection must not survive, because each of those
+/// boundaries is a place where the ids in `selectedEventIDs` stop meaning what they meant.
+/// They are `pendingID`s of an assembly: when the assembly goes (entering a batch, opening
+/// one from the registry, leaving the editor, resetting the session) or when the user acts
+/// on the rows as a list rather than as a set (leaving selection mode, opening one event),
+/// carrying them forward would point a selection at events that are not in the batch being
+/// edited. It would not fail loudly — `selectedEvents` filters against the current assembly
+/// and quietly returns fewer or none — which is the reason this is one function rather than
+/// a line repeated at each site: the six sites are exactly where one of them gets missed.
+///
+/// `removeEvent` is deliberately *not* a boundary. It drops the single id it removed,
+/// because the other ids in the selection are still perfectly good.
+private func endingEventSelection(_ next: inout PCEventSelectionState) {
+    next.isSelectingEvents = false
+    next.selectedEventIDs = []
 }
 
 extension PCEventSelectionState {

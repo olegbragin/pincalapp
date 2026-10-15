@@ -261,4 +261,5 @@ private struct BatchCardHeightKey: PreferenceKey {
         AddEditEventBatchListView(calendarID: 1)
     }
     .environment(RootNavigation())
+    .environment(PreviewEventSelectionStore.make())
 }

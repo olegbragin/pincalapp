@@ -46,9 +46,22 @@ public struct NavigationRequest: Equatable {
 
     public enum Target: Equatable {
         case pushDayList
-        case pushBatchEditor
+        /// The batch editor is a sheet, so this is `.presentBatchEditor` and not a push.
+        case presentBatchEditor
         case pushEventEditor
         case pop
+        /// Leaving the batch editor, which dismisses its sheet.
+        ///
+        /// Distinct from `.pop` rather than reusing it. Both used to mean the same thing —
+        /// the batch editor was pushed — and merging them again would make the target depend
+        /// on which stage the user happened to be in: `.pop` removes the top of the
+        /// `NavigationStack`, and for a route that was never pushed that is
+        /// `RootNavigation.pop()`'s `guard !path.isEmpty` returning without doing anything.
+        /// Back in the editor would then be a button that visibly does nothing, which is the
+        /// one failure mode the editor's explicit Back exists to avoid (it is there because
+        /// the system's never reaches the store). One target per way out keeps each
+        /// unambiguous about what it removes.
+        case dismissBatchEditor
         case popToCalendarRoot
     }
 }
@@ -111,6 +124,41 @@ public struct PCEventSelectionState: Equatable {
     /// Kept separate from `assembly` because that one belongs to the batch editor, and a
     /// session that is selecting days is not editing a batch.
     public var multiSelectAssembly: PCEventBatchAssembleUnitOfWork?
+
+    // MARK: Event selection inside the batch editor
+
+    /// Whether the event list is selecting rather than opening.
+    ///
+    /// The same distinction the main calendar's multi-select session makes, for the same
+    /// reason: while a list is selecting, a tap on a row means "include this one" and cannot
+    /// also mean "open this one". Both are the row's only tap target, so the mode has to be
+    /// state the view reads rather than something inferred from whether a selection happens
+    /// to be non-empty.
+    public var isSelectingEvents = false
+
+    /// Which of the assembly's events are selected, by `pendingID`.
+    ///
+    /// **`pendingID`, not `Date`.** Day identity is deliberately day-granular everywhere else
+    /// in this feature, which makes a date a natural key — and it is the wrong one here,
+    /// because these are exactly the events that *have* a time of day. Two events can share a
+    /// day, and the whole point of the feature is to set a time on several of them at once, so
+    /// a date-keyed selection could not say *which* events on a day the time applies to.
+    /// `pendingID` is the identity that is stable for the edit's lifetime: these events live
+    /// inside the staged assembly, which is never rebuilt from a DTO, so their ids survive
+    /// every reload (the same argument that carries `openEvent` and `removeEvent`).
+    public var selectedEventIDs: Set<UUID> = []
+
+    /// The selected events, in the assembly's order.
+    ///
+    /// A derivation rather than a second stored array, for the reason `editorDayEventColors`
+    /// is one: a stored copy is a thing that can disagree with the assembly it claims to
+    /// describe. Ordering comes from the assembly, which is already sorted by date, so the
+    /// result does not depend on the order the user tapped in — which matters because the
+    /// first of them is what the time picker displays.
+    public var selectedEvents: [CalendarEvent] {
+        guard !selectedEventIDs.isEmpty else { return [] }
+        return assembly?.batch.events.filter { selectedEventIDs.contains($0.pendingID) } ?? []
+    }
 
     // MARK: Environment the reducer needs (§5.1)
 

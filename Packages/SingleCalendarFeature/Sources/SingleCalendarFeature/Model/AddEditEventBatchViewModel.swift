@@ -82,6 +82,55 @@ public struct AddEditEventBatchViewModel {
         Binding(get: { defaultColor }, set: { store.send(.setBatchColor($0)) })
     }
 
+    // MARK: - Event time
+
+    /// The selected events, in the assembly's order. A derivation, so it cannot disagree
+    /// with the selection it claims to describe.
+    var selectedEvents: [CalendarEvent] {
+        store.state.selectedEvents
+    }
+
+    /// Whether the time picker has anything to act on.
+    ///
+    /// Disabled rather than hidden with an empty selection. A picker that is on screen and
+    /// does nothing is worse than one that explains itself, but a picker that *appears* the
+    /// moment a row is selected moves the layout under the user's finger — so it stays put
+    /// and greys out.
+    var isTimePickerEnabled: Bool {
+        !selectedEvents.isEmpty
+    }
+
+    /// The time the picker shows: the first selected event's own.
+    ///
+    /// Showing the first event's time rather than a separate draft is what makes the control
+    /// honest about what a pick will do — it opens on what is already stored, so turning the
+    /// wheel without changing it changes nothing. When the selection holds events with
+    /// *different* times the control shows the first and the next pick overwrites all of them
+    /// with it; that is a limitation of `DatePicker` having no "mixed" state, not a rule worth
+    /// reimplementing, and the alternative — showing something that is not stored — would be
+    /// worse.
+    var displayedEventTime: Date {
+        if let first = selectedEvents.first {
+            return first.date
+        }
+        // Nothing selected: the batch's own first event, so opening the editor does not show
+        // today's clock next to events that are at midnight. A disabled control showing an
+        // unrelated instant is still a value the user could read as the current one.
+        if let first = events.first {
+            return first.date
+        }
+        return store.state.day ?? Date()
+    }
+
+    /// Writes `time` to every selected event — the whole of what the picker does.
+    ///
+    /// It is a method and not a `Binding`'s `set` on purpose. A binding commits on every tick
+    /// of the wheel it wraps, which is a gesture, not a decision; this is called once, when
+    /// the user says they are finished with it. See `PCEventTimePicker`.
+    func applyTime(_ time: Date) {
+        store.send(.applyTimeToSelectedEvents(time))
+    }
+
     // MARK: - Commands
 
     func switchYear(to year: Int) {

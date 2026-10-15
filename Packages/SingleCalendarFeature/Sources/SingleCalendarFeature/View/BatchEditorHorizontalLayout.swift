@@ -32,5 +32,6 @@ public struct BatchEditorHorizontalLayout: View {
 
 #Preview {
     BatchEditorHorizontalLayout()
+        .environment(PreviewEventSelectionStore.make())
         .environment(PCKeyboardState())
 }

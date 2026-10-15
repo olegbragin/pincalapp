@@ -216,6 +216,11 @@ struct RootNavigationTests {
         await nav.showCalendarListWithoutSelection()
 
         #expect(nav.path.isEmpty)
+        #expect(
+            nav.presentedSheet == nil,
+            "the batch editor is a sheet now, so this covers clearing it too"
+        )
+        #expect(nav.sheetPath.isEmpty)
     }
 
     /// Same reason `closeCalendarIfSelected` runs the leave hook: a cached store means an
@@ -361,14 +366,54 @@ struct RootNavigationTests {
         #expect(nav.path.count == 1)
     }
 
-    @Test("goTo batchEditor appends to path")
+    /// **Premise changed.** The batch editor was a push, so this asserted `path.count == 1`.
+    /// It is a sheet now — so that the calendar it is editing stays mounted underneath with
+    /// its markers live — and the assertion that matters is the one that says so: a *push*
+    /// here would put the editor on the calendar's stack, replacing the calendar on iPad.
+    @Test("goTo batchEditor presents a sheet instead of pushing")
     @MainActor
     func goToBatchEditor() {
         let nav = RootNavigation()
 
         nav.goTo(.batchEditor)
 
-        #expect(nav.path.count == 1)
+        #expect(nav.presentedSheet == .batchEditor)
+        #expect(nav.path.isEmpty, "the calendar's own stack is not disturbed by the editor")
+        #expect(nav.sheetPath.isEmpty)
+    }
+
+    /// A push made while a sheet is up belongs to the sheet's stack.
+    ///
+    /// This is the whole reason there are two paths. `NavigationStack` inside a sheet does not
+    /// read `path`, so appending there rendered the event editor *behind* the sheet — visible
+    /// in the accessibility tree, impossible to tap, and reported by the UI suite as a focus
+    /// failure on a field that was never reachable.
+    @Test("A push made while a sheet is up lands in the sheet's stack")
+    @MainActor
+    func pushWhileSheetIsUpGoesToTheSheetStack() {
+        let nav = RootNavigation()
+        nav.goTo(.batchEditor)
+
+        nav.goTo(.eventEditor)
+
+        #expect(nav.sheetPath.count == 1, "the event editor opens on top of the batch editor")
+        #expect(nav.path.isEmpty, "and not behind the sheet, where nothing can reach it")
+    }
+
+    @Test("Dismissing a sheet takes its stack with it")
+    @MainActor
+    func dismissSheetClearsTheSheetStack() {
+        let nav = RootNavigation()
+        nav.goTo(.batchEditor)
+        nav.goTo(.eventEditor)
+
+        nav.dismissSheet()
+
+        #expect(nav.presentedSheet == nil)
+        #expect(
+            nav.sheetPath.isEmpty,
+            "otherwise the next sheet opens already showing a screen the user dismissed with the last one"
+        )
     }
 
     @Test("goTo eventEditor appends to path")
@@ -381,13 +426,16 @@ struct RootNavigationTests {
         #expect(nav.path.count == 1)
     }
 
+    /// **Premise changed.** This used to push `.dayBatches` and `.batchEditor` and expect two
+    /// levels. `.batchEditor` presents a sheet rather than pushing, so it is not a level of
+    /// this stack at all — the two remaining push routes are what has to accumulate.
     @Test("Multiple push routes accumulate in path")
     @MainActor
     func multiplePushRoutes() {
         let nav = RootNavigation()
 
         nav.goTo(.dayBatches)
-        nav.goTo(.batchEditor)
+        nav.goTo(.eventEditor)
 
         #expect(nav.path.count == 2)
     }
@@ -461,6 +509,10 @@ struct RootNavigationTests {
         await nav.closeCalendarIfSelected(42)
 
         #expect(nav.path.isEmpty)
+        #expect(
+            nav.presentedSheet == nil,
+            "the batch editor is a sheet now, so this covers closing it too"
+        )
     }
 
     /// Leaving is not just a permission, it has a consequence: the calendar's multi-select
@@ -578,7 +630,7 @@ struct RootNavigationTests {
         let nav = RootNavigation()
 
         nav.goTo(.dayBatches)
-        nav.goTo(.batchEditor)
+        nav.goTo(.eventEditor)
         #expect(nav.path.count == 2)
 
         nav.goTo(.calendar(999, toRoot: true))
@@ -615,12 +667,14 @@ struct RootNavigationTests {
 
     // MARK: - pop()
 
+    /// **Premise changed.** The second level used to be the batch editor, which is now a
+    /// sheet; `pop` would have popped it as "the top of whatever stack is presenting".
     @Test("pop removes only the top of the stack")
     @MainActor
     func popRemovesOneLevel() {
         let nav = RootNavigation()
         nav.goTo(.dayBatches)
-        nav.goTo(.batchEditor)
+        nav.goTo(.eventEditor)
 
         nav.pop()
 
@@ -676,10 +730,12 @@ struct RootNavigationTests {
         #expect(AppRoute.dayBatches.navigationStyle == .push)
     }
 
-    @Test("AppRoute batchEditor has push style")
+    /// **Premise changed.** Was `.push`. A sheet, so the calendar being edited stays on screen
+    /// underneath with its markers live.
+    @Test("AppRoute batchEditor has present style")
     @MainActor
     func batchEditorStyle() {
-        #expect(AppRoute.batchEditor.navigationStyle == .push)
+        #expect(AppRoute.batchEditor.navigationStyle == .present)
     }
 
     @Test("AppRoute eventEditor has push style")

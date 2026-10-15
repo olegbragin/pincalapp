@@ -25,9 +25,9 @@ struct PCEventSelectionReducerTests {
 
     /// The domain layer's only `Foundation.Calendar` owner.
     ///
-    /// `PCCalendarDataProvider.init` forces the current time zone and locale, so a fixture
-    /// calendar cannot pin them. Dates are built at midday UTC and the assertions are
-    /// written to hold in whatever zone the tests run in.
+    /// `init` no longer re-stamps the zone and locale, so a fixture *can* pin them by
+    /// passing its own `Calendar` — this one does not, and instead relies on the default
+    /// following the device, so the tests assert in whatever zone they run in.
     ///
     /// The one thing a UTC-pinned fixture cannot do is place an instant late in the day:
     /// 22:00 UTC is 01:00 of the *next* day east of UTC+2, so such a fixture silently
@@ -227,7 +227,7 @@ struct PCEventSelectionReducerTests {
         #expect(reduce(editing, .ensureAssemblyStarted).next == editing)
     }
 
-    @Test("Tapping an empty day starts a batch editor and asks for a push")
+    @Test("Tapping an empty day starts a batch editor and asks for a sheet presentation")
     func dayTappedEmptyDay() {
         let state = session()
         let (next, effects) = reduce(state, .dayTappedInCalendar(day(4)))
@@ -241,7 +241,7 @@ struct PCEventSelectionReducerTests {
             next.assembly?.canSave == true,
             "a merely-tapped day arrives named and coloured, so it is written without any editing"
         )
-        #expect(next.navigationRequest?.target == .pushBatchEditor)
+        #expect(next.navigationRequest?.target == .presentBatchEditor)
         // Was "staging is not a write". Tapping a day now writes the batch immediately, so
         // there is a row on disk before the editor has been touched — tapping a day is the
         // decision to add a batch, and it has everything needed to make one.
@@ -297,11 +297,11 @@ struct PCEventSelectionReducerTests {
         #expect(next.stage == .batchEditor)
         #expect(next.day == day(9))
         #expect(next.scrollAnchor == day(9))
-        #expect(next.navigationRequest?.target == .pushBatchEditor)
+        #expect(next.navigationRequest?.target == .presentBatchEditor)
         #expect(effects.count == 1, "the plus button writes its new batch at once too")
     }
 
-    @Test("openBatch stages the batch it found and asks for a push")
+    @Test("openBatch stages the batch it found and asks for a sheet presentation")
     func openBatch() {
         let target = batch("morning", on: 1, id: 7)
         let (next, _) = reduce(session(batches: [target]), .openBatch(id: target.mergeKey))
@@ -310,7 +310,7 @@ struct PCEventSelectionReducerTests {
         #expect(next.assembly?.batch.pendingID == target.pendingID)
         #expect(next.day == target.date)
         #expect(next.scrollAnchor == target.date)
-        #expect(next.navigationRequest?.target == .pushBatchEditor)
+        #expect(next.navigationRequest?.target == .presentBatchEditor)
     }
 
     /// The regression that made a card tap do nothing.
@@ -343,7 +343,7 @@ struct PCEventSelectionReducerTests {
             next.assembly?.batch.persistedID == drawn.persistedID,
             "the card named the row by its durable id, so the reload did not lose it"
         )
-        #expect(next.navigationRequest?.target == .pushBatchEditor)
+        #expect(next.navigationRequest?.target == .presentBatchEditor)
     }
 
     @Test("openBatch with an unknown id is rejected")
@@ -399,7 +399,9 @@ struct PCEventSelectionReducerTests {
             provider.isSameDay(dayList, day(1)),
             "returns to the day list for the day the batch is on, got \(dayList)"
         )
-        #expect(next.navigationRequest?.target == .pop)
+        // The editor is a sheet now, so leaving it is `.dismissBatchEditor`. The *stage* is
+        // still the day list underneath — the sheet only covers it, it does not replace it.
+        #expect(next.navigationRequest?.target == .dismissBatchEditor)
     }
 
     @Test("Back from the batch editor with no day falls back to idle")
@@ -1427,6 +1429,11 @@ struct PCEventSelectionReducerTests {
 
         let openable = idle
         let openableKey = try #require(openable.batches.first?.mergeKey)
+        // The time picker's action needs a *selection* to act on, and `everyActionIsCovered`
+        // is exactly the test that would otherwise report it as unreachable code: nothing else
+        // here builds a selection first.
+        var multiDayEditing = editing
+        multiDayEditing.selectedEventIDs = Set(multiDayEditing.assembly?.batch.events.map(\.pendingID) ?? [])
         let openableEvent = editing.assembly.map { try! #require($0.batch.events.first?.pendingID) } ?? UUID()
 
         let cases: [(name: String, state: PCEventSelectionState, action: PCEventSelectionAction)] = try [
@@ -1442,6 +1449,14 @@ struct PCEventSelectionReducerTests {
             ("setBatchColor", editing, .setBatchColor(.option1)),
             ("toggleDay", editing, .toggleDay(day(5))),
             ("removeEvent", editing, .removeEvent(pendingID: #require(editing.assembly?.batch.events.first?.pendingID))),
+            ("setEventSelectionMode", editing, .setEventSelectionMode(true)),
+            ("toggleEventSelection", editing, .toggleEventSelection(pendingID: openableEvent)),
+            ("selectAllEvents", editing, .selectAllEvents),
+            // Needs a selection to clear: run against a state that has one, or the action is
+            // legitimately inert and `everyActionIsCovered` reports it as unexercised — which
+            // is the test doing its job, not a fixture that needs loosening.
+            ("clearEventSelection", multiDayEditing, .clearEventSelection),
+            ("applyTimeToSelectedEvents", multiDayEditing, .applyTimeToSelectedEvents(day(4))),
             ("openEvent", editing, .openEvent(pendingID: openableEvent)),
             ("setEventName", staged, .setEventName("n")),
             ("setEventDate", staged, .setEventDate(day(7))),
@@ -1485,9 +1500,10 @@ struct PCEventSelectionReducerTests {
         the §6.2 case list, less the three that went with the checkmarks: `saveTapped`, \
         `saveEventTapped` and `commitTapped`. None of them had a button by the time this \
         ran — `commitTapped` never did — and an action no screen can send is a case nothing \
-        can exercise.
+        can exercise. Since §6.2 the list has also grown by five: the event selection and the \
+        time it applies.
         """)
-        #expect(cases.count == 27, message)
+        #expect(cases.count == 32, message)
     }
 
     @Test("A rejected action leaves the state byte-identical")

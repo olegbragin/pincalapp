@@ -178,7 +178,10 @@ struct AddEditEventBatchViewModelTests {
         #expect(store.state.batches.count == 1)
         #expect(store.state.batches.first?.name == "Morning")
         #expect(store.state.assembly == nil, "the assembly has left the line")
-        #expect(store.state.navigationRequest?.target == .pop)
+        // `.dismissBatchEditor` rather than `.pop`: the editor is a sheet, so its Back has to
+        // dismiss that sheet. `.pop` removes the top of the calendar's stack, and there is no
+        // editor on it — Back would have been a button that visibly did nothing.
+        #expect(store.state.navigationRequest?.target == .dismissBatchEditor)
         #expect(
             await persistence.writes.count == writesBefore,
             "the row was already in `batches` — `editing` merged it when it was typed, so leaving has nothing to write"

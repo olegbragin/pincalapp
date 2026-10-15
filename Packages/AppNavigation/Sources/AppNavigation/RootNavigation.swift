@@ -32,6 +32,23 @@ public class RootNavigation {
     public var selectedSidebarCategory: SidebarCategory? = .calendarList
     public var path = NavigationPath()
 
+    /// The stack *inside* a presented sheet.
+    ///
+    /// A sheet brings its own `NavigationStack`, and that stack does not read `path`. The
+    /// batch editor needs a toolbar to render its Back into (a `ToolbarItem` outside a stack
+    /// is dropped), so it is wrapped in one — and the moment it is, anything pushed from
+    /// inside it has to land in *that* stack. Appending to `path` instead pushed the event
+    /// editor onto the root stack, behind the sheet: it still appeared in the accessibility
+    /// tree, so a test's `waitForExistence` passed and its `tap()` failed with "neither
+    /// element nor any descendant has keyboard focus", which reads as a focus bug and is
+    /// actually a view nobody can reach.
+    ///
+    /// Two paths rather than one parameterised push, because the choice is made once per
+    /// `goTo` and the alternative — a `push(_:onto:)` enum threading a "which stack" through
+    /// every call site — puts the same question in front of every caller instead of
+    /// answering it here, where the answer is already known: a sheet is up or it is not.
+    public var sheetPath = NavigationPath()
+
     /// Which column is shown when the split view collapses on iPhone.
     /// Setting `.detail` presents the detail column; the system flips it back
     /// when the user taps Back.
@@ -95,14 +112,38 @@ public class RootNavigation {
         path.isEmpty
     }
 
-    /// Pops the top of the navigation stack, if there is one.
+    /// The stack a push belongs to right now: the sheet's while one is up, the root's
+    /// otherwise.
     ///
-    /// The reducer emits `.pop` as a `NavigationRequest` when a stage is left, and the
-    /// view layer carries it out. There was no way to express that before: `goTo` only
-    /// appends, and `popToRoot` is private and all-or-nothing. Without this, a back
-    /// transition driven by state would have to clear the whole stack, which would drop
-    /// the calendar detail too.
+    /// A read/write accessor rather than a value, because `NavigationPath` is a struct and
+    /// `append` is mutating — returning a copy would push onto a copy and throw it away, which
+    /// compiles and does nothing.
+    ///
+    /// One accessor because the answer is the same question in two places in `goTo`, and
+    /// "which stack" answered differently in them is how a destination ends up behind the
+    /// sheet that is meant to be showing it.
+    private var activeStack: NavigationPath {
+        get { presentedSheet == nil ? path : sheetPath }
+        set {
+            if presentedSheet == nil {
+                path = newValue
+            } else {
+                sheetPath = newValue
+            }
+        }
+    }
+
+    /// Pops the top of whichever stack is presenting, if it has anything on it.
+    ///
+    /// Prefers the sheet's. A Back inside a sheet must not fall through to the calendar's
+    /// stack behind it: that would close the calendar while leaving the sheet up, which is
+    /// the reverse of what the user asked for and — because the calendar's `onDisappear`
+    /// ends its multi-select session — also a state change nobody made.
     public func pop() {
+        if !sheetPath.isEmpty {
+            sheetPath.removeLast()
+            return
+        }
         guard !path.isEmpty else { return }
         path.removeLast()
     }
@@ -211,6 +252,13 @@ public class RootNavigation {
         guard detailCalendarID == id else { return }
         await willLeaveCurrentCalendar?()
         popToRoot()
+        // The sheet is part of "the screens this calendar was showing". `popToRoot` clears
+        // the stacks, but a sheet is not on either of them — leaving it up would keep an
+        // editor for a calendar that has just ceased to exist, editing a store the app root
+        // has stopped injecting. Closing the calendar has always taken its screens with it
+        // (see `willLeaveCurrentCalendar` running *before* the ids change, for the same
+        // reason); the sheet just gave that rule a second thing to cover.
+        dismissSheet()
         onCalendarChanged?(nil)
         detailCalendarID = nil
     }
@@ -310,20 +358,23 @@ public class RootNavigation {
             onCalendarChanged?(id)
             detailCalendarID = id
             preferredCompactColumn = .detail
-            presentedSheet = nil
+            // `dismissSheet()` and not a bare assignment: it also clears the sheet's stack,
+            // and opening a calendar is exactly the moment a sheet goes away with whatever
+            // had been pushed inside it.
+            dismissSheet()
 
         // MARK: - Push (navigation stack)
 
         case .dayBatches:
-            path.append(route)
-
-        case .batchEditor:
-            path.append(route)
+            activeStack.append(route)
 
         case .eventEditor:
-            path.append(route)
+            activeStack.append(route)
 
         // MARK: - Present (sheet)
+
+        case .batchEditor:
+            presentedSheet = route
 
         case .addCalendar:
             presentedSheet = route
@@ -331,8 +382,15 @@ public class RootNavigation {
     }
 
     /// Dismiss presented sheet
+    ///
+    /// Clears the sheet's stack with it. A sheet dismissed by a swipe while the event editor
+    /// was pushed inside it would otherwise leave that stack full, and the next sheet would
+    /// open already showing a screen the user had dismissed along with the last one — with no
+    /// `NavigationRequest` in play to explain it, because the sheet's contents were never
+    /// asked for.
     public func dismissSheet() {
         presentedSheet = nil
+        sheetPath = NavigationPath()
     }
 
     /// Clear navigation stack (pop to root). Only callable internally — callers
@@ -340,5 +398,6 @@ public class RootNavigation {
     /// return to its root in one step.
     private func popToRoot() {
         path = NavigationPath()
+        sheetPath = NavigationPath()
     }
 }

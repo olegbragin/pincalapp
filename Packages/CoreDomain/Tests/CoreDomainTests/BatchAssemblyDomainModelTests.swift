@@ -97,6 +97,53 @@ struct BatchAssemblyDomainModelTests {
         #expect(batch.events.map(\.name) == ["Earlier", "Middle", "Later"])
     }
 
+    @Test("A batch narrowed to one day keeps only that day's events")
+    func batchNarrowsToADay() {
+        let batch = CalendarEventBatch(
+            name: "B",
+            colorName: "eventColorOption1",
+            events: [event("First", on: 3), event("Second", on: 11), event("Third", on: 20)]
+        )
+
+        let onThird = batch.on(day(2026, 6, 11), using: provider)
+
+        #expect(onThird.events.map(\.name) == ["Second"])
+        #expect(batch.events.count == 3, "the original is untouched — this is a projection")
+    }
+
+    /// The property that makes the narrowing safe to hand back to the reducer: it still
+    /// *is* the row it came from, so opening or deleting it addresses the whole batch.
+    @Test("A narrowed batch keeps the identity of the row it came from")
+    func narrowingPreservesIdentity() {
+        let batch = CalendarEventBatch(
+            persistedID: 77,
+            name: "B",
+            events: [event("First", on: 3), event("Second", on: 11)]
+        )
+
+        let narrowed = batch.on(day(2026, 6, 3), using: provider)
+
+        #expect(narrowed.mergeKey == batch.mergeKey)
+        #expect(narrowed.persistedID == batch.persistedID)
+        #expect(narrowed.pendingID == batch.pendingID)
+        #expect(narrowed.name == batch.name)
+        #expect(narrowed.colorName == batch.colorName)
+    }
+
+    /// A day the batch does not touch narrows to *empty* rather than to the whole batch.
+    ///
+    /// Returning the batch unchanged would make `on(_:using:)` a no-op that silently did
+    /// the wrong thing, and an empty result is the honest answer: there is nothing here.
+    @Test("Narrowing to a day the batch does not cover leaves it empty")
+    func narrowingToAnAbsentDayEmpties() {
+        let batch = CalendarEventBatch(name: "B", events: [event("Only", on: 3)])
+
+        let elsewhere = batch.on(day(2026, 6, 4), using: provider)
+
+        #expect(elsewhere.events.isEmpty)
+        #expect(batch.occurs(on: day(2026, 6, 4), using: provider) == false)
+    }
+
     @Test("Batch date is derived from its first event, not stored")
     func batchDateIsDerived() {
         let empty = CalendarEventBatch(name: "Empty")

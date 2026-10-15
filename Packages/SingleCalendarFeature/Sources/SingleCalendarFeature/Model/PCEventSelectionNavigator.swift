@@ -50,12 +50,23 @@ public enum PCEventSelectionNavigator {
         switch request.target {
         case .pushDayList:
             navigation.goTo(.dayBatches)
-        case .pushBatchEditor:
+        case .presentBatchEditor:
             navigation.goTo(.batchEditor)
         case .pushEventEditor:
             navigation.goTo(.eventEditor)
         case .pop:
             navigation.pop()
+        case .dismissBatchEditor:
+            // The batch editor is a sheet, so leaving it dismisses that sheet. `dismissSheet()`
+            // and not an assignment: `presentedSheet` is `private(set)`, and a route that set
+            // it directly would let a second caller clear a sheet the first one still meant
+            // to be showing.
+            //
+            // This is deliberately not `pop()`. `pop()` removes the top of the
+            // `NavigationStack`, and the editor was never pushed onto it — so `pop()` would
+            // hit `guard !path.isEmpty` and return having done nothing, leaving Back as a
+            // button that visibly does nothing.
+            navigation.dismissSheet()
         case .popToCalendarRoot:
             // Reopening the calendar at its root is how "leave the assembly line" is
             // expressed: it clears the pushed stack without closing the calendar itself.

@@ -36,8 +36,19 @@ public final class AddEditEventBatchListViewModel {
 
     // MARK: - Projections
 
+    /// The batches on the selected day, each narrowed to that day.
+    ///
+    /// Two filters, and the second is the one this screen was missing. `dayBatches` already
+    /// answers "which batches touch this day"; it handed back the whole batch, so a batch
+    /// covering four days listed under the first of them showed three events belonging to
+    /// days the user was not on. `on(_:using:)` keeps the row's identity — `mergeKey`,
+    /// `persistedID`, `pendingID` — so opening, deleting and merging all still address the
+    /// batch it was drawn from, and only the *drawn* content is the day's.
     var eventBatches: [CalendarEventBatch] {
-        store.state.dayBatches
+        let day = store.state.day
+        let batches = store.state.dayBatches
+        guard let day else { return batches }
+        return batches.map { $0.on(day, using: store.state.dataProvider) }
     }
 
     var selectedDay: Date? {

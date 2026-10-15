@@ -32,5 +32,9 @@ public struct BatchEditorVerticalLayout: View {
 
 #Preview {
     BatchEditorVerticalLayout()
+        .environment(PreviewEventSelectionStore.make())
+        // The keyboard state too: `AddEditEventBatchView` reaches `.keyboardAvoidable()`,
+        // which reads it from the environment and traps when it is missing. The preview has
+        // to satisfy everything the *subtree* asks for, not just what this view reads itself.
         .environment(PCKeyboardState())
 }

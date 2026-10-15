@@ -22,7 +22,7 @@ public enum SidebarCategory: Equatable, Hashable {
 
 /// Single global enum for all possible navigation routes in the app.
 ///
-/// The three push cases carry no payload. They used to: `dayBatches(Date)`,
+/// The destination cases carry no payload. They used to: `dayBatches(Date)`,
 /// `batchEditor(BatchEditorSource)` and `eventEditor(EventEditorSource)` shipped the day,
 /// the batch and the event across in the route. That data is in the batch-assembly store
 /// now, and a payload was a *snapshot* of it — push the editor, edit the batch, and the
@@ -41,10 +41,15 @@ public enum AppRoute: Hashable {
 
     // Navigation stack pushes
     case dayBatches
-    case batchEditor
     case eventEditor
 
-    /// Sheets
+    // Sheets
+    ///
+    /// The batch editor is a sheet rather than a push, so that the calendar it is editing
+    /// stays mounted underneath with its markers live. A push takes the detail column's
+    /// stack with it on iPad — the calendar is replaced in place, not covered — so "edit a
+    /// batch over the calendar" was not expressible as a push there.
+    case batchEditor
     case addCalendar
 
     var navigationStyle: NavigationStyle {
@@ -53,9 +58,9 @@ public enum AppRoute: Hashable {
             return .open // Changes split-view content column
         case .calendar:
             return .open
-        case .dayBatches, .batchEditor, .eventEditor:
+        case .dayBatches, .eventEditor:
             return .push
-        case .addCalendar:
+        case .batchEditor, .addCalendar:
             return .present
         }
     }
