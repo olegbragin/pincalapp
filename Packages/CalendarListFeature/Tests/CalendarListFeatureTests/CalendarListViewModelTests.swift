@@ -711,9 +711,16 @@ private func makeFixture(
     return (managing, viewModel)
 }
 
+/// Waits for `condition` rather than sleeping for a fixed span, but still on a deadline.
+///
+/// The deadline is 5 seconds, and it was 2. Not because the work got slower: the change feed is
+/// a main-actor hop away and normally lands in microseconds. It is because these are the only
+/// wall-clock budgets in the suite, and they are the only assertions that break when the machine
+/// is loaded — four parallel destinations run them often enough to see it. A test that reports a
+/// removal it did receive, because the wait gave up first, costs more than it saves.
 @MainActor
 private func waitUntil(
-    timeout: TimeInterval = 2,
+    timeout: TimeInterval = 5,
     _ condition: @MainActor () -> Bool
 ) async {
     let deadline = Date().addingTimeInterval(timeout)
@@ -729,7 +736,7 @@ private func waitUntil(
 /// call site `async` for the sake of the handful that need it.
 @MainActor
 private func waitUntil(
-    timeout: TimeInterval = 2,
+    timeout: TimeInterval = 5,
     _ condition: @MainActor () async -> Bool
 ) async {
     let deadline = Date().addingTimeInterval(timeout)

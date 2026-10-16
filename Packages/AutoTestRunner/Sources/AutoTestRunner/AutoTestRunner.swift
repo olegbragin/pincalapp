@@ -1,24 +1,51 @@
 
 import Foundation
 
+/// A test destination, described by **idiom** rather than by name.
+///
+/// The two used to be hardcoded device names and a hardcoded device type, and that is what this
+/// replaced: those names are not stable on any given machine. On this one, neither
+/// "iPhone 17 Pro - AutoTest" nor "iPad Pro 13-inch (M5) (16GB) - AutoTest" existed — the only
+/// device was an iPhone on iOS 27.1 — so the runner looked for two devices that were not there,
+/// tried to create them on a runtime that rejects those device types, and reported a creation
+/// failure. A test that cannot name its own phone is a test that quietly stops running.
+///
+/// So: `idiomPrefix` is what is matched ("iPhone", "iPad"), and everything else is a *fallback*
+/// used only when no device of that idiom exists at all.
 private struct AutoTestSimulator {
-    let name: String
-    let deviceTypeIdentifier: String
+    /// Substring that identifies the idiom in a device name.
+    let idiomPrefix: String
+
+    /// Name given to a device this runner had to create. Never matched on — see above.
+    let createdName: String
+
+    /// Device types to try, newest first, when creating.
+    let deviceTypeIdentifiers: [String]
 }
 
 private let autoTestSimulators: [(profile: String, simulator: AutoTestSimulator)] = [
     (
         "iphone",
         AutoTestSimulator(
-            name: "iPhone 17 Pro - AutoTest",
-            deviceTypeIdentifier: "com.apple.CoreSimulator.SimDeviceType.iPhone-17-Pro"
+            idiomPrefix: "iPhone",
+            createdName: "iPhone AutoTest",
+            deviceTypeIdentifiers: [
+                "com.apple.CoreSimulator.SimDeviceType.iPhone-17-Pro",
+                "com.apple.CoreSimulator.SimDeviceType.iPhone-16-Pro",
+                "com.apple.CoreSimulator.SimDeviceType.iPhone-15-Pro",
+            ]
         )
     ),
     (
         "ipad",
         AutoTestSimulator(
-            name: "iPad Pro 13-inch (M5) (16GB) - AutoTest",
-            deviceTypeIdentifier: "com.apple.CoreSimulator.SimDeviceType.iPad-Pro-13-inch-M5-16GB"
+            idiomPrefix: "iPad",
+            createdName: "iPad AutoTest",
+            deviceTypeIdentifiers: [
+                "com.apple.CoreSimulator.SimDeviceType.iPad-Pro-13-inch-M5-16GB",
+                "com.apple.CoreSimulator.SimDeviceType.iPad-Air-13-inch-M4",
+                "com.apple.CoreSimulator.SimDeviceType.iPad-Pro-12-9-inch-6th-generation",
+            ]
         )
     ),
 ]
@@ -100,7 +127,11 @@ struct AutoTestRunner {
         if checkOnly {
             for (profile, simulator) in autoTestSimulators {
                 let udid = udids[profile] ?? "?"
-                print("\(profile): \(simulator.name) → \(udid)")
+                // The *resolved* device, not the label: which of several iPhones was picked is
+                // the thing worth printing, and it is the thing that has changed now that
+                // selection is by idiom rather than by a hardcoded name.
+                let name = udid == "?" ? "?" : (deviceName(forUdid: udid) ?? simulator.createdName)
+                print("\(profile): \(name) → \(udid)")
             }
             print("Preflight OK.")
             exit(0)
@@ -315,24 +346,100 @@ struct AutoTestRunner {
 
     // MARK: - Simulator resolution & creation
 
+    /// The device to test on for each profile: the **first available device of that idiom**,
+    /// preferring the newest iOS version, then the newest model.
+    ///
+    /// "First available" is the whole point — no name is matched. Within a runtime, devices are
+    /// ordered by name using a numeric comparison, so "iPhone 18 Pro Max" sorts above "iPhone
+    /// 17 Pro" rather than above it alphabetically-but-accidentally (a plain `>` puts "18"
+    /// before "8" being wrong the other way, and "Pro Max" before "Pro" is the same trap).
     private static func resolveSimulatorUDIDs() throws -> [String: String] {
-        var available = availableSimulators()
+        let available = availableSimulatorsByIdiom()
         var resolved: [String: String] = [:]
 
         for (profile, simulator) in autoTestSimulators {
-            if let udid = available[simulator.name] {
+            if let udid = available[simulator.idiomPrefix]?.first?.udid {
                 resolved[profile] = udid
                 continue
             }
 
-            print("Simulator '\(simulator.name)' not found. Creating it...")
+            print("No \(simulator.idiomPrefix) simulator found. Creating one...")
             guard let udid = try createSimulator(simulator) else {
-                throw SimulatorError.creationFailed(simulator.name)
+                throw SimulatorError.creationFailed(simulator.idiomPrefix)
             }
-            available[simulator.name] = udid
             resolved[profile] = udid
         }
         return resolved
+    }
+
+    /// One simulator as `simctl` reports it, with the ordering the resolver needs.
+    private struct AvailableSimulator {
+        let udid: String
+        let name: String
+        let runtimeVersion: [Int]
+
+        /// Newest first: iOS version, then model name, both numerically.
+        static func isOrderedBefore(_ lhs: AvailableSimulator, _ rhs: AvailableSimulator) -> Bool {
+            if lhs.runtimeVersion != rhs.runtimeVersion {
+                // Lexicographic, component by component: `[27, 1] > [27, 0]`, and `[27] > [26, 4]`
+                // even though a plain array compare would not say so. `27.0` is not "newer than
+                // 27.1" merely because the string sorts higher.
+                for (l, r) in zip(lhs.runtimeVersion, rhs.runtimeVersion) where l != r {
+                    return l > r
+                }
+                return lhs.runtimeVersion.count > rhs.runtimeVersion.count
+            }
+            return lhs.name.compare(rhs.name, options: .numeric) == .orderedDescending
+        }
+    }
+
+    /// Available devices grouped by idiom prefix, each list sorted newest first.
+    ///
+    /// The runtime's version is parsed out of its identifier (`…SimRuntime.iOS-27-1`) so the
+    /// order is numeric. Sorting the *name* — which carries the iOS version on the runtime dict
+    /// key, not on the device — is what made a plain string compare pick the wrong device
+    /// before.
+    private static func availableSimulatorsByIdiom() -> [String: [AvailableSimulator]] {
+        let (status, output) = runCapturingOutput(["xcrun", "simctl", "list", "--json", "devices"])
+        guard status == 0,
+              let data = output.data(using: .utf8),
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let byRuntime = json["devices"] as? [String: Any]
+        else {
+            return [:]
+        }
+
+        var result: [String: [AvailableSimulator]] = [:]
+        for (runtimeIdentifier, devices) in byRuntime {
+            guard let devices = devices as? [[String: Any]] else { continue }
+            let version = runtimeVersion(from: runtimeIdentifier)
+            for device in devices {
+                guard let name = device["name"] as? String,
+                      let udid = device["udid"] as? String,
+                      (device["isAvailable"] as? Bool) == true
+                else {
+                    continue
+                }
+                for simulator in autoTestSimulators where name.contains(simulator.simulator.idiomPrefix) {
+                    result[simulator.simulator.idiomPrefix, default: []].append(
+                        AvailableSimulator(udid: udid, name: name, runtimeVersion: version)
+                    )
+                }
+            }
+        }
+
+        for key in result.keys {
+            result[key]?.sort(by: AvailableSimulator.isOrderedBefore)
+        }
+        return result
+    }
+
+    /// `[27, 1]` from `…SimRuntime.iOS-27-1`. Non-numeric components sort as 0.
+    private static func runtimeVersion(from identifier: String) -> [Int] {
+        guard let range = identifier.range(of: "iOS-") else { return [] }
+        return identifier[range.upperBound...]
+            .split(separator: "-")
+            .map { Int($0) ?? 0 }
     }
 
     /// Whether a device is currently booted.
@@ -364,32 +471,23 @@ struct AutoTestRunner {
         return false
     }
 
-    private static func availableSimulators() -> [String: String] {
-        let (status, output) = runCapturingOutput(["xcrun", "simctl", "list", "--json", "devices"])
-        guard status == 0,
-              let data = output.data(using: .utf8),
-              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let byRuntime = json["devices"] as? [String: Any]
-        else {
-            return [:]
-        }
-
-        var result: [String: String] = [:]
-        for (_, devices) in byRuntime {
-            guard let devices = devices as? [[String: Any]] else { continue }
-            for device in devices {
-                guard let name = device["name"] as? String,
-                      let udid = device["udid"] as? String,
-                      (device["isAvailable"] as? Bool) == true
-                else {
-                    continue
-                }
-                result[name] = udid
+    /// The name `simctl` reports for `udid`, or nil when it does not report it.
+    private static func deviceName(forUdid udid: String) -> String? {
+        for simulators in availableSimulatorsByIdiom().values {
+            if let match = simulators.first(where: { $0.udid == udid }) {
+                return match.name
             }
         }
-        return result
+        return nil
     }
 
+    /// Creates a device of `simulator`'s idiom: every configured device type against every
+    /// available runtime, newest first on both axes.
+    ///
+    /// The cross-product is the point. On this machine every iPad Pro M5 device type is
+    /// *"Incompatible device"* on iOS 27.1 and works on 27.0, so a loop over runtimes that tried
+    /// only the newest device type would find nothing at all — while a loop over device types
+    /// with the runtime pinned to the newest would fail the same way.
     private static func createSimulator(_ simulator: AutoTestSimulator) throws -> String? {
         let runtimes = availableRuntimes()
         guard !runtimes.isEmpty else {
@@ -397,13 +495,15 @@ struct AutoTestRunner {
         }
 
         for runtime in runtimes {
-            let (status, output) = runCapturingOutput(
-                ["xcrun", "simctl", "create", simulator.name, simulator.deviceTypeIdentifier, runtime]
-            )
-            if status == 0 {
-                let udid = output.trimmingCharacters(in: .whitespacesAndNewlines)
-                print("Created \(simulator.name) (\(udid)) on \(runtime).")
-                return udid.isEmpty ? nil : udid
+            for deviceType in simulator.deviceTypeIdentifiers {
+                let (status, output) = runCapturingOutput(
+                    ["xcrun", "simctl", "create", simulator.createdName, deviceType, runtime]
+                )
+                if status == 0 {
+                    let udid = output.trimmingCharacters(in: .whitespacesAndNewlines)
+                    print("Created \(simulator.createdName) (\(udid)) on \(runtime).")
+                    return udid.isEmpty ? nil : udid
+                }
             }
         }
         return nil
@@ -530,7 +630,10 @@ struct AutoTestRunner {
             guard inDefaults else { continue }
 
             if trimmed.hasPrefix("simulatorName:") {
-                let replacement = "  simulatorName: \(simulator.name)"
+                // The resolved device's name, not a configured label — the config is written
+                // for an interactive session, and that session has to name a device that
+                // exists on *this* machine.
+                let replacement = "  simulatorName: \(deviceName(forUdid: udid) ?? simulator.createdName)"
                 if lines[index] != replacement {
                     lines[index] = replacement
                     changed = true
@@ -546,9 +649,11 @@ struct AutoTestRunner {
 
         if changed {
             try lines.joined(separator: "\n").write(to: configURL, atomically: true, encoding: .utf8)
-            print("Updated \(configURL.lastPathComponent): \(simulator.name) -> \(udid)")
+            let name = deviceName(forUdid: udid) ?? simulator.createdName
+            print("Updated \(configURL.lastPathComponent): \(name) -> \(udid)")
         } else {
-            print("\(configURL.lastPathComponent) already points at \(simulator.name) - no change.")
+            let name = deviceName(forUdid: udid) ?? simulator.createdName
+            print("\(configURL.lastPathComponent) already points at \(name) - no change.")
         }
     }
 
