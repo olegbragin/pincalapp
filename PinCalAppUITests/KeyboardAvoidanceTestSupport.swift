@@ -338,6 +338,61 @@ enum KeyboardAvoidanceTestSupport {
 
     // MARK: - Reading a day's marker state
 
+    // MARK: - Event rows in the batch editor
+
+    /// Prefix of the batch editor's event-row identifiers, one per row in assembly order.
+    ///
+    /// A row is addressed by *position*, not by its text. It used to be addressed by its text
+    /// — `"label CONTAINS \"Event1\""`, and later `"CONTAINS \"at\""` once the name was gone
+    /// from the label — and neither survived: the row states when an event is rather than what
+    /// it is called, so there is no name to match, and the separator in a formatted date is the
+    /// locale's ("в" in Russian), so even the timestamp is not a stable handle. The index is,
+    /// because the assembly keeps its events sorted by date for the whole edit.
+    static let eventRowIdentifierPrefix = "batch-event-row-"
+
+    /// Every event row currently mounted in the batch editor.
+    ///
+    /// Not scoped to `collectionViews`: the keyboard's dictation key was the reason for that,
+    /// and an identifier match cannot collide with it.
+    @MainActor
+    static func eventRows(in app: XCUIApplication) -> XCUIElementQuery {
+        app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", eventRowIdentifierPrefix))
+    }
+
+    /// The event row at `index`, 0-based, in the assembly's (date-sorted) order.
+    @MainActor
+    static func eventRow(_ index: Int, in app: XCUIApplication) -> XCUIElement {
+        app.buttons["\(eventRowIdentifierPrefix)\(index)"]
+    }
+
+    /// How many event rows the batch editor is listing.
+    ///
+    /// A floor, not the batch's size, for anything the lazy stack has not realized.
+    @MainActor
+    static func eventRowCount(in app: XCUIApplication) -> Int {
+        eventRows(in: app).count
+    }
+
+    /// Prefix of the *batch card's* event-row identifiers, on the day's batch list.
+    ///
+    /// A different prefix from `eventRowIdentifierPrefix` on purpose: both screens are
+    /// mounted at once — the day list behind, the editor pushed over it — so one prefix would
+    /// make every count include the other's rows.
+    static let cardEventRowIdentifierPrefix = "batch-card-event-row-"
+
+    /// Every event row across the batch cards on the day's batch list.
+    @MainActor
+    static func cardEventRows(in app: XCUIApplication) -> XCUIElementQuery {
+        app.descendants(matching: .any).matching(
+            NSPredicate(format: "identifier BEGINSWITH %@", cardEventRowIdentifierPrefix)
+        )
+    }
+
+    @MainActor
+    static func cardEventRowCount(in app: XCUIApplication) -> Int {
+        cardEventRows(in: app).count
+    }
+
     /// The day cell for `day`, topmost hittable one.
     ///
     /// "Topmost" because a pushed or presented editor carries its **own** calendar, so the
@@ -580,12 +635,22 @@ enum KeyboardAvoidanceTestSupport {
     /// than leaving the screen.
     @MainActor
     static func leaveCurrentScreen(in app: XCUIApplication) {
-        let back = app.buttons.matching(identifier: "Back").firstMatch.exists
-            ? app.buttons.matching(identifier: "Back").firstMatch
-            : app.buttons.matching(identifier: "BackButton").firstMatch
-        if back.waitForExistence(timeout: 3) {
-            back.tap()
-            return
+        // The system Back, then the editors' own Back.
+        //
+        // The two editors hide the navigation bar's back button and supply their own
+        // store-routed one, so neither carries the identifier the system button has — a helper
+        // that only knew "Back"/"BackButton" found no Back at all while an editor was open,
+        // fell through to the sidebar, and failed with "Expected either a Back button or a
+        // reachable sidebar" on a screen that plainly had one. The editors' identifiers are
+        // checked before the sidebar for the same reason the system one is: a real Back is a
+        // Back, and only a root screen has to be left by switching category.
+        let backIdentifiers = ["Back", "BackButton", "batch-editor-back-button", "event-editor-back-button"]
+        for identifier in backIdentifiers {
+            let back = app.buttons.matching(identifier: identifier).firstMatch
+            if back.waitForExistence(timeout: identifier == "Back" ? 3 : 1) {
+                back.tap()
+                return
+            }
         }
 
         // No Back button: the screen is a root, so leaving means switching category.

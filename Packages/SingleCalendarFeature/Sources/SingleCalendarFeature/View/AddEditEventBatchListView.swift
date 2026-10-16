@@ -205,7 +205,10 @@ private struct BatchEventCard: View {
     }
 
     private var eventRows: some View {
-        ForEach(eventBatch.events) { event in
+        // Indexed for the same reason as the editor's list: a row is identified by its
+        // position in the (date-sorted) batch, because its text is a formatted timestamp and
+        // the locale decides what that looks like.
+        ForEach(Array(eventBatch.events.enumerated()), id: \.element.pendingID) { index, event in
             HStack(spacing: 8) {
                 Circle()
                     .fill(eventColor(event))
@@ -217,6 +220,9 @@ private struct BatchEventCard: View {
                 Spacer(minLength: 0)
             }
             .padding(.vertical, 2)
+            // Leaf-level: the card is the tap target above, and an identifier on a container
+            // would shadow this row's.
+            .accessibilityIdentifier("batch-card-event-row-\(index)")
         }
     }
 

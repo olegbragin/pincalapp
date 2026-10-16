@@ -730,10 +730,11 @@ final class PinCalAppUITests: XCTestCase {
             "Confirming a session should not open the batch editor"
         )
 
-        // The batch carries its default name, since no editor ever opened to rename it. Hard
-        // coded rather than the constant: this target is not linked against
-        // SingleCalendarFeature, so referencing it fails to link.
-        let batchName = "New event"
+        // **Premise changed.** This used to look the batch up by its name, "New event", on the
+        // reasoning that a batch no editor ever opened would still carry the default. Batches
+        // now arrive *unnamed* — an empty name is what keeps a merely-tapped day a draft, and
+        // writing "New event" on the tap is the misclick the reducer's comment refuses — so the
+        // name is not on the screen and the card is identified by what it contains instead.
 
         // Back on the calendar: both days are marked.
         for day in [17, 18] {
@@ -747,23 +748,22 @@ final class PinCalAppUITests: XCTestCase {
             )
         }
 
-        // The shape assertion. A batch is listed on *every* day it holds an event on, so if
-        // each day shows the same single card, the two days are one batch — not two batches
-        // of one day each, which would satisfy "both days are marked" and still be wrong.
+        // The shape assertion. A batch is listed on *every* day it holds an event on, so each
+        // day listing a single card's worth of events is what says the two days are one batch
+        // — and opening it and reading two events is what proves it, where two batches of one
+        // day each would pass "both days are marked" and still be wrong.
         KeyboardAvoidanceTestSupport.tapDay(day: 17, in: app)
-        let card = app.staticTexts[batchName]
-        XCTAssertTrue(card.waitForExistence(timeout: 5), "Day 17's list should contain the batch")
-        XCTAssertEqual(
-            app.staticTexts.matching(identifier: batchName).count,
-            1,
-            "Day 17's list must hold exactly one batch, not one per day"
-        )
-        card.tap()
+        let cardRows = KeyboardAvoidanceTestSupport.cardEventRows(in: app)
+        XCTAssertTrue(cardRows.firstMatch.waitForExistence(timeout: 5), "Day 17's list should contain the batch")
+        XCTAssertEqual(cardRows.count, 1, "Day 17's list must hold exactly one batch's events, not one card per day")
+        cardRows.firstMatch.tap()
 
         // The authoritative check on the shape: one batch, two events.
         let batchEditorBack = app.buttons["batch-editor-back-button"]
         XCTAssertTrue(batchEditorBack.waitForExistence(timeout: 5), "The batch should open for editing")
-        let rows = app.collectionViews.buttons.containing(NSPredicate(format: "label CONTAINS %@", "at"))
+        // By identifier: a row's label is a formatted timestamp, and the word inside it is
+        // the locale's, so matching on "at" was matching on English.
+        let rows = KeyboardAvoidanceTestSupport.eventRows(in: app)
         XCTAssertEqual(rows.count, 2, "The batch must hold both days, as two event rows")
         batchEditorBack.tap()
 
@@ -774,15 +774,14 @@ final class PinCalAppUITests: XCTestCase {
         // no day cell to tap.
         KeyboardAvoidanceTestSupport.openCalendarDetail(app, named: "UI Test Calendar")
         KeyboardAvoidanceTestSupport.tapDay(day: 18, in: app)
-        let sameCard = app.staticTexts[batchName]
+        let sameCardRows = KeyboardAvoidanceTestSupport.cardEventRows(in: app)
         XCTAssertTrue(
-            sameCard.waitForExistence(timeout: 5),
-            "Day 18 must list the same single batch, not a second one"
+            sameCardRows.firstMatch.waitForExistence(timeout: 5),
+            "Day 18 must list the batch, not an empty list"
         )
         XCTAssertEqual(
-            app.staticTexts.matching(identifier: batchName).count,
-            1,
-            "Day 18's list must also hold exactly one batch"
+            sameCardRows.count, 1,
+            "Day 18's list must also hold exactly one batch's events — the batch narrowed to this day"
         )
     }
 
@@ -818,8 +817,10 @@ final class PinCalAppUITests: XCTestCase {
         XCTAssertTrue(swimBatch.waitForExistence(timeout: 5), "Batch list should show the new batch")
         swimBatch.tap()
 
-        // Batch editor opens. Tap the event to open the event editor.
-        let eventCell = app.cells.firstMatch
+        // Batch editor opens. Tap the event to open the event editor. It is found by index:
+        // `app.cells.firstMatch` was a stand-in for "the first row" that only worked while
+        // the list happened to be a `List`, and a row's label is now a formatted timestamp.
+        let eventCell = KeyboardAvoidanceTestSupport.eventRow(0, in: app)
         XCTAssertTrue(eventCell.waitForExistence(timeout: 5), "Batch editor should list the event")
         eventCell.tap()
 
@@ -837,7 +838,7 @@ final class PinCalAppUITests: XCTestCase {
         XCTAssertTrue(swimBatchAgain.waitForExistence(timeout: 5), "Batch list should show Swim after dismissing")
         swimBatchAgain.tap()
 
-        let eventCellAgain = app.cells.firstMatch
+        let eventCellAgain = KeyboardAvoidanceTestSupport.eventRow(0, in: app)
         XCTAssertTrue(eventCellAgain.waitForExistence(timeout: 5), "Batch editor should reopen")
         eventCellAgain.tap()
 
@@ -861,7 +862,7 @@ final class PinCalAppUITests: XCTestCase {
         XCTAssertTrue(womenCycle.waitForExistence(timeout: 5), "Batch list should show Women Cycle")
         womenCycle.tap()
 
-        let eventCell = app.cells.firstMatch
+        let eventCell = KeyboardAvoidanceTestSupport.eventRow(0, in: app)
         XCTAssertTrue(eventCell.waitForExistence(timeout: 5), "Batch editor should list the event")
         eventCell.tap()
 

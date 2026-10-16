@@ -166,9 +166,8 @@ final class MultiselectAndDefaultsTests: XCTestCase {
         XCTAssertTrue(batchEditorBack.isEnabled, "So the batch must be savable without the user doing anything")
 
         // The event inherits the batch's colour and gets its own default name.
-        let eventRow = app.collectionViews.buttons
-            .containing(NSPredicate(format: "label CONTAINS %@", "at"))
-            .firstMatch
+        // By index: a row's text is a formatted timestamp, whose wording is the locale's.
+        let eventRow = KeyboardAvoidanceTestSupport.eventRow(0, in: app)
         XCTAssertTrue(eventRow.waitForExistence(timeout: 5), "The batch should list its placeholder event")
         eventRow.tap()
 

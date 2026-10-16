@@ -43,9 +43,9 @@ final class EditorKeyboardAvoidanceTests: XCTestCase {
         batchRow.tap()
 
         // The batch editor opens with the events list; tap an event to edit it.
-        let eventRow = app.buttons
-            .containing(NSPredicate(format: "label CONTAINS %@", "Event1"))
-            .firstMatch
+        // By index: the row shows when the event is, not what it is called, so there is no
+        // name in its label to match. See `KeyboardAvoidanceTestSupport.eventRow(_:in:)`.
+        let eventRow = KeyboardAvoidanceTestSupport.eventRow(0, in: app)
         XCTAssertTrue(eventRow.waitForExistence(timeout: 5), "Event row should exist in the batch editor")
         eventRow.tap()
 

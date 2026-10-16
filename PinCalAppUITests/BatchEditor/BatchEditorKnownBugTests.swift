@@ -49,9 +49,8 @@ final class BatchEditorKnownBugTests: XCTestCase {
         KeyboardAvoidanceTestSupport.replaceText(in: nameField, with: batchName)
         KeyboardAvoidanceTestSupport.selectColor("eventColorOption1", in: app)
 
-        let placeholderRow = app.collectionViews.buttons
-            .containing(NSPredicate(format: "label CONTAINS %@", "at"))
-            .firstMatch
+        // By index: a row's text is a formatted timestamp, whose wording is the locale's.
+        let placeholderRow = KeyboardAvoidanceTestSupport.eventRow(0, in: app)
         XCTAssertTrue(placeholderRow.waitForExistence(timeout: 5), "The batch should list its placeholder event")
         // Wait for the row to stop moving before tapping it.
         //
@@ -170,14 +169,16 @@ final class BatchEditorKnownBugTests: XCTestCase {
         // step 4 have empty names. The only named event is the anchor's, and the anchor was
         // one of the three removed — so "Named" must be gone, and exactly one unnamed event
         // row must be left.
-        let eventRows = app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "at"))
+        //
+        // **Premise changed.** Both of these used to be text queries — one counting rows whose
+        // label contained "at", one asserting the name "Named" was gone. A card's row now shows
+        // a formatted timestamp and *no name at all*, so the second assertion could not fail:
+        // the string it looks for is not on the screen anywhere. Rows are counted by identifier
+        // instead, which is the only handle that survives a label the locale decides.
+        let eventRows = KeyboardAvoidanceTestSupport.cardEventRows(in: app)
         XCTAssertEqual(
             eventRows.count, 1,
             "the card must show exactly one event row; found \(eventRows.allElementsBoundByIndex.map(\.label))"
-        )
-        XCTAssertEqual(
-            app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "Named")).count, 0,
-            "the named event was on the anchor day, which was removed, so it must not survive"
         )
     }
 
@@ -193,9 +194,7 @@ final class BatchEditorKnownBugTests: XCTestCase {
     /// reduced to a single event, which fits on screen by a wide margin.
     @MainActor
     private func eventRowCount(in app: XCUIApplication) -> Int {
-        app.collectionViews.buttons
-            .containing(NSPredicate(format: "label CONTAINS %@", "at"))
-            .count
+        KeyboardAvoidanceTestSupport.eventRowCount(in: app)
     }
 
     /// Whether a day is marked as holding events, across every mounted calendar cell.

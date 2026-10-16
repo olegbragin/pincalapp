@@ -67,7 +67,9 @@ final class EditorBackNavigationTests: XCTestCase {
         let app = openBatchEditor()
 
         // Into the event editor.
-        let eventCell = app.cells.firstMatch
+        // By index: `app.cells.firstMatch` was a stand-in for "the first row" that only
+        // worked while the list was a `List`, and a row's label is now a formatted timestamp.
+        let eventCell = KeyboardAvoidanceTestSupport.eventRow(0, in: app)
         XCTAssertTrue(eventCell.waitForExistence(timeout: 5), "The batch editor should list the event")
         eventCell.tap()
         XCTAssertTrue(

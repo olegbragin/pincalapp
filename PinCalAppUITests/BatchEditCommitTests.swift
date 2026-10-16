@@ -78,9 +78,9 @@ final class BatchEditCommitTests: XCTestCase {
         batchRow.tap()
 
         // Tap the first event row inside the batch editor.
-        let eventRow = app.buttons
-            .containing(NSPredicate(format: "label CONTAINS %@", "Event1"))
-            .firstMatch
+        // By index, not by text: the row states when the event is, not what it is called,
+        // so there is no name in the label to match. See `eventRow(_:in:)`.
+        let eventRow = KeyboardAvoidanceTestSupport.eventRow(0, in: app)
         XCTAssertTrue(eventRow.waitForExistence(timeout: 5), "Event row should exist in the batch editor")
         eventRow.tap()
 
@@ -117,11 +117,10 @@ final class BatchEditCommitTests: XCTestCase {
         XCTAssertTrue(batchRow.waitForExistence(timeout: 5), "Batch list should appear again")
         batchRow.tap()
 
-        // Tap the event row again.
-        let renamedRow = app.buttons
-            .containing(NSPredicate(format: "label CONTAINS %@", "Renamed"))
-            .firstMatch
-        XCTAssertTrue(renamedRow.waitForExistence(timeout: 5), "Event should now show the renamed label")
+        // Tap the event row again. Its position is unchanged — the rename did not move it —
+        // so the row is still found by index; the name itself is asserted in the editor below.
+        let renamedRow = KeyboardAvoidanceTestSupport.eventRow(0, in: app)
+        XCTAssertTrue(renamedRow.waitForExistence(timeout: 5), "The event row should still be there after renaming")
         renamedRow.tap()
 
         // Verify the persisted name is shown.
@@ -149,10 +148,8 @@ final class BatchEditCommitTests: XCTestCase {
         XCTAssertTrue(batchRow.waitForExistence(timeout: 5), "Batch list should show seeded batch")
         batchRow.tap()
 
-        // Inside batch editor, tap event row
-        let eventRow = app.buttons
-            .containing(NSPredicate(format: "label CONTAINS %@", "Event1"))
-            .firstMatch
+        // Inside batch editor, tap event row — by index, since the row carries no name.
+        let eventRow = KeyboardAvoidanceTestSupport.eventRow(0, in: app)
         XCTAssertTrue(eventRow.waitForExistence(timeout: 5), "Event row should exist in batch editor")
         eventRow.tap()
 
@@ -181,11 +178,9 @@ final class BatchEditCommitTests: XCTestCase {
         // Re-open same batch immediately (no tap on calendar day, no root)
         batchRow.tap()
 
-        // The event row must now show the renamed label
-        let renamedRow = app.buttons
-            .containing(NSPredicate(format: "label CONTAINS %@", "Renamed"))
-            .firstMatch
-        XCTAssertTrue(renamedRow.waitForExistence(timeout: 5), "Event should show renamed label after immediate reopen")
+        // The event row must still be listed after the immediate reopen.
+        let renamedRow = KeyboardAvoidanceTestSupport.eventRow(0, in: app)
+        XCTAssertTrue(renamedRow.waitForExistence(timeout: 5), "Event row should still be listed after immediate reopen")
 
         renamedRow.tap()
         XCTAssertTrue(nameField.waitForExistence(timeout: 5), "Event editor should open for renamed event")
@@ -229,12 +224,12 @@ final class BatchEditCommitTests: XCTestCase {
         //     placeholder event picks the colour up here.
         selectEventColor("eventColorOption2", in: app)
 
-        // 4) Tap the placeholder event row -> event editor. The query must be
-        //    scoped to the events collection: a global `app.buttons` search also
-        //    matches the keyboard's "dictation" key (its label contains "at").
-        let eventRow = app.collectionViews.buttons
-            .containing(NSPredicate(format: "label CONTAINS %@", "at"))
-            .firstMatch
+        // 4) Tap the placeholder event row -> event editor. It is found by index rather
+        //    than by its text: the row shows a formatted timestamp, and both the word inside
+        //    it and the name that used to sit in front of it are gone — a text query here
+        //    would be matching on the locale's date format, and also on the keyboard's
+        //    "dictation" key, whose label contains "at".
+        let eventRow = KeyboardAvoidanceTestSupport.eventRow(0, in: app)
         XCTAssertTrue(eventRow.waitForExistence(timeout: 5), "Placeholder event row should exist in the batch editor")
         _ = KeyboardAvoidanceTestSupport.stableFrame(of: eventRow, timeout: 4)
         eventRow.tap()
@@ -298,9 +293,7 @@ final class BatchEditCommitTests: XCTestCase {
         // 9) Reopen the batch. It must still contain its event — the reported
         //    bug opens the batch editor with an EMPTY event list.
         batchNameMatches.firstMatch.tap()
-        let eventInBatch = app.collectionViews.buttons
-            .containing(NSPredicate(format: "label CONTAINS %@", "Edited Event"))
-            .firstMatch
+        let eventInBatch = KeyboardAvoidanceTestSupport.eventRow(0, in: app)
         XCTAssertTrue(
             eventInBatch.waitForExistence(timeout: 5),
             "Bug: the saved batch opened with an EMPTY event list — the event was lost"
@@ -357,7 +350,7 @@ final class BatchEditCommitTests: XCTestCase {
         // place a colour is chosen — so the round trip is now read where the colour actually
         // lives. Tapping into the event and back keeps the test checking what it always
         // checked: the colour survived, not just the batch's own edit.
-        let reopenedEventRow = app.buttons.containing(NSPredicate(format: "label CONTAINS %@", "Event1")).firstMatch
+        let reopenedEventRow = KeyboardAvoidanceTestSupport.eventRow(0, in: app)
         XCTAssertTrue(reopenedEventRow.waitForExistence(timeout: 5))
         reopenedEventRow.tap()
 
@@ -395,7 +388,7 @@ final class BatchEditCommitTests: XCTestCase {
 
         batchRow.tap()
 
-        let reopenedEventRow = app.buttons.containing(NSPredicate(format: "label CONTAINS %@", "Event1")).firstMatch
+        let reopenedEventRow = KeyboardAvoidanceTestSupport.eventRow(0, in: app)
         XCTAssertTrue(reopenedEventRow.waitForExistence(timeout: 5))
         reopenedEventRow.tap()
 
