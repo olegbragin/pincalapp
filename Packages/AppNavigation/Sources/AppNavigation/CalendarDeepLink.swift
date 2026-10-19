@@ -70,15 +70,10 @@ public enum CalendarDeepLink: Equatable, Hashable, Sendable {
     /// happily open one and leave a detail column showing nothing, which is the failure
     /// `RootNavigation.closeCalendarIfSelected` exists to clean up after.
     public init?(url: URL) {
-        guard let components = URLComponents(url: url, resolvingAgainstBaseURL: false) else {
-            return nil
-        }
-        guard components.scheme?.lowercased() == Self.scheme,
-              components.host?.lowercased() == Self.host
-        else {
-            return nil
-        }
-        guard let raw = Self.pathID(in: components) ?? Self.queryID(in: components),
+        guard let components = URLComponents(url: url, resolvingAgainstBaseURL: false),
+              components.scheme?.lowercased() == Self.scheme,
+              components.host?.lowercased() == Self.host,
+              let raw = Self.pathID(in: components) ?? Self.queryID(in: components),
               let id = Int64(raw),
               id > 0
         else {

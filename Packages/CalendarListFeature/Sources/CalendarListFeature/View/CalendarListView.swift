@@ -8,6 +8,14 @@ public struct CalendarListView: View {
     @Environment(\.pcVibe) private var vibe
     @State private var viewModel: CalendarListViewModel?
     @State private var isAddSheetPresented = false
+
+    /// One stack for every toast this screen raises.
+    ///
+    /// Shared on purpose. These three can be true at the same time — a calendar archived, a
+    /// load that failed, a write that failed — and with a stack each they queue with the
+    /// newest nearest the edge, instead of three overlays landing on top of one another and
+    /// burying the Retry the user is actually there for.
+    @State private var toasts = PCToastStack()
     public var selectedCalendarID: Int64?
     public var onSelectCalendar: (Int64) -> Void = { _ in }
 
@@ -220,6 +228,7 @@ public struct CalendarListView: View {
         }
         .pcToast(
             isPresented: viewModel.archiveToastPresentedBinding,
+            stack: toasts,
             position: .bottom,
             message: viewModel.archiveToastMessage,
             actionTitle: "Undo",
@@ -244,6 +253,7 @@ public struct CalendarListView: View {
         /// than an empty screen that reads as data loss.
         .pcToast(
             isPresented: model.loadFailureBinding,
+            stack: toasts,
             position: .bottom,
             message: "Couldn't load your calendars",
             actionTitle: "Retry",
@@ -256,8 +266,9 @@ public struct CalendarListView: View {
             /// No progress: this toast has no deadline.
             ///
             /// The bar is the archive window's countdown — it shows how long Undo remains. This
-            /// one does not expire, so a bar would imply a timer that does not exist.
-            progress: 0,
+            /// one does not expire, so a bar would imply a timer that does not exist. Omitting
+            /// `progress` is what draws no bar at all; the old `progress: 0` drew a full-width
+            /// empty track, which said the same thing the code was arguing against.
             identifier: "calendar-list-load-failed-toast",
             actionIdentifier: "calendar-list-load-failed-retry"
         )
@@ -276,12 +287,14 @@ public struct CalendarListView: View {
         /// and the user should not have to infer that from an icon.
         .pcToast(
             isPresented: model.writeFailureBinding,
+            stack: toasts,
             position: .bottom,
             message: writeFailureMessage(for: model),
             actionTitle: "Retry",
             action: { model.retryWriteFailure() },
             backgroundColor: .black.opacity(0.85),
-            progress: 0,
+            /// No bar, for the reason above the load toast: nothing here expires, and a bar is
+            /// a promise that something is about to end.
             identifier: "calendar-list-write-failed-toast",
             actionIdentifier: "calendar-list-write-failed-retry"
         )

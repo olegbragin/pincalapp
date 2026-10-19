@@ -23,6 +23,10 @@ public struct PCCompactColorPicker: View {
     @Environment(\.isEnabled) private var isEnabled
     @State private var isColorOptionsPresented = false
 
+    /// The circle. The one element of a colour picker a test can rely on being present before
+    /// any colour has been chosen.
+    public static let accessibilityIdentifier = "color-picker-compact"
+
     public init(
         selectedColor: Binding<PCColorOption?>,
         selectColorLabel: String,
@@ -51,7 +55,7 @@ public struct PCCompactColorPicker: View {
         .opacity(isEnabled ? 1 : 0.4)
         .allowsHitTesting(isEnabled)
         .accessibilityLabel(selectColorLabel)
-        .accessibilityIdentifier("color-picker-compact")
+        .accessibilityIdentifier(Self.accessibilityIdentifier)
         .accessibilityValue(selectedColor?.colorName ?? defaultColor?.colorName ?? "")
         .sheet(isPresented: $isColorOptionsPresented) {
             PCColorOptionSheet(

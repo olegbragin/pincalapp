@@ -66,7 +66,6 @@ public func pcEventSelectionEffects(
         return next.batches == previous.batches ? [] : write()
 
     case .setBatchName, .setBatchColor, .toggleDay, .removeEvent,
-         .setEventName, .setEventDate, .setEventColor,
          .applyTimeToSelectedEvents,
          .startNewBatch, .dayTappedInCalendar, .confirmMultiSelectTapped,
          .setMultiSelectColor, .cancelMultiSelectTapped:
@@ -83,14 +82,13 @@ public func pcEventSelectionEffects(
         // common case write-free and only speaks when the row actually moves.
         return next.batches == previous.batches ? [] : write()
 
-    case .openEvent, .discardEventTapped, .openBatch,
+    case .openBatch,
          .closeTapped, .cancelTapped, .nameEditingFinished,
          .ensureAssemblyStarted, .navigationRequestHandled, .resetSession,
          .setMultiSelectMode,
          .setEventSelectionMode, .toggleEventSelection, .selectAllEvents, .clearEventSelection,
          .setEditorYear, .setScrollAnchor:
-        // Staging, navigation, selection, or view-only. `openEvent` copies a row into a draft
-        // without changing it; `discardEventTapped` drops that draft; the selection actions
+        // Staging, navigation, selection, or view-only. The selection actions
         // move ids around without touching a batch — which is why applying a time to a
         // selection is a *write* and selecting it is not, even though the second is what
         // enables the first. `nameEditingFinished` has no write of its own at all: the

@@ -212,8 +212,10 @@ public final class SingleCalendarModel {
         send(.setMultiSelectColor(color))
     }
 
-    /// Confirms the session. The reducer declines it without days or a colour, so the
-    /// toolbar's button can be tapped freely.
+    /// Confirms the session, which ends it and opens the batch editor on the batch it built.
+    ///
+    /// Nothing is declined: a session that could be confirmed always has days and a colour,
+    /// and an empty one ends without opening anything.
     public func confirmMultiSelect() {
         send(.confirmMultiSelectTapped)
     }

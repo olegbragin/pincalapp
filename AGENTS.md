@@ -135,10 +135,17 @@ time. Drop it once you are running more than one target.
 - **`PinCalAppUITests` is deliberately *not* `parallelizable`.** Xcode will not distribute UI
   tests; they drive one app against one device. They run serially alongside the unit targets
   rather than being excluded.
-- **Test targets** are `SingleCalendarFeatureTests`, `AppNavigationTests`,
-  `CorePersistenceTests`, `DSKitTests`, `PinCalAppTests`, `PinCalAppUITests`,
-  `CalendarListFeatureTests`. Roughly 420 tests total on iPhone, of which 49 are UI tests and
-  take about 20 minutes; everything else is seconds.
+- **The test plan has 9 targets**: `PinCalAppTests`, `AppNavigationTests`,
+  `CalendarListFeatureTests`, `CoreDomainTests`, `SingleCalendarFeatureTests`,
+  `SettingsFeatureTests`, `DSKitTests`, `CorePersistenceTests` — all `parallelizable` — plus
+  `PinCalAppUITests`, which is not. 581 tests total, 50 of them UI. Two numbers that disagree
+  with this are stale rather than wrong: the suite changes shape as features land. `GetTestList`
+  (or `grep -c '^TEST_TARGET'` on its full list) is the authority.
+- **`AppNavigationTests` is in the workspace plan** and runs with the rest. It is also a separate
+  SwiftPM package, so `cd Packages/AppNavigation && swift test` still works as a fast inner loop —
+  but it is no longer the *only* way to run it, and an older version of this file said otherwise.
+  (`STAGE8_HANDOVER.md` §1 still says it is missed by the workspace gate; that was true when
+  written and is not true now.)
 - **Run both profiles.** The iPad profile is the only run that checks the calendar-switch
   guarantees — see "A multi-select session is per calendar" below for the measured reason.
 - **When using ripgrep, type flags deliberately.** `-r` is `--replace` (it takes an argument),
@@ -161,14 +168,16 @@ each other, and no amount of decoupling work was going to make it safe.
 
 What parallel actually introduced was **load**. Four clones on one Mac oversubscribe the CPU, and
 the casualties were the tests whose assertions are wall-clock budgets rather than conditions —
-`waitForWrites(1, timeout: .milliseconds(300))`, a 400 ms autosave ceiling, a 50 ms progress timer.
-The recorded "hard main-actor contention crash that poisoned 136 tests" reproduced as **one**
-failure: `PCNameAutosave/Continuous typing still writes`, which asserted `fired >= 1` inside a fixed
-400 ms window while the ceiling it was testing was 200 ms of main-actor timer. Under load the loop's
-wall clock ran out before the starved main actor ran the timer.
+`waitForWrites(1, timeout: .milliseconds(300))`, a 50 ms progress timer. The recorded "hard
+main-actor contention crash that poisoned 136 tests" reproduced as **one** failure: a name-autosave
+test that asserted a write had fired inside a fixed 400 ms window while the ceiling it was testing
+was 200 ms of main-actor timer. Under load the loop's wall clock ran out before the starved main
+actor ran the timer.
 
-That test now keeps typing *until* the write lands, so the trailing debounce cannot satisfy the
-assertion after typing stops — otherwise deleting the ceiling entirely would still have passed it.
+That test kept typing *until* the write lands, so the trailing debounce could not satisfy the
+assertion after typing stopped — otherwise deleting the ceiling entirely would still have passed
+it. **The test no longer exists**: the name debounce was removed along with the event editor, so
+the case is now a rule rather than a regression to re-run.
 
 **The lesson for the next wall-clock assertion:** assert the condition, and if the thing under test
 is a *bound* rather than an event, keep the triggering activity running until the bound is hit.
@@ -191,8 +200,14 @@ Pass these so runs are deterministic; all seeded launches should set the first o
 - `-UITestSeedData` — load the seeded calendars
 - `-UITestColumns <n>` — force the year grid's column count (1 gives large tappable cells)
 - `-UITestUndoWindowSeconds <n>` — lengthen the archive-Undo toast's window
-- `-UITestNameAutosaveSeconds <n>` — set the typed-name debounce; `0` makes it write on the
-  next scheduler pass instead of 250 ms later
+- `-UITestFailSaves` — make every `saveCalendar` throw, which is the only way to drive the real
+  save-failure path (toast, Retry, blocked switch) rather than a stand-in for it
+- `-UITestSelectedCalendar <id>` — seed the calendar the app restores on launch
+
+`-UITestNameAutosaveSeconds` used to be here and is gone: the name debounce it tuned went with
+`PCNameAutosave` when the event editor was removed. Check
+`grep -rho '"-UITest[A-Za-z]*"' PinCalApp Packages` before trusting this list — an argument
+nothing reads is worse than one that is merely undocumented.
 
 ## Style
 
@@ -445,14 +460,27 @@ These are load-bearing. Each was arrived at by fixing a bug, and the reasoning i
   the *database write* is deferred. This is why there is no save-or-discard question, and it is
   why cancelling a pending debounced write is safe — the value is already in the state. If you
   change the merge, re-check that invariant.
-- **There is no Save.** Neither editor has one; `AddEditEventBatchScreen` and `AddEditEventView`
-  each have a single store-routed Back that is also their one addressable element. Every field
-  writes through as it is edited, so Back has nothing to commit — with one exception: leaving
-  an *emptied* batch deletes its row, which is the only way to delete a batch from the editor.
-  Nothing gates on a batch having a colour any more, so there is no path where the user is stuck
-  on an unsaveable edit.
+- **There is no Save.** The batch editor has none; `AddEditEventBatchScreen` has a single
+  store-routed Back that is also its one addressable element. Every field writes through as it is
+  edited, so Back has nothing to commit — with one exception: leaving an *emptied* batch deletes
+  its row, which is the only way to delete a batch from the editor. Nothing gates on a batch
+  having a colour any more, so there is no path where the user is stuck on an unsaveable edit.
+- **There is no event editor.** It went with `PCNameAutosave`, and its route with it. What is
+  left is the batch editor (`AddEditEventBatchScreen` / `AddEditEventBatchView`), the list of
+  events inside a batch (`AddEditEventListView`), and the per-day batch list
+  (`AddEditEventBatchListView`). An event still has a *name* and a *colour*, and neither is
+  editable — `toggling` appends a placeholder wearing `defaultEventName` ("New event day") in
+  the batch's colour. The only per-event field a user can change is the **time of day**, via
+  `applyTimeToSelectedEvents` over a row selection. So `openEvent` / `setEventName` /
+  `setEventDate` / `setEventColor` / `discardEventTapped` are gone from `PCEventSelectionAction`,
+  and adding a field means adding a case *and* a screen — there is no surviving editor to hang
+  it off. `AddEditEventListViewModel`'s doc comment says the same thing from the model side.
+- **Confirming a multi-select session opens the batch editor.** It used to end the session and
+  stop, because the days were written as they were tapped. They no longer are: a session stages
+  its days, so a checkmark that discarded the staging left the user with an unnamed batch and
+  nowhere to name it. Confirm is now a door into the same editor a tapped day opens.
 - **An event's `date` carries a time of day.** It is deliberately not normalised to start-of-day;
-  truncating it is what silently discarded the time picked in the event editor. Day *identity* is
+  truncating it is what silently discarded a time that had been picked. Day *identity* is
   day-granular (`occurs(on:using:)`, `hasSameContent(as:using:)`, `isSnapshot(of:using:)`,
   `PCEventSelectionReducer.dayTappedInCalendar`) — keep those comparisons on days and leave the
   stored value alone. A freshly added day is midnight, which is the honest "unset".
@@ -532,6 +560,38 @@ These are load-bearing. Each was arrived at by fixing a bug, and the reasoning i
   case nothing can exercise (`everyActionIsCovered` counts them), and a ViewModel projection no
   view reads is dead code kept alive only by its own tests — the `isDirty` and `canSave` pattern.
   Re-point those tests at the domain property instead of keeping the projection alive for them.
+  - `AddEditEventBatchListViewModel.cancel()` was exactly this: the list drives `confirmDelete`
+    straight off `onChange(of: pendingDeletion)`, so a staged deletion was confirmed on the next
+    frame and there was never a moment a user could change their mind. `cancelKeepsTheBatch` was
+    the only caller in the repo. Gone, and so was its test — a test that pins a path no screen
+    can take is not coverage, it is a lock on the dead code.
+- **A public symbol in a package is not a caller.** `PCTostStack` was 125 lines of `public`
+  DSKit API that nothing referenced, including itself. Toasts went through a separate
+  `PCToast` modifier that drew its own single overlay. **It was not dead by accident — it was
+  an unwired half of a design that is now how toasts work:** `PCToast` (the value) goes into a
+  `PCToastStack` (the holder), and `PCToastView` inside `PCToastStackModifier` draws the rows.
+  `.pcToast(isPresented:)` is now `PCToastPresenter`, a bridge from a binding into a stack.
+  A sweep that only counts callers inside the declaring file calls this "used";
+  `grep -rhow` across every target is the honest test.
+- **A screen owns one stack and hands it to every toast it raises.** A presenter that made its
+  own would still allow one toast per `.pcToast`, which is the thing the stack exists to fix:
+  three overlays land on each other and bury the Retry. So `CalendarListView` has
+  `@State private var toasts = PCToastStack()` and passes it to all three. For the same reason
+  **a presenter dismisses by `id`, never `dismissAll()`** — the stack is shared, so `dismissAll`
+  in one presenter's teardown takes the others' toasts with it, clearing a Retry because an
+  archive window happened to close. There is deliberately no `dismissAll` on the type.
+- **The countdown has exactly one owner, and it is not the stack.** The archive window is a
+  `PCTimeoutProgress` in `CalendarListStore` whose completion is what clears
+  `isArchiveToastPresented`; `PCTostStack.update(_:progress:)` only mirrors that count into the
+  stack so the bar moves. An earlier version of the stack scheduled its own removal from a
+  `duration` and drew its own countdown — a second timer racing the first, which under load
+  means the bar empties while the Undo it advertises is still live. **If you add a toast with a
+  real deadline, give it a `PCTimeoutProgress` in the feature; do not put a timer in DSKit.**
+- **`progress` is `Double?`, and `nil` draws no bar at all.** Not a `0` sentinel: `0` means "the
+  window has already closed", which on a failed-save toast reads as *this is over* on the one
+  toast that is precisely not over. The two CalendarList failure toasts passed `progress: 0`
+  while their own comments said "no bar" — and `0` drew a visible empty track, so the code was
+  arguing against itself. Omitting it is now the way to say "no deadline".
 - When a test's *premise* changes (not just its expectation), say so in the comment and often
   rename the test. A test name that describes behaviour that no longer exists is worse than no
   test.
@@ -568,3 +628,4 @@ These are load-bearing. Each was arrived at by fixing a bug, and the reasoning i
   phases of changes is not a green run.
 - Distinguish "builds" from "verified". A toast with no test exercising it builds; it is not
   verified.
+- If using MobileBuildMCP, use the installed MobileBuildMCP skill before calling MobileBuildMCP tools.

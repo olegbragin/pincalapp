@@ -27,6 +27,12 @@
 //  the user can do is refused. It is fixed for consistency, and its test guards the
 //  navigation itself rather than claiming a failure mode that does not exist.
 //
+//  **The batch editor's inertness used to be caught the long way round** — by pushing the
+//  event editor on top of it, pressing Back, and then tapping a day. That round trip is gone
+//  with the event editor, so `testBackOutOfTheBatchEditorStillLeavesADayEditable` taps the day
+//  immediately instead. It is the weaker of the two, and deliberately so: the long version
+//  only existed to put a *different* screen on top first, and there is no second screen left.
+//
 
 import XCTest
 
@@ -59,36 +65,24 @@ final class EditorBackNavigationTests: XCTestCase {
         return app
     }
 
-    // MARK: - Back out of the event editor leaves the batch editor working
+    // The test that used to be here — `testBackOutOfEventEditorLeavesTheBatchEditorUsable` —
+    // went with the screen: open the batch editor, tap an event, press Back, and assert the
+    // batch editor still accepts a day tap. The assertion it existed to protect survives as the
+    // test below, and it is renamed to say what it does rather than what it used to prove: with
+    // the event editor gone there is nothing to push on top of the batch editor, so nothing
+    // presses Back, and a name promising a round trip would be a lie.
 
-    /// The visible one. Back out of the event editor, then use the batch editor.
+    /// The assertion that test was there for: the batch editor is not inert.
+    ///
+    /// **Premise changed.** See the note above — the Back round trip is gone, so this is now
+    /// "tap a day, and it is added". It still catches the bug in the file's header comment, which
+    /// is that a `stage` which no longer names the batch editor makes the screen silently
+    /// unresponsive rather than wrong-looking.
     @MainActor
-    func testBackOutOfEventEditorLeavesTheBatchEditorUsable() {
+    func testTheBatchEditorAcceptsADayTap() {
         let app = openBatchEditor()
 
-        // Into the event editor.
-        // By index: `app.cells.firstMatch` was a stand-in for "the first row" that only
-        // worked while the list was a `List`, and a row's label is now a formatted timestamp.
-        let eventCell = KeyboardAvoidanceTestSupport.eventRow(0, in: app)
-        XCTAssertTrue(eventCell.waitForExistence(timeout: 5), "The batch editor should list the event")
-        eventCell.tap()
-        XCTAssertTrue(
-            app.textFields["event-name-field"].waitForExistence(timeout: 5),
-            "Tapping the event should open the event editor"
-        )
-
-        // Back out of it.
-        KeyboardAvoidanceTestSupport.leaveCurrentScreen(in: app)
-        XCTAssertTrue(
-            app.textFields["event-name-field"].waitForNonExistence(timeout: 5),
-            "Back should leave the event editor"
-        )
-        XCTAssertTrue(
-            app.buttons["batch-editor-back-button"].waitForExistence(timeout: 5),
-            "Back from the event editor should land on the batch editor, not the calendar"
-        )
-
-        // The point. An empty day in the batch editor's calendar must gain an event.
+        // An empty day in the batch editor's calendar must gain an event.
         XCTAssertFalse(
             KeyboardAvoidanceTestSupport.isDayMarked(day: emptyDay, in: app),
             "Day \(emptyDay) starts empty; label = \(KeyboardAvoidanceTestSupport.dayCell(day: emptyDay, in: app).label)"
@@ -99,10 +93,9 @@ final class EditorBackNavigationTests: XCTestCase {
         XCTAssertTrue(
             KeyboardAvoidanceTestSupport.isDayMarked(day: emptyDay, in: app),
             """
-            After backing out of the event editor the batch editor must still work: tapping \
-            day \(emptyDay) adds it to the batch. It stayed unmarked, which is what a store \
-            that still thinks it is in the event editor does — `toggleDay` is refused and \
-            the screen is inert.
+            Tapping day \(emptyDay) must add it to the batch. It stayed unmarked, which is what a \
+            store whose `stage` no longer names the batch editor does — `toggleDay` is refused \
+            and the screen is inert.
             """
         )
     }

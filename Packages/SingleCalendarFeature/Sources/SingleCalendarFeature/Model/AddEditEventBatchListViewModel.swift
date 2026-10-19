@@ -67,9 +67,15 @@ public final class AddEditEventBatchListViewModel {
 
     // MARK: - Commands
 
-    /// Stages a batch for deletion. It stays in the list until `confirmDelete`, which is
-    /// what lets `cancel` change its mind — and with a computed projection there is
-    /// nothing to put back, because it was never removed locally.
+    /// Stages a batch for deletion. It stays in the list until `confirmDelete`.
+    ///
+    /// There used to be a `cancel` alongside this, and a test for it. Nothing could reach it:
+    /// the list drives `confirmDelete` straight off `onChange(of: pendingDeletion)`, so a
+    /// staged deletion was confirmed on the very next frame and there was never a moment a
+    /// user could change their mind. It was a projection kept alive only by its own test —
+    /// which is the `isDirty`/`canSave` pattern AGENTS.md warns about, so it went. If a
+    /// confirmation dialog is ever wanted back, the staging step is what it needs, and
+    /// `cancel` is three lines.
     func remove(_ batch: CalendarEventBatch) {
         pendingDeletion = [batch]
     }
@@ -77,10 +83,6 @@ public final class AddEditEventBatchListViewModel {
     func confirmDelete() {
         guard !pendingDeletion.isEmpty else { return }
         store.send(.deleteBatches(pendingDeletion))
-        pendingDeletion = []
-    }
-
-    func cancel() {
         pendingDeletion = []
     }
 

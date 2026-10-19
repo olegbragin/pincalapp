@@ -12,6 +12,13 @@ public struct AddEditEventBatchView: View {
     @Environment(PCEventSelectionManager.self) private var store
     @Environment(\.pcVibe) private var vibe
 
+    /// Whether the name field is first responder.
+    ///
+    /// Exists to answer "the user stopped typing" for the case `onSubmit` cannot: tapping away
+    /// from the field. The keyboard's Done key is a deliberate gesture that reports itself; a
+    /// tap on a day cell, or the sheet going away, resigns the field silently.
+    @FocusState private var isNameFocused: Bool
+
     public init() {}
 
     public var body: some View {
@@ -35,13 +42,28 @@ public struct AddEditEventBatchView: View {
             VStack(spacing: 12) {
                 Group {
                     HStack(spacing: 12) {
-                        PCTextField(title: viewModel.namePlaceholder, text: viewModel.nameBinding, identifier: "batch-name-field")
-                            // "As soon as the user finishes entering the name, save everything."
-                            // The keystrokes already merged the batch, so this is only about the
-                            // debounce: without it a name typed in the last quarter-second is
-                            // still sitting on `nameAutosave` when the user puts the phone down,
-                            // and nothing has asked for it to be written yet.
-                            .onSubmit { store.send(.nameEditingFinished) }
+                        PCTextField(
+                            title: viewModel.namePlaceholder,
+                            text: viewModel.nameBinding,
+                            identifier: "batch-name-field",
+                            focus: $isNameFocused
+                        )
+                        // "As soon as the user finishes entering the name, save everything."
+                        // The keystrokes already merged the batch; what they deliberately did
+                        // not do is write it, because every write comes back as a reload that
+                        // can land mid-typing and roll the registry back.
+                        //
+                        // Both ways out of the field report here, because the gesture that
+                        // ends typing is not one kind of gesture. The keyboard's Done key is
+                        // the obvious one, and tapping away from the field — onto a day, into
+                        // the colour sheet, out of a dismissed sheet — is the one that was
+                        // missing, so a name could sit unwritten with nothing left to ask for
+                        // it.
+                        .onSubmit { store.send(.nameEditingFinished) }
+                        .onChange(of: isNameFocused) { _, isFocused in
+                            guard !isFocused else { return }
+                            store.send(.nameEditingFinished)
+                        }
 
                         PCColorPickerView(
                             selectedColor: viewModel.colorBinding,

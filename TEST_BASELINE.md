@@ -485,3 +485,137 @@ on the iPad, 7 passed, 0 failed (441.4s). Linters: `swiftformat --lint` and
 at HEAD (AGENTS.md's "44" was stale). Working tree: the two UI-test files plus this file and
 AGENTS.md — the diagnostic instrumentation that found fault #1 was fully reverted before the
 fix was written, and no app source changed.
+
+---
+
+## Stage 21 — a stale package framework that read as a missing symbol, and a dead-code sweep
+
+Two runs of the whole plan, on both profiles, with a dead-code sweep between them.
+
+### The link error was not a missing symbol
+
+The tree in the working directory was an in-progress refactor (the event editor, `PCNameAutosave`
+and the `.eventEditor` route deleted). It did not link:
+
+```
+Undefined symbols for architecture arm64:
+  "SingleCalendarFeature.PCEventSelectionManager.__allocating_init(initialState:…
+    columnCountResolver: (Swift.Int) -> Int) … PCEventSelectionManager", referenced from:
+      closure #1 @Swift.MainActor @Sendable (Swift.Int64) -> SingleCalendarFeature.PCEventSelectionManager
+      in PinCalApp.PinCalAppApp.init() -> PinCalApp.PinCalAppApp in PinCalAppApp.o
+```
+
+The initializer exists, and `nm` found it in `SingleCalendarFeature.o`. **But not in the framework
+the app actually links**, and that is what the timestamp said:
+
+| artifact | built | `PCEventSelectionManager.init` signature |
+|---|---|---|
+| `SingleCalendarFeature.o` | Oct 19 | `columnCountResolver` |
+| `PackageFrameworks/…_PackageProduct.framework` | **Oct 17** | `columnCountResolver` + `nameAutosaveDelay` |
+
+`nameAutosaveDelay` is a parameter the working tree had already deleted. The linked framework was
+two days stale and Xcode's build database had not noticed, because the tree also contains
+deletions and a rename. **A second build does not fix this** — two of them did not. `xcodebuild
+clean` did, in one step.
+
+Worth carrying forward: **when a link error names a symbol that plainly exists, `nm` the binary
+that is on the link line, not the `.o` next to the source.** The `.o` is rebuilt on every touch;
+the copied framework product is not.
+
+The first UI attempt then failed twice more for reasons that had nothing to do with any of this —
+once with `PinCalAppUITests-Runner … Test crashed with signal kill before establishing connection`
+while a *previous* UI run was still alive on the same simulator, and once because the runner
+bundle had been deleted by hand. Both are AGENTS.md's harness class. Neither is a regression.
+
+### The sweep
+
+`PCTostStack` + `PCToastStackModifier` — 286 lines of `public` DSKit API, introduced in `0f106b1`,
+never referenced by anything, including each other. Also removed, each verified unreferenced
+across every target: `cancel()` (kept alive only by its own test), `deviceOrientation(_:)` +
+its modifier, `TestDataSeeder.seedBasicCalendar` / `.seedEventBatch`,
+`PCCalendarDaySelectionManager.toggleSelectionMode()`, `EventDataSource.withColor` /
+`.withTimestamp`.
+
+**Correction to the above, same day.** The toast stack was deleted as dead code and that was
+wrong — it was not dead, it was *unwired*. It was the half of the toast design that the single
+`PCToast` modifier had replaced without, so two toasts at once had nowhere to go. Restored and
+made the thing `.pcToast(isPresented:)` actually runs on; see Stage 22. The lesson is now in
+AGENTS.md: **unreferenced `public` API in a package is a question about whether it was
+*forgotten*, not only about whether it is unused.** Nothing had ever called it, so the sweep was
+correct on its own terms and still reached the wrong conclusion about what the code was *for*.
+
+The other removals stand. The lesson is the one already written down, now with a second
+instance: **a test that pins a path no screen can reach is not coverage.**
+`cancelKeepsTheBatch` was green forever and exercised nothing a user could perform.
+
+### Runs
+
+| Profile | Result | Notes |
+|---|---|---|
+| iPad Pro 13-inch (M5), iOS 27.0 | **581 passed, 0 failed, 0 skipped** | 531 unit (93.5s) + 50 UI (1599.0s) |
+| iPhone Duo, iOS 27.0 | **579 passed, 0 failed, 2 skipped** (1481.0s) | full plan in one run |
+
+The 2 skips are the `ClosingTheSelectedCalendarTests` guards, and they are the clearest evidence
+that both profiles are still needed: a stale selection is unobservable at compact width, so those
+two tests **skip on the phone and pass on the pad** (20.6s and 21.0s, 0 skips on iPad). An
+iPhone-only green run would report 579 and quietly not check the calendar-switch guarantee at all.
+
+Two counts worth recording so they are not misread later. `Executed 57 tests` on the UI run is
+**50 tests**: `PinCalAppUITestsLaunchTests.testLaunch` runs with dynamic parameters and reports 8
+runs. And `xcresulttool`'s per-device `passedTests` (57) disagrees with its top-level `passedTests`
+(50) for exactly that reason — trust the top-level number.
+
+**Load caveat:** the iPad UI run started at `uptime` 77 and peaked near 200 on a 10-core host, so
+its wall clock is not comparable to the 917s in STAGE8_HANDOVER's gate table. The result stands
+(0 failures); the *duration* does not mean anything. Check `uptime` before quoting any time from
+this stage.
+
+Linters: `swiftformat --lint` 0/216, `sort_imports.py --check` 0. The two pre-existing
+`repeatedGuard` violations in `CalendarDeepLink.swift` and `PCLocalizationCatalogTests.swift`
+were fixed — merged into single guards, then re-wrapped by hand, because `--max-width none` means
+SwiftFormat emits one long line and `wrap-conditions preserve` keeps the layout stable.
+
+---
+
+## Stage 22 — the toast stack, restored and actually wired
+
+Stage 21 deleted `PCTostStack` as dead code. It was not dead; it was unwired, and it is now what
+`.pcToast(isPresented:)` runs on. The shape it ended up in, and why each decision went that way:
+
+- **`PCTost` (the value) → `PCToast`; the old modifier `PCToast` → `PCToastPresenter`.** Two
+  types one letter apart, which is the worst possible distance now that a screen holds both at
+  once.
+- **The presenter does not own its stack — the screen does.** It held `@State` at first, and that
+  keeps a per-`.pcToast` stack, which is exactly the limitation the stack was written to remove:
+  `CalendarListView`'s three toasts would still have overlaid each other. The screen makes one
+  and passes it to all three.
+- **No `dismissAll`.** It was the first casualty of the shared stack: a presenter's teardown
+  calling it would clear every *other* presenter's toast — a Retry vanishing because an archive
+  window closed. Dismissal is by `id`.
+- **The binding, not the toast, owns `isPresented`.** The first cut dismissed only through the
+  stack and left `isPresented` standing at `true`. `onChange` does not fire when the value is
+  unchanged, so the **second** save failure would have raised no toast at all. The presenter now
+  writes the flag back on dismissal, which is what the single-toast modifier did.
+- **`.task(id: isPresented)`, not `.onChange`.** `onChange` does not fire for a toast already
+  presented on first render, so a screen restored straight into an error would come up without
+  its error toast.
+- **No timer in the stack.** It used to schedule its own removal from a `duration`. The feature
+  already owns that countdown (`PCTimeoutProgress` in `CalendarListStore`, whose completion is
+  what clears `isArchiveToastPresented`), so a stack-side timer is a second source of truth for
+  when Undo expires. `update(_:progress:)` mirrors the owner's count into the observable stack
+  instead — which is also what makes the bar move, since the draw reads `toasts`.
+- **`progress` is now `Double?`.** `nil` draws no bar. The two CalendarList failure toasts passed
+  `progress: 0` under comments saying "no bar", and `0` drew a full-width empty track. The
+  comment was right and the code was not.
+
+**One deliberate visual change:** the load-failed and write-failed toasts no longer draw that
+empty track. Their comments have said they should not have one since before this stage.
+
+**Verified:** unit **531 passed / 0 failed**; `SaveFailedToastTests` and `ArchiveUndoToastTests`
+green on the pad (43.96s, 17.92s); full UI suite on the iPad **50 passed, 0 failed, 0 skipped**
+(1592.0s wall clock, `result: Passed`). Formatting clean. A repo-wide unreferenced-symbol sweep
+afterwards returns only SwiftUI and `UIViewController` conformances (`Divider`, `ViewThatFits`,
+`makeUIViewController`, …), none of them ours.
+
+The UI wall clock is again not comparable to anything else recorded here — the host was at
+`uptime` 92 when this started. The result stands; the number does not mean anything.

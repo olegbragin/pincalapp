@@ -1,5 +1,13 @@
 # Stage 8 Handover — batch-assembly cutover
 
+> **Superseded.** This is the record of where the batch-assembly cutover got to. It is kept
+> because the failures it describes are the reason the architecture in `AGENTS.md` looks the way
+> it does — do not read it as a description of the current code. Since this was written: the
+> event editor and `PCNameAutosave` were removed, `.eventEditor` went with them,
+> `AppNavigationTests` joined the workspace test plan (so §1's claim that it is missed by the
+> gate is out of date), and the UI suite is 50 tests rather than 37. **`AGENTS.md` is the
+> current document**; the status below was true when this was written.
+
 **Status: Stages 8 through 13 complete. §16 and §17 fixed. Unit green (341). iPhone full
 plan green: 381/381, 0 failures, 0 skipped, through `AutoTestRunner` on a freshly erased
 simulator.**

@@ -85,25 +85,20 @@ public func pcEventSelectionReducer(
                 )
             }
             next.multiSelectAssembly = assembly
-            // Written as it changes, so Save has nothing left to commit — it only ends the
-            // session.
+            // **Not merged, and deliberately.** A session's batch is unnamed until someone
+            // names it, and an unnamed batch is not written (`canSave`) — so merging here
+            // would write a row the editor is about to be asked to justify, and Confirm would
+            // hand the user an editor for something already durable.
             //
-            // The merge is against `state.batches` rather than `next.batches` so a tap can
-            // only ever change this session's row. Merging against `next` would let the
-            // day-list mutation above leak in, and the two disagree whenever a day is
-            // toggled off.
-            if let row = assembly.resolved() {
-                next.batches = merging(row, into: state.batches)
-            } else {
-                // Every day has been toggled back off, so the session's row leaves the
-                // calendar with them. `resolved()` is `nil` for an empty batch and `merging`
-                // has no case for that. The batch editor's answer is `backTapped`, which
-                // deletes an emptied batch as it leaves; a session has no Back button and no
-                // Save, so the write has to happen here. The key is `assembly.mergeKey` and
-                // not `assembly.batch.mergeKey`, because the adopted id lives outside the
-                // batch and a `.pending(…)` key matches no row in the registry at all.
-                next.batches = state.batches.filter { $0.mergeKey != assembly.mergeKey }
-            }
+            // It used to merge on every tap, on the reasoning that "written as it changes"
+            // leaves Save nothing to commit. That reasoning assumed the batch was already a
+            // batch. Now it is not until it is named, so the tap is a *selection*, and the
+            // days are held in `multiSelectDays` + `multiSelectAssembly`.
+            //
+            // The days stay painted regardless: `derivedDayEventColors` projects the session
+            // itself — days and colour — rather than reading a row, which is exactly why that
+            // projection takes a `multiSelect:` argument. A session with no row and no
+            // markers would look like four taps that did nothing.
         } else if state.batches.contains(where: { $0.occurs(on: day, using: provider) }) {
             next.day = day
             next.stage = .dayList(day: day)
@@ -171,19 +166,6 @@ public func pcEventSelectionReducer(
 
     case .backTapped:
         switch state.stage {
-        case .eventEditor:
-            // Leaving the event editor drops the draft and nothing else. Every field of it
-            // was already written into the assembly as it was typed (`persistEventDraft`), so
-            // the draft is a working copy rather than the pending change — discarding it
-            // loses nothing.
-            //
-            // This is what `saveEventTapped` used to do after additionally re-applying the
-            // draft, which was redundant for the same reason, and the checkmark that sent it
-            // is gone. `discardEventTapped` said the identical thing and had no button
-            // either: two actions for one gesture, which is how a redundant one survives.
-            next.eventDraft = nil
-            next.stage = .batchEditor
-            requesting(&next, .pop)
         case .batchEditor:
             // Leaving the editor closes it. It does not undo: every edit merged into
             // `batches` as it was made, so the batch is already on the day and Back simply
@@ -216,7 +198,7 @@ public func pcEventSelectionReducer(
             // nothing and the row survives. The gate only ever suppresses a merge, never a
             // removal, which is why it cannot destroy user work.
             if let row = assembly.resolved(), assembly.canSave, !assembly.isDraft {
-                next.batches = merging(row, into: state.batches)
+                next.batches = merging(row, into: state.batches, using: provider)
             }
             // An emptied batch is the one thing Back does have to decide, because it is the
             // delete. `resolved()` is `nil` for a batch with no events, and `editing` declines
@@ -287,7 +269,6 @@ public func pcEventSelectionReducer(
         next.stage = .idle
         next.day = nil
         next.assembly = nil
-        next.eventDraft = nil
         endingEventSelection(&next)
         // Back to the committed markers: whatever was staged is gone.
         requesting(&next, .popToCalendarRoot)
@@ -387,47 +368,11 @@ public func pcEventSelectionReducer(
         next.selectedEventIDs = []
         next.isSelectingEvents = false
 
-    // MARK: Event editor
-
-    case let .openEvent(pendingID):
-        guard
-            let assembly = state.assembly,
-            let event = assembly.batch.events.first(where: { $0.pendingID == pendingID })
-        else { break }
-        next.eventDraft = event
-        next.stage = .eventEditor(
-            batchPendingID: assembly.batch.pendingID,
-            eventPendingID: event.pendingID
-        )
-        // Opening one event is the opposite of selecting several, and the two share the
-        // row's tap target. Clearing here means the list comes back from the event editor
-        // showing what it showed before, rather than a selection that the user made for a
-        // gesture they have since replaced.
-        endingEventSelection(&next)
-        requesting(&next, .pushEventEditor)
-
-    case let .setEventName(name):
-        guard let draft = state.eventDraft else { break }
-        next.eventDraft = draft.with(name: name)
-        // Debounced for the same reason as `setBatchName`: typing is one edit, not five
-        // writes.
-        persistEventDraft(state, &next, draft.with(name: name), persistsAsTyped: true)
-
-    case let .setEventDate(date):
-        guard let draft = state.eventDraft else { break }
-        next.eventDraft = draft.with(date: date)
-        persistEventDraft(state, &next, draft.with(date: date))
-
-    case let .setEventColor(color):
-        guard let draft = state.eventDraft else { break }
-        let edited = draft.with(colorName: color?.colorName ?? "")
-        next.eventDraft = edited
-        persistEventDraft(state, &next, edited)
-
-    case .discardEventTapped:
-        next.eventDraft = nil
-        next.stage = .batchEditor
-        requesting(&next, .pop)
+    // The event editor that used to be here had its own case per field — `openEvent`, `setEventName`,
+    // `setEventDate`, `setEventColor`, `discardEventTapped` — and they all wrote the same value
+    // twice: into `state.eventDraft`, and through `persistEventDraft` straight back into the
+    // assembly the batch is built from. The draft existed only so the editor had something to
+    // edit, so it went with the screen.
 
     case let .deleteBatches(list):
         let keys = Set(list.map(\.mergeKey))
@@ -473,8 +418,18 @@ public func pcEventSelectionReducer(
         // holding the days accumulated so far. `state.assembly` is nil throughout a
         // multi-select session, which is why the session was invisible here and the
         // omission survived every test that exercised the editor path.
-        next.assembly = adoptingPersistedID(for: state.assembly, in: incoming, using: provider)
-        next.multiSelectAssembly = adoptingPersistedID(for: state.multiSelectAssembly, in: incoming, using: provider)
+        next.assembly = adoptingPersistedID(
+            for: state.assembly,
+            in: incoming,
+            registry: state.batches,
+            using: provider
+        )
+        next.multiSelectAssembly = adoptingPersistedID(
+            for: state.multiSelectAssembly,
+            in: incoming,
+            registry: state.batches,
+            using: provider
+        )
         // Adoption settles the session on *an* id. If a tap landed while the previous write
         // was still in flight, the database holds that earlier shape as its own row, and
         // nothing will ever carry it again — so it has to be dropped here, or it stays in
@@ -514,19 +469,23 @@ public func pcEventSelectionReducer(
         // now, and the recolour below only has to cover changing a colour on a batch that
         // somehow exists without one.
         if let assembly = next.multiSelectAssembly, color != nil {
-            let recoloured = assembly.recoloring(color)
-            next.multiSelectAssembly = recoloured
-            if let row = recoloured.resolved() {
-                next.batches = merging(row, into: state.batches)
-            }
+            next.multiSelectAssembly = assembly.recoloring(color)
         }
 
     case .confirmMultiSelectTapped:
-        // The in-session exit: end the session and, unlike Cancel, hand the batch on as the
-        // staged assembly. Nothing is pushed — there is no review step left, because the days
-        // were written as they were tapped.
+        // The in-session exit: end the session and hand the batch to the **batch editor**.
+        //
+        // It used to end the session and stop, on the reasoning that "there is no review step
+        // left, because the days were written as they were tapped". That was true while a tap
+        // merged the row, and it stopped being true the moment an unnamed batch stopped being
+        // written: the days are now a staged batch waiting for a name, and a checkmark that
+        // threw that away was a worse affordance than one that asked for the name.
+        //
+        // So Confirm is now the door into the same editor a tapped day opens, and from there
+        // the rules are the ones for creating a batch, unchanged: the first real edit merges
+        // the row, and leaving an untouched draft unwinds to the calendar with nothing written.
         guard state.multiSelectMode else { break }
-        endingMultiSelectSession(state, &next)
+        endingMultiSelectSession(state, &next, presentingEditor: true)
 
     case .cancelMultiSelectTapped:
         // Leaving the session rather than just emptying it. §6.3 listed only the days and the
@@ -539,7 +498,7 @@ public func pcEventSelectionReducer(
         // calendar, so a session that outlived its calendar would come back painted and
         // unendable the next time that calendar was opened.
         guard state.multiSelectMode else { break }
-        endingMultiSelectSession(state, &next, stagingBatch: false)
+        endingMultiSelectSession(state, &next, stagingBatch: false, presentingEditor: false)
 
     case let .setNumberOfColumns(columns):
         next.numberOfColumns = columns
@@ -589,11 +548,11 @@ private func requesting(_ state: inout PCEventSelectionState, _ target: Navigati
 /// boundaries is a place where the ids in `selectedEventIDs` stop meaning what they meant.
 /// They are `pendingID`s of an assembly: when the assembly goes (entering a batch, opening
 /// one from the registry, leaving the editor, resetting the session) or when the user acts
-/// on the rows as a list rather than as a set (leaving selection mode, opening one event),
+/// on the rows as a list rather than as a set (leaving selection mode, clearing it),
 /// carrying them forward would point a selection at events that are not in the batch being
 /// edited. It would not fail loudly — `selectedEvents` filters against the current assembly
 /// and quietly returns fewer or none — which is the reason this is one function rather than
-/// a line repeated at each site: the six sites are exactly where one of them gets missed.
+/// a line repeated at each site: the sites are exactly where one of them gets missed.
 ///
 /// `removeEvent` is deliberately *not* a boundary. It drops the single id it removed,
 /// because the other ids in the selection are still perfectly good.
@@ -666,40 +625,59 @@ private func editing(
     let edited = edit(assembly)
     next.assembly = edited
     guard edited.canSave, let row = edited.resolved() else { return }
-    next.batches = merging(row, into: state.batches)
-    next.persistsAsTyped = persistsAsTyped
+    // Adopting by content, not just by key: this is where the debounced name write merges, and
+    // it is the exact place the duplicate appeared — a write that has already landed can be
+    // back in the registry under a real id while the assembly still holds the `.pending(…)`
+    // one. See the content-adopting `merging` below for why that is now safe here.
+    next.batches = merging(row, into: state.batches, using: state.dataProvider)
+    // Sticky, not assigned. The debt a name edit creates is cleared by the **write**, which
+    // happens in the store and not here, and this used to clear it itself — so a discrete edit
+    // that produced an identical row (a colour already set to what it was, which is what
+    // `commitNewBatch` does by naming a new batch and then setting its default colour) paid the
+    // debt without writing anything. The typed name was then in the registry and nowhere else,
+    // and the batch vanished on the next read.
+    next.persistsAsTyped = next.persistsAsTyped || persistsAsTyped
 }
 
-/// Folds an edited event draft back into its batch and writes the batch through.
+/// `merging`, but a row the registry already describes **by content** is adopted rather than
+/// duplicated.
 ///
-/// Separate from `editing` because the event editor's work lives in `eventDraft` rather than
-/// in the assembly — the draft is a copy, and the batch only learns about it here. Without
-/// this the event's name, date and colour would keep the Save/discard shape while its parent
-/// batch's had lost it.
-private func persistEventDraft(
-    _ state: PCEventSelectionState,
-    _ next: inout PCEventSelectionState,
-    _ draft: CalendarEvent,
-    persistsAsTyped: Bool = false
-) {
-    guard let assembly = state.assembly else { return }
-    let updated = assembly.applying(draft, using: state.dataProvider)
-    next.assembly = updated
-    guard updated.canSave, let row = updated.resolved() else { return }
-    next.batches = merging(row, into: state.batches)
-    next.persistsAsTyped = persistsAsTyped
-}
-
+/// This exists because of a race the key cannot survive. A staged batch is keyed
+/// `pending(pendingID)` until a reload tells it the id the database gave its row, and adoption
+/// on that reload is content-based. So if the write lands and the editor is left before that
+/// reload arrives, the merge on the way out is keyed `pending(…)` while the registry already
+/// holds the same batch as `persisted(7)` — two keys, one batch, and `merging` appends. The
+/// symptom is one day listing the same batch twice, and it is intermittent because it depends
+/// on the debounced write winning or losing a race with the Back tap.
+///
+/// Matching here is `hasSameContent`, not the looser `isSnapshot`: same name, same colour and
+/// the **same days**. The loose one allows this row's days to be a subset of another's, and
+/// that is what let a multi-select session adopt an unrelated untitled neighbour — see
+/// `sessionReloadDoesNotTouchUnrelatedRows`. Requiring the identical day set is safe for the
+/// case that matters: two batches the user cannot tell apart on a day list are one batch, and
+/// the merge replaces the existing row (carrying its `persistedID`) instead of adding a
+/// second.
+///
+/// Only the *merge* adopts. Nothing here deletes, so a false match costs an update and never
+/// the user's work.
 private func merging(
     _ row: CalendarEventBatch,
-    into registry: [CalendarEventBatch]
+    into registry: [CalendarEventBatch],
+    using dataProvider: PCCalendarDataProvider
 ) -> [CalendarEventBatch] {
     var out = registry
     if let index = out.firstIndex(where: { $0.mergeKey == row.mergeKey }) {
         out[index] = row
-    } else {
-        out.append(row)
+        return out
     }
+    if let index = out.firstIndex(where: { $0.hasSameContent(as: row, using: dataProvider) }) {
+        // Keep the id the store assigned: `row` is the staged value and carries a `.pending`
+        // key, so merging it verbatim would write the batch back under a key that matches no
+        // row on the next load.
+        out[index] = row.with(persistedID: out[index].persistedID)
+        return out
+    }
+    out.append(row)
     return out
 }
 
@@ -728,29 +706,48 @@ private func merging(
 /// ## The hand-off
 ///
 /// `stagesBatch` is the only difference between the two callers. Confirm hands the batch on as
-/// `state.assembly` so a staged edit survives; Cancel does not, because cancelling a session
-/// discards the *scratchpad*, not the row — the days were written as they were tapped, so there
-/// is nothing to undo.
+/// `state.assembly` and opens the editor on it, so a name given there reaches the same row the
+/// taps were building; Cancel does not, because cancelling a session discards the *selection*
+/// — the days were never written, so there is nothing to undo.
+///
+/// `presentingEditor` is navigation, and it is deliberately *not* implied by `stagesBatch`. A
+/// calendar switch also ends sessions (`cancelMultiSelectTapped` is what it dispatches), and a
+/// switch must never push a sheet over whatever the user was doing next.
 ///
 /// The key is `assembly.mergeKey` and not `batch.mergeKey`: the adopted id lives outside the
 /// batch, and a `.pending(…)` key matches no row in the registry at all.
 private func endingMultiSelectSession(
     _ state: PCEventSelectionState,
     _ next: inout PCEventSelectionState,
-    stagingBatch stagesBatch: Bool = true
+    stagingBatch stagesBatch: Bool = true,
+    presentingEditor presentsEditor: Bool = false
 ) {
     let session = next.multiSelectAssembly
 
     if let session {
         if session.batch.isEmpty {
+            // Nothing was ever written for this session, so there is normally nothing to
+            // remove here. The filter stays for the row a session *would* have left under the
+            // old per-tap write, and for the boundary itself: "the row is definitely already
+            // gone" is an inference about a previous action, and this is the last place that
+            // could clean up after it.
             next.batches = state.batches.filter { $0.mergeKey != session.mergeKey }
-        } else if stagesBatch, let row = session.resolved() {
-            // Normally already identical to the registry row — every tap merged it — so this
-            // writes nothing. Merged rather than trusted so that leaving cannot lose a batch
-            // that reached the assembly by any other route.
-            next.batches = merging(row, into: state.batches)
+        } else if stagesBatch {
+            // Handed on **unwritten**, as the same `.new` assembly the taps built —
+            // deliberately not `.existing`. Origin is what `isDraft` reads, and `isDraft` is
+            // what makes Back discard an unnamed batch instead of writing it. Marking it
+            // existing because "it was confirmed" would write a row nobody named, which is the
+            // exact thing the name requirement exists to prevent.
+            //
+            // Not merged here either: the batch is unnamed, so `canSave` declines, and the
+            // first edit inside the editor is what merges it. Everything downstream of Confirm
+            // is then the ordinary batch-editor path, with no session left to special-case.
             next.assembly = session
-            next.day = row.date
+            next.day = session.batch.date
+            next.stage = .batchEditor
+            if presentsEditor {
+                requesting(&next, .presentBatchEditor)
+            }
         }
     }
 
@@ -777,19 +774,71 @@ private func endingMultiSelectSession(
 private func adoptingPersistedID(
     for assembly: PCEventBatchAssembleUnitOfWork?,
     in incoming: [CalendarEventBatch],
+    registry: [CalendarEventBatch],
     using provider: PCCalendarDataProvider
 ) -> PCEventBatchAssembleUnitOfWork? {
     guard
         let assembly,
         assembly.isNew,
-        assembly.adoptedPersistedID == nil,
-        let match = incoming.first(where: {
-            $0.persistedID != nil && $0.isSnapshot(of: assembly.batch, using: provider)
-        })
+        assembly.adoptedPersistedID == nil
     else {
         return assembly
     }
-    return assembly.adopting(persistedID: match.persistedID)
+
+    // Two ways in, and the second is the one that survives a name still moving.
+    //
+    // The first is the heuristic this function has always had: the incoming row that could be
+    // an earlier state of this batch, by `isSnapshot`. It fails while the user is typing,
+    // because `isSnapshot` compares names exactly and a name that has advanced no longer looks
+    // like the row that was written — and adoption is one-shot, so a single miss strands the
+    // assembly on `.pending(…)` for good. Every later merge then looks for a key the registry
+    // does not have, does not find it, and appends: one batch becomes two, and the stale one
+    // keeps painting days the user has since removed from the live one.
+    //
+    // The second needs no heuristic to find the row. The registry row this assembly merged
+    // into was `assembly.resolved()` — the same value, so it carries the assembly's
+    // `pendingID`, and that is a link nothing else can forge: a reloaded row mints a fresh one
+    // and no unrelated batch has ever held it. So `mine` is *known* to be this batch's row, and
+    // the only question left is which incoming row is it — which `sameShape` answers without
+    // looking at the name, because the name is the one field that legitimately differs between
+    // two rows for the same batch while somebody is typing into it.
+    //
+    // Note what the second way is not allowed to do: match an incoming row against the
+    // *assembly* on days alone. That is the loosening `merging` documents as having let a
+    // session adopt an unrelated untitled neighbour. Here the `pendingID` has already answered
+    // "which batch", so days and colour are only being used to say "which copy of it".
+    let mine = registry.first { $0.pendingID == assembly.batch.pendingID }
+    let candidate = incoming.first { $0.isSnapshot(of: assembly.batch, using: provider) }
+        ?? mine.flatMap { row in incoming.first { sameShape($0, as: row, using: provider) } }
+
+    guard let candidate, candidate.persistedID != nil else { return assembly }
+    return assembly.adopting(persistedID: candidate.persistedID)
+}
+
+/// Whether `row` is the same batch as `mine`, **ignoring the name**.
+///
+/// Deliberately weaker than `isSnapshot`, and only ever used *after* a `pendingID` has already
+/// identified `mine` as the row a staged assembly merged into. That is what makes the weakness
+/// safe: `isSnapshot` has to guard against matching the wrong batch with its name and colour,
+/// and this does not, because the batch is not in question — only which copy of it came back.
+///
+/// Days are compared as sets and the list is date-sorted by construction, so zip is a valid
+/// pairing. Colour is exact: it is a decision the user made, and nothing drifts it.
+private func sameShape(
+    _ row: CalendarEventBatch,
+    as mine: CalendarEventBatch,
+    using provider: PCCalendarDataProvider
+) -> Bool {
+    guard
+        row.colorName == mine.colorName,
+        !row.events.isEmpty,
+        row.events.count == mine.events.count
+    else {
+        return false
+    }
+    return zip(row.events, mine.events).allSatisfy { lhs, rhs in
+        provider.isSameDay(lhs.date, rhs.date)
+    }
 }
 
 /// The reload's rows, minus the ones a live session has already outgrown.

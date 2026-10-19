@@ -109,13 +109,31 @@ final class MultiselectAndDefaultsTests: XCTestCase {
         XCTAssertTrue(confirm.waitForExistence(timeout: 5), "Toolbar should offer Save during a session")
         confirm.tap()
 
-        // Confirming ends the session; it does not open the batch editor. The days were
-        // written as they were tapped, so there is nothing left for an editor to commit. It
-        // used to open one as a review step over staged data, which no longer describes what
-        // happens.
-        XCTAssertFalse(
-            app.textFields["batch-name-field"].exists,
-            "Confirming should not open the batch editor"
+        // Confirming ends the session and opens the batch editor on what it built.
+        //
+        // **Premise changed.** This asserted `batch-name-field` does *not* exist — "Confirming
+        // should not open the batch editor" — on the reasoning that the days were written as
+        // they were tapped, leaving nothing to commit. They are not written as they are tapped
+        // any more: an unnamed batch is a draft, so the session's days exist only as a
+        // selection, and this editor is where the batch becomes a batch.
+        //
+        // It had opened an editor once before, as a review step over data that was already
+        // durable. That was a review step with nothing to review; this one has a name to ask
+        // for.
+        let batchNameField = app.textFields["batch-name-field"]
+        XCTAssertTrue(
+            batchNameField.waitForExistence(timeout: 5),
+            "Confirming a session should open the batch editor on its batch"
+        )
+        // Name it, then leave: the editor is where the draft becomes real, and the calendar
+        // underneath is what the rest of this test is about.
+        KeyboardAvoidanceTestSupport.replaceText(in: batchNameField, with: "Morning")
+        let editorBack = app.buttons["batch-editor-back-button"]
+        XCTAssertTrue(editorBack.waitForExistence(timeout: 5))
+        editorBack.tap()
+        XCTAssertTrue(
+            editorBack.waitForNonExistence(timeout: 5),
+            "leaving the editor should dismiss it"
         )
         XCTAssertTrue(
             KeyboardAvoidanceTestSupport.waitForToolbarAction("Multiselect", in: app),
@@ -140,7 +158,11 @@ final class MultiselectAndDefaultsTests: XCTestCase {
     ///
     /// AB: the editor shows an empty name and a grey picker, so Save is disabled. EB: the
     /// batch arrives named "New event" with the first colour already selected, and its
-    /// event arrives named "New event day" in the batch's colour.
+    /// event is already listed wearing that colour.
+    ///
+    /// The event's *name* used to be part of this claim, read off the event editor's own field
+    /// ("New event day"). The editor is gone, so the tail asserts the row exists instead — the
+    /// same "the batch arrives holding a placeholder event" fact, from the screen that lists it.
     @MainActor
     func testANewBatchArrivesNamedAndColoured() {
         let app = openSeededCalendar()
@@ -166,25 +188,16 @@ final class MultiselectAndDefaultsTests: XCTestCase {
         XCTAssertTrue(batchEditorBack.isEnabled, "So the batch must be savable without the user doing anything")
 
         // The event inherits the batch's colour and gets its own default name.
-        // By index: a row's text is a formatted timestamp, whose wording is the locale's.
-        let eventRow = KeyboardAvoidanceTestSupport.eventRow(0, in: app)
-        XCTAssertTrue(eventRow.waitForExistence(timeout: 5), "The batch should list its placeholder event")
-        eventRow.tap()
-
-        let eventName = app.textFields["event-name-field"]
-        XCTAssertTrue(eventName.waitForExistence(timeout: 5), "Event editor should open")
-        XCTAssertEqual(
-            eventName.value as? String, "New event day",
-            "A new event should arrive with a default name rather than an empty field"
-        )
-        // **Premise changed.** This asserted the event's Save was enabled, i.e. that a
-        // placeholder was savable without the user doing anything. There is no Save: the batch
-        // was written the moment the event row was opened, and the only thing left to check is
-        // that the editor can be left. The default-name assertion above is still the point of
-        // the test — it is what the user sees in the field.
+        //
+        // **Premise changed.** This opened the event editor and asserted its name field held
+        // "New event day", then that its Back was enabled. Both are gone with the screen. What
+        // survives is the part that is still observable from here: the row exists, which is the
+        // same claim — the batch arrives holding a placeholder event — read off the one screen
+        // that lists them. By index: a row's text is a formatted timestamp, whose wording is
+        // the locale's.
         XCTAssertTrue(
-            app.buttons["event-editor-back-button"].isEnabled,
-            "So the event editor can be left without the user doing anything"
+            KeyboardAvoidanceTestSupport.eventRow(0, in: app).waitForExistence(timeout: 5),
+            "The batch should list its placeholder event"
         )
     }
 }

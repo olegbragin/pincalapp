@@ -12,7 +12,7 @@ enum KeyboardAvoidanceTestSupport {
     @MainActor
     static func launchSeededApp() -> XCUIApplication {
         let app = XCUIApplication()
-        app.launchArguments = ["-UITestSeedData", "-UITestColumns", "1", "-UITestNameAutosaveSeconds", "0"]
+        app.launchArguments = ["-UITestSeedData", "-UITestColumns", "1"]
         app.launch()
         return app
     }
@@ -352,17 +352,26 @@ enum KeyboardAvoidanceTestSupport {
 
     /// Every event row currently mounted in the batch editor.
     ///
-    /// Not scoped to `collectionViews`: the keyboard's dictation key was the reason for that,
-    /// and an identifier match cannot collide with it.
+    /// **`descendants(matching: .any)`, not a typed query.** The row was a `Button`, so
+    /// `app.buttons` found it by identifier; it is a card now, and a card's element type is not
+    /// something to bet on — the identifier is applied to a `Text` inside a `PCCard`, and what
+    /// XCUITest surfaces for that is SwiftUI's business, not ours. `staticTexts` was tried and
+    /// matched nothing; `otherElements` would be the same guess one step along. Matching *any*
+    /// descendant by identifier is the same idiom `cardEventRows` already uses, and an identifier
+    /// match cannot collide with the keyboard's dictation key the way a label match could.
+    ///
+    /// A row is found and counted, never tapped: there is nothing behind it to go to.
     @MainActor
     static func eventRows(in app: XCUIApplication) -> XCUIElementQuery {
-        app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", eventRowIdentifierPrefix))
+        app.descendants(matching: .any).matching(
+            NSPredicate(format: "identifier BEGINSWITH %@", eventRowIdentifierPrefix)
+        )
     }
 
     /// The event row at `index`, 0-based, in the assembly's (date-sorted) order.
     @MainActor
     static func eventRow(_ index: Int, in app: XCUIApplication) -> XCUIElement {
-        app.buttons["\(eventRowIdentifierPrefix)\(index)"]
+        eventRows(in: app).matching(identifier: "\(eventRowIdentifierPrefix)\(index)").firstMatch
     }
 
     /// How many event rows the batch editor is listing.
@@ -441,6 +450,65 @@ enum KeyboardAvoidanceTestSupport {
         return "day-\(gridMonth)-\(formatter.string(from: date))"
     }
 
+    /// The colour pickers' accessibility identifiers.
+    ///
+    /// Spelled here rather than imported, because this target does not link `DSKit` — the
+    /// constants live on `PCCompactColorPicker`, `PCExpandedColorPicker` and
+    /// `PCColorOptionSheet`, and these are their values. Keep the two in step: a rename on
+    /// either side shows up as a picker that "does not exist", which reads as a layout bug.
+    enum ColorPicker {
+        /// The circle in the batch editor. Opens the sheet.
+        static let compact = "color-picker-compact"
+        /// The sheet itself.
+        static let sheet = "color-option-sheet"
+        /// A row in that sheet.
+        static func sheetOption(_ colorName: String) -> String {
+            "color-sheet-option-\(colorName)"
+        }
+
+        /// An inline option on the main calendar's multi-select picker. Different control from
+        /// `sheetOption` — see `PCColorOptionSheet.optionAccessibilityIdentifier(for:)`.
+        static func inlineOption(_ colorName: String) -> String {
+            "color-option-\(colorName)"
+        }
+    }
+
+    /// Takes the keyboard down, if it is up. Returns whether it had to.
+    ///
+    /// The keyboard is what covers the batch editor's first row, and it does so silently. Measured
+    /// on a 466×678 phone with the name field focused: the editor's panel sat at `y 374…678` and
+    /// the keyboard's input view at `y 374…678` — exactly coincident — which put the name field
+    /// (`390…424`) and the colour picker (`390.5…423.5`) underneath it. The picker's centre fell
+    /// at `y ≈ 407`, inside the keyboard's typing-predictions bar, so a tap aimed at it was
+    /// delivered to the *keyboard*: nothing errored, and the colour sheet simply never appeared.
+    /// That is what the "colour sheet doesn't present" failures were, and it is equally a user
+    /// who cannot pick a colour without first putting the name field down.
+    ///
+    /// **Done**, not a tap on empty space. The name field submits with `.done`, so this both puts
+    /// the keyboard away and fires `.nameEditingFinished` — which is the debounced name write's own
+    /// flush. A test that types a name and then needs that write to have landed gets it from here
+    /// rather than from a sleep.
+    @discardableResult
+    @MainActor
+    static func dismissKeyboard(in app: XCUIApplication) -> Bool {
+        let keyboard = app.keyboards.firstMatch
+        guard keyboard.exists else { return false }
+
+        // Identifier first, because the glyph on the key is the submit label's, not a fixed
+        // string: `.done` draws a checkmark (see the iPad capture) while the identifier stays
+        // `return`.
+        let done = app.keyboards.buttons["return"]
+        if done.exists {
+            done.tap()
+        } else {
+            // A keyboard with no return key (an accessory-bar layout). A newline reaches the
+            // focused field and submits it, which is the same effect by another route.
+            app.typeText("\n")
+        }
+        _ = keyboard.waitForNonExistence(timeout: 5)
+        return true
+    }
+
     /// Picks `colorName` on the colour picker the frontmost editor exposes.
     ///
     /// Any test that builds a batch from scratch wants this. It used to be *required*: tapping
@@ -454,9 +522,17 @@ enum KeyboardAvoidanceTestSupport {
     /// Several screens can expose a `color-picker-compact` at once — the batch editor behind,
     /// the event editor in front — so this takes the topmost *hittable* one, which makes the
     /// sheet that opens belong to the screen actually being edited.
+    ///
+    /// **The keyboard comes down first.** Callers are expected to pick the colour before they type
+    /// a name, so that nothing has raised the keyboard yet; this makes the helper true regardless
+    /// of the order it is called in, which is worth having because the failure it prevents is a
+    /// tap that silently lands somewhere else and a wait that times out on a picker that was
+    /// never the problem.
     @MainActor
     static func selectColor(_ colorName: String, in app: XCUIApplication) {
-        let picker = app.buttons.matching(identifier: "color-picker-compact")
+        dismissKeyboard(in: app)
+
+        let picker = app.buttons.matching(identifier: ColorPicker.compact)
         XCTAssertTrue(picker.firstMatch.waitForExistence(timeout: 5), "Color picker should be visible")
 
         let deadline = Date().addingTimeInterval(5)
@@ -469,7 +545,7 @@ enum KeyboardAvoidanceTestSupport {
         }
         (target ?? picker.firstMatch).tap()
 
-        let option = app.buttons["color-option-\(colorName)"]
+        let option = app.buttons[ColorPicker.sheetOption(colorName)]
         XCTAssertTrue(option.waitForExistence(timeout: 5), "Color option \(colorName) should be visible in sheet")
         option.tap()
 
@@ -637,14 +713,15 @@ enum KeyboardAvoidanceTestSupport {
     static func leaveCurrentScreen(in app: XCUIApplication) {
         // The system Back, then the editors' own Back.
         //
-        // The two editors hide the navigation bar's back button and supply their own
-        // store-routed one, so neither carries the identifier the system button has — a helper
+        // The batch editor hides the navigation bar's back button and supplies its own
+        // store-routed one, so it does not carry the identifier the system button has — a helper
         // that only knew "Back"/"BackButton" found no Back at all while an editor was open,
         // fell through to the sidebar, and failed with "Expected either a Back button or a
-        // reachable sidebar" on a screen that plainly had one. The editors' identifiers are
+        // reachable sidebar" on a screen that plainly had one. The editor's identifier is
         // checked before the sidebar for the same reason the system one is: a real Back is a
-        // Back, and only a root screen has to be left by switching category.
-        let backIdentifiers = ["Back", "BackButton", "batch-editor-back-button", "event-editor-back-button"]
+        // Back, and only a root screen has to be left by switching category. (There were two
+        // here — `event-editor-back-button` went with that screen.)
+        let backIdentifiers = ["Back", "BackButton", "batch-editor-back-button"]
         for identifier in backIdentifiers {
             let back = app.buttons.matching(identifier: identifier).firstMatch
             if back.waitForExistence(timeout: identifier == "Back" ? 3 : 1) {

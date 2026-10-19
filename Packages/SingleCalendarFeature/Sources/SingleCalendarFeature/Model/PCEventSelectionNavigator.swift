@@ -29,11 +29,12 @@ public enum PCEventSelectionNavigator {
     ///
     /// ### Why the request is re-read rather than trusted
     ///
-    /// A pushed screen does not replace the one beneath it, so while the event editor is
-    /// up, both `AddEditEventView` and `AddEditEventBatchScreen` are mounted and both see
-    /// the same `onChange`. The value `onChange` hands them is a *capture*, taken before
-    /// either ran, so both would consider themselves the fulfiller and the pop would
-    /// happen twice — landing the user one screen too far back.
+    /// A pushed screen does not replace the one beneath it, so two mounted screens can see the
+    /// same `onChange`. The value `onChange` hands them is a *capture*, taken before either ran,
+    /// so both would consider themselves the fulfiller and the pop would happen twice — landing
+    /// the user one screen too far back. The event editor was the screen that used to sit on
+    /// top and make this a live problem; the guard stays because the day list is still pushed
+    /// under the batch editor's sheet.
     ///
     /// Re-reading the store's *current* request instead makes fulfilment atomic: the first
     /// screen to get here acts and clears it, and any other screen finds nothing pending
@@ -52,8 +53,6 @@ public enum PCEventSelectionNavigator {
             navigation.goTo(.dayBatches)
         case .presentBatchEditor:
             navigation.goTo(.batchEditor)
-        case .pushEventEditor:
-            navigation.goTo(.eventEditor)
         case .pop:
             navigation.pop()
         case .dismissBatchEditor:

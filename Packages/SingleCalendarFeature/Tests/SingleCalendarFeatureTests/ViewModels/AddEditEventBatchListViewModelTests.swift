@@ -112,19 +112,6 @@ struct AddEditEventBatchListViewModelTests {
         #expect(vm.pendingDeletion.isEmpty)
     }
 
-    @Test("Cancelling a staged deletion keeps the batch")
-    func cancelKeepsTheBatch() {
-        let (vm, _) = makeContext()
-        let target = vm.eventBatches[0]
-
-        vm.remove(target)
-        vm.cancel()
-
-        #expect(vm.eventBatches.count == 2)
-        #expect(vm.eventBatches.contains(target), "there was never a local copy to restore")
-        #expect(vm.pendingDeletion.isEmpty)
-    }
-
     @Test("Confirming with nothing staged does nothing")
     func confirmWithNothingStaged() {
         let (vm, _) = makeContext()

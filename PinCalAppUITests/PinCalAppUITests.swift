@@ -42,7 +42,7 @@ final class PinCalAppUITests: XCTestCase {
     @MainActor
     func testNavigationToCalendarAndBack() {
         let app = XCUIApplication()
-        app.launchArguments = ["-UITestSeedData", "-UITestColumns", "1", "-UITestNameAutosaveSeconds", "0"]
+        app.launchArguments = ["-UITestSeedData", "-UITestColumns", "1"]
         app.launch()
 
         // Navigate to the calendar list via sidebar.
@@ -72,7 +72,7 @@ final class PinCalAppUITests: XCTestCase {
     @MainActor
     func testiPadSidebarSelectsDetailCalendar() {
         let app = XCUIApplication()
-        app.launchArguments = ["-UITestSeedData", "-UITestColumns", "1", "-UITestNameAutosaveSeconds", "0"]
+        app.launchArguments = ["-UITestSeedData", "-UITestColumns", "1"]
         app.launch()
 
         // Navigate to the calendar list via sidebar (iPad shows sidebar; iPhone skips to content).
@@ -147,6 +147,18 @@ final class PinCalAppUITests: XCTestCase {
         let confirm = KeyboardAvoidanceTestSupport.toolbarAction("Save", in: app)
         XCTAssertTrue(confirm.waitForExistence(timeout: 5))
         confirm.tap()
+
+        // Confirm ends the session and opens the batch editor on an *unnamed* batch — a session
+        // no longer writes as it is tapped, so this is where the batch becomes real. Leaving
+        // without naming it would discard the whole selection, which is the point of the rule
+        // and not what this test wants: it wants a batch that outlives a calendar switch.
+        let batchNameField = app.textFields["batch-name-field"]
+        XCTAssertTrue(batchNameField.waitForExistence(timeout: 5), "Confirming should open the batch editor")
+        KeyboardAvoidanceTestSupport.replaceText(in: batchNameField, with: "Cycle")
+        let editorBack = app.buttons["batch-editor-back-button"]
+        XCTAssertTrue(editorBack.waitForExistence(timeout: 5))
+        editorBack.tap()
+        XCTAssertTrue(editorBack.waitForNonExistence(timeout: 5), "leaving the editor should dismiss it")
 
         let day20 = KeyboardAvoidanceTestSupport.dayCell(day: 20, in: app)
         XCTAssertTrue(day20.waitForExistence(timeout: 5), "Day 20 should be on this calendar")
@@ -250,7 +262,7 @@ final class PinCalAppUITests: XCTestCase {
     @MainActor
     func testCalendarNameEditingKeyboardScroll() {
         let app = XCUIApplication()
-        app.launchArguments = ["-UITestSeedData", "-UITestColumns", "1", "-UITestNameAutosaveSeconds", "0"]
+        app.launchArguments = ["-UITestSeedData", "-UITestColumns", "1"]
         app.launch()
 
         // Navigate to the calendar list via sidebar.
@@ -320,13 +332,19 @@ final class PinCalAppUITests: XCTestCase {
             KeyboardAvoidanceTestSupport.tapDay(day: day, in: app)
         }
 
+        // The colour is already the first available one for a new batch, but selecting it
+        // explicitly keeps this helper honest about what the tests it serves depend on.
+        //
+        // **Before the name, deliberately.** Typing is what raises the keyboard, and the keyboard
+        // covers this row of the editor — the panel and the keyboard's input view were measured at
+        // `y 374…678` on a 466×678 phone, coincident — so a picker tapped after typing is a tap
+        // the keyboard swallows. Choosing the colour first means there is no keyboard in the way
+        // at all. See `selectColor`.
+        KeyboardAvoidanceTestSupport.selectColor("eventColorOption1", in: app)
         // Replace, not append: a new batch arrives with "New event" already in the field
         // (§17.3), so `typeText` here would produce "New eventCycle" and every assertion
         // below would be looking for a name that was never typed.
         KeyboardAvoidanceTestSupport.replaceText(in: nameField, with: name)
-        // The colour is already the first available one for a new batch, but selecting it
-        // explicitly keeps this helper honest about what the tests it serves depend on.
-        KeyboardAvoidanceTestSupport.selectColor("eventColorOption1", in: app)
         // Back, not a Save: nothing here commits anything, so there is nothing to wait for
         // beyond the editor closing. The `isEnabled` check it replaces was only ever asserting
         // that a button was tappable.
@@ -541,9 +559,11 @@ final class PinCalAppUITests: XCTestCase {
         KeyboardAvoidanceTestSupport.tapDay(day: 11, in: app)
         let nameField = app.textFields["batch-name-field"]
         XCTAssertTrue(nameField.waitForExistence(timeout: 5), "Batch editor should open")
-        KeyboardAvoidanceTestSupport.replaceText(in: nameField, with: "Cycle")
-        // Same as `createBatch`: belt and braces, since nothing is gated on a colour now.
+        // Same as `createBatch`: belt and braces, since nothing is gated on a colour now. And the
+        // same order — the colour is picked before the name is typed, so the keyboard the typing
+        // raises cannot be covering the picker.
         KeyboardAvoidanceTestSupport.selectColor("eventColorOption1", in: app)
+        KeyboardAvoidanceTestSupport.replaceText(in: nameField, with: "Cycle")
         let editorBack = app.buttons["batch-editor-back-button"]
         editorBack.tap()
         XCTAssertTrue(editorBack.waitForNonExistence(timeout: 3), "Batch editor should dismiss")
@@ -723,18 +743,39 @@ final class PinCalAppUITests: XCTestCase {
         XCTAssertTrue(confirm.waitForExistence(timeout: 5), "Toolbar should offer Save during a session")
         confirm.tap()
 
-        // Confirming ends the session rather than opening the editor: the days were written as
-        // they were tapped, so there is nothing staged left to review or commit.
-        XCTAssertFalse(
-            app.buttons["batch-editor-back-button"].exists,
-            "Confirming a session should not open the batch editor"
+        // Confirming opens the batch editor on what the session built.
+        //
+        // **Premise changed.** This asserted the opposite — `XCTAssertFalse(... exists, "Confirming
+        // a session should not open the batch editor")` — on the reasoning that "the days were
+        // written as they were tapped, so there is nothing staged left to review or commit".
+        // They are not written as they are tapped any more: an unnamed batch is a draft, so a
+        // session holds a selection until someone names it, and this editor is where that
+        // happens. Confirming without opening it would throw the batch away.
+        let editorBack = app.buttons["batch-editor-back-button"]
+        XCTAssertTrue(
+            editorBack.waitForExistence(timeout: 5),
+            "Confirming a session should open the batch editor on the batch it built"
         )
-
-        // **Premise changed.** This used to look the batch up by its name, "New event", on the
-        // reasoning that a batch no editor ever opened would still carry the default. Batches
-        // now arrive *unnamed* — an empty name is what keeps a merely-tapped day a draft, and
-        // writing "New event" on the tap is the misclick the reducer's comment refuses — so the
-        // name is not on the screen and the card is identified by what it contains instead.
+        let batchNameField = app.textFields["batch-name-field"]
+        XCTAssertTrue(batchNameField.waitForExistence(timeout: 5), "and it should offer the name field")
+        // A recolour as well as a name. **The colour goes first**, which is the reverse of what
+        // this used to do and for a measured reason: typing raises the keyboard, the keyboard
+        // covers the editor's first row, and a picker tapped after typing is a tap the keyboard
+        // swallows — the sheet then never appears and the failure names colour when the cause
+        // was the keyboard. See `selectColor`.
+        //
+        // The recolour used to be last *for* its write: naming was debounced, so leaving straight
+        // after it could outrun the write, and a colour change is a discrete one. That reasoning
+        // has since changed at the source — typing writes nothing at all, and the end of typing
+        // (the field resigning, the Done key, or leaving the editor) writes once — so ordering
+        // the colour first is now safe on its own terms, with no launch argument making it so.
+        KeyboardAvoidanceTestSupport.selectColor("eventColorOption3", in: app)
+        KeyboardAvoidanceTestSupport.replaceText(in: batchNameField, with: "Morning")
+        editorBack.tap()
+        XCTAssertTrue(
+            editorBack.waitForNonExistence(timeout: 5),
+            "leaving the editor should return to the calendar"
+        )
 
         // Back on the calendar: both days are marked.
         for day in [17, 18] {
@@ -785,10 +826,17 @@ final class PinCalAppUITests: XCTestCase {
         )
     }
 
+    // Two tests were deleted here with the screen: `testEditingEventInBatchPersists` (name a batch,
+    // leave, reopen, open its event, call it "Lap", reopen, check the name persisted) and
+    // `testTappingExistingEventOpensEditor` (which existed only to assert that tapping an event
+    // row opens something). The second had no premise the moment the tap stopped navigating; the
+    // first kept the part that is still observable — the batch and its event survive a calendar
+    // round trip — as the test below.
+
     @MainActor
-    func testEditingEventInBatchPersists() {
+    func testBatchSurvivesACalendarRoundTripWithItsEvent() {
         let app = XCUIApplication()
-        app.launchArguments = ["-UITestSeedData", "-UITestNameAutosaveSeconds", "0"]
+        app.launchArguments = ["-UITestSeedData"]
         app.launch()
 
         openCalendarsList(app)
@@ -800,13 +848,14 @@ final class PinCalAppUITests: XCTestCase {
         XCTAssertTrue(day5Element.waitForExistence(timeout: 5), "Calendar should load")
         day5Element.tap()
 
-        // Batch editor opens for a new day. Enter a batch name and save.
+        // Batch editor opens for a new day. Colour it, then name it — colour first because the
+        // name field raises a keyboard that covers the picker. See `selectColor`.
         let batchNameField = app.textFields["batch-name-field"]
         XCTAssertTrue(batchNameField.waitForExistence(timeout: 5), "Batch editor should open")
-        KeyboardAvoidanceTestSupport.replaceText(in: batchNameField, with: "Swim")
         // Recolouring the batch propagates to its events, so this covers the event's colour
         // too. Nothing is gated on a colour any more — it used to gate both Save buttons.
         KeyboardAvoidanceTestSupport.selectColor("eventColorOption1", in: app)
+        KeyboardAvoidanceTestSupport.replaceText(in: batchNameField, with: "Swim")
         app.buttons["batch-editor-back-button"].tap()
 
         // Back on the calendar. Tap the day again to open the batch list, then the batch.
@@ -817,55 +866,23 @@ final class PinCalAppUITests: XCTestCase {
         XCTAssertTrue(swimBatch.waitForExistence(timeout: 5), "Batch list should show the new batch")
         swimBatch.tap()
 
-        // Batch editor opens. Tap the event to open the event editor. It is found by index:
-        // `app.cells.firstMatch` was a stand-in for "the first row" that only worked while
-        // the list happened to be a `List`, and a row's label is now a formatted timestamp.
-        let eventCell = KeyboardAvoidanceTestSupport.eventRow(0, in: app)
-        XCTAssertTrue(eventCell.waitForExistence(timeout: 5), "Batch editor should list the event")
-        eventCell.tap()
-
-        // Event editor opens. Enter the event name and leave — the batch already holds it.
-        let eventNameField = app.textFields["event-name-field"]
-        XCTAssertTrue(eventNameField.waitForExistence(timeout: 5), "Event editor should open")
-        KeyboardAvoidanceTestSupport.replaceText(in: eventNameField, with: "Lap")
-        app.buttons["event-editor-back-button"].tap()
-
-        // Back in the batch editor. Leave it, which dismisses back to the batch list.
+        // The batch editor lists the event it was built with. It is found by index:
+        // `app.cells.firstMatch` was a stand-in for "the first row" that only worked while the
+        // list happened to be a `List`, and a row's label is a formatted timestamp.
+        XCTAssertTrue(
+            KeyboardAvoidanceTestSupport.eventRow(0, in: app).waitForExistence(timeout: 5),
+            "Batch editor should list the event"
+        )
         app.buttons["batch-editor-back-button"].tap()
 
-        // Reopen the batch from the batch list and verify the event name persisted.
+        // Reopen the batch from the batch list and verify it still holds that event.
         let swimBatchAgain = app.staticTexts["Swim"]
         XCTAssertTrue(swimBatchAgain.waitForExistence(timeout: 5), "Batch list should show Swim after dismissing")
         swimBatchAgain.tap()
 
-        let eventCellAgain = KeyboardAvoidanceTestSupport.eventRow(0, in: app)
-        XCTAssertTrue(eventCellAgain.waitForExistence(timeout: 5), "Batch editor should reopen")
-        eventCellAgain.tap()
-
-        let eventNameFieldAgain = app.textFields["event-name-field"]
-        XCTAssertTrue(eventNameFieldAgain.waitForExistence(timeout: 5), "Event editor should reopen")
-        XCTAssertEqual(eventNameFieldAgain.value as? String, "Lap", "Event name should be persisted")
-    }
-
-    @MainActor
-    func testTappingExistingEventOpensEditor() {
-        let app = XCUIApplication()
-        app.launchArguments = ["-UITestSeedData", "-UITestNameAutosaveSeconds", "0"]
-        app.launch()
-
-        openCalendarsList(app)
-        app.staticTexts["UI Test Calendar"].firstMatch.tap()
-
-        let day1 = dayIdentifier(day: 1)
-        app.descendants(matching: .any).matching(identifier: day1).firstMatch.tap()
-        let womenCycle = app.staticTexts["Women Cycle"]
-        XCTAssertTrue(womenCycle.waitForExistence(timeout: 5), "Batch list should show Women Cycle")
-        womenCycle.tap()
-
-        let eventCell = KeyboardAvoidanceTestSupport.eventRow(0, in: app)
-        XCTAssertTrue(eventCell.waitForExistence(timeout: 5), "Batch editor should list the event")
-        eventCell.tap()
-
-        XCTAssertTrue(app.textFields["event-name-field"].waitForExistence(timeout: 5), "Event editor should open")
+        XCTAssertTrue(
+            KeyboardAvoidanceTestSupport.eventRow(0, in: app).waitForExistence(timeout: 5),
+            "The event should survive the round trip"
+        )
     }
 }

@@ -17,6 +17,14 @@ public struct PCExpandedColorPicker: View {
     @Environment(\.pcVibe) private var vibe
     @Environment(\.isEnabled) private var isEnabled
 
+    /// One of the inline options, for the picker drawn on the main calendar during a multi-select
+    /// session. Distinct from `PCColorOptionSheet.optionAccessibilityIdentifier(for:)` — these
+    /// two pickers can be in the tree at once, and a shared identifier let a query for one resolve
+    /// to the other.
+    public static func optionAccessibilityIdentifier(for option: PCColorOption) -> String {
+        "color-option-\(option.colorName)"
+    }
+
     public init(
         selectedColor: Binding<PCColorOption?>,
         optionNames: PCColorOptionNames,
@@ -56,8 +64,9 @@ public struct PCExpandedColorPicker: View {
                 // Same contract as the sheet the compact picker opens, so a UI test can
                 // pick a colour without depending on `optionNames` — which is a translated
                 // label, and the stage 11 multi-day test needs to be able to name a colour
-                // here.
-                .accessibilityIdentifier("color-option-\(colorOption.colorName)")
+                // here. The two differ by prefix only, and that difference is load-bearing:
+                // the sheet is presented *over* this picker, so both are in the tree at once.
+                .accessibilityIdentifier(Self.optionAccessibilityIdentifier(for: colorOption))
             }
         }
         .padding(.horizontal)

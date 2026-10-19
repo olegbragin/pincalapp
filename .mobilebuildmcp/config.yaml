@@ -1,0 +1,24 @@
+schemaVersion: 1
+enabledWorkflows:
+  - coverage
+  - debugging
+  - device
+  - project-discovery
+  - project-scaffolding
+  - simulator
+  - simulator-management
+  - swift-package
+  - ui-automation
+  - utilities
+  - xcode-ide
+debug: true
+sentryDisabled: true
+sessionDefaults:
+  workspacePath: /Users/olegbragin/Documents/CrucialSoftware/OSXDevelopment/PinCal/pincalapp/PinCalApp.xcworkspace
+  scheme: PinCalApp
+  simulatorName: iPhone Duo
+  simulatorId: 13F2BDC8-3C26-4D78-8E8E-6100D65D09A6
+  simulatorPlatform: iOS Simulator
+setupPreferences:
+  platforms:
+    - iOS

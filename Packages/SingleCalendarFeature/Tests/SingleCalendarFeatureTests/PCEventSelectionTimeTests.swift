@@ -67,9 +67,16 @@ struct PCEventSelectionTimeTests {
     /// hand-built fixture that minted its own would still be a state the reducer can act on,
     /// but not one it could have emitted, which is the fixture bug these tests would then be
     /// measuring instead of the feature.
+    /// A batch open in the editor, already named.
+    ///
+    /// Named because `canSave` now requires a name as well as a colour, and this fixture is
+    /// meant to describe the state the editor is in once the user has typed — not the draft a
+    /// tap opens. A draft here would make every edit in this file a no-op write, and the
+    /// assertions about *which* events took the picked time would be passing vacuously.
     private func editing(days: [Int]) -> PCEventSelectionState {
         var assembly = PCEventBatchAssembleUnitOfWork
             .new(anchor: day(days[0]), colorName: PCColorOption.firstAvailable.colorName, using: provider)
+            .renaming("Batch")
         for dayOfMonth in days.dropFirst() {
             assembly = assembly.toggling(day: day(dayOfMonth), using: provider)
         }
@@ -195,17 +202,6 @@ struct PCEventSelectionTimeTests {
             next.selectedEvents.count == next.selectedEventIDs.count,
             "a pruned selection must still resolve to events that exist"
         )
-    }
-
-    @Test("Opening an event clears the selection it was chosen from")
-    func openingAnEventClearsSelection() throws {
-        let state = selecting(editing(days: [1, 2, 3]))
-        let target = orderedIDs(state)[0]
-
-        let (next, _) = reduce(state, .openEvent(pendingID: target))
-
-        #expect(next.selectedEventIDs.isEmpty)
-        #expect(try next.stage == .eventEditor(batchPendingID: #require(state.assembly?.batch.pendingID), eventPendingID: target))
     }
 
     @Test("Select All and Clear are each other's inverse")
@@ -342,7 +338,7 @@ struct PCEventSelectionTimeTests {
 
         #expect(try hourAndMinute(#require(synced.assembly?.batch.events[0].date)) == (16, 20))
         #expect(
-            synced.assembly?.mergeKey == timed.assembly!.mergeKey,
+            try synced.assembly?.mergeKey == #require(timed.assembly?.mergeKey),
             "and the row it writes to is still the same one"
         )
     }

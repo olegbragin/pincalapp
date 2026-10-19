@@ -187,8 +187,9 @@ struct PCLocalizationCatalogTests {
         var suspects: [String] = []
         for (path, table) in try Self.catalogs() {
             for (key, values) in table where Self.isFormat(key) {
-                guard let english = values["en"], let russian = values["ru"] else { continue }
-                guard russian != english, russian.contains("%") else { continue }
+                guard let english = values["en"], let russian = values["ru"],
+                      russian != english, russian.contains("%")
+                else { continue }
                 // Two or more specifiers only. A single `%lld` has no ordering to get wrong, so
                 // requiring positional markers there would reject a perfectly ordinary
                 // rewording — `Columns: %lld` → `Столбцов: %lld` — for no reason.

@@ -43,7 +43,6 @@ final class RestoresLastSelectedCalendarTests: XCTestCase {
         app.launchArguments = [
             "-UITestSeedData",
             "-UITestColumns", "1",
-            "-UITestNameAutosaveSeconds", "0",
         ]
         if let id {
             // Seeds the remembered selection, which is then read back through the ordinary path.

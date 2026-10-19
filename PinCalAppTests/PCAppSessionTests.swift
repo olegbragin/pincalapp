@@ -192,7 +192,15 @@ struct PCAppSessionTests {
         store.send(.setMultiSelectColor(.option2))
         store.send(.dayTappedInCalendar(day))
         #expect(store.state.multiSelectMode)
-        #expect(store.state.batches.count == 1)
+        // **Premise changed.** This was `batches.count == 1`, with the note "ending a session is
+        // not undoing it" — true while a tap merged the session's row. A session writes
+        // nothing now (its batch is unnamed until someone names it), so the day lives in the
+        // session and there is nothing in the registry to keep or discard.
+        #expect(store.state.batches.isEmpty, "a session's batch is a draft until it is named")
+        #expect(
+            store.state.dayEventColors[store.state.dataProvider.startOfDay(for: day)] != nil,
+            "and the day it holds is marked while the session is live"
+        )
 
         fixture.session.endSession(for: 1)
 
@@ -200,8 +208,13 @@ struct PCAppSessionTests {
         #expect(store.state.multiSelectDays.isEmpty)
         #expect(store.state.multiSelectColor == nil)
         #expect(store.state.multiSelectAssembly == nil)
-        // The batch had a day, so ending keeps it — ending a session is not undoing it.
-        #expect(store.state.batches.count == 1, "the work the user did is not discarded")
+        // The day has left with the session. There is no row to keep — and no row to
+        // strand, which is the whole of what ending a session has to guarantee here.
+        #expect(store.state.batches.isEmpty)
+        #expect(
+            store.state.dayEventColors[store.state.dataProvider.startOfDay(for: day)] == nil,
+            "the day is unmarked again, because it was never written"
+        )
     }
 
     /// The user's requirement: end the session on the way out and delete a batch that has no
@@ -210,7 +223,15 @@ struct PCAppSessionTests {
     /// Asserted against storage rather than against `state.batches`, because "clean" is about
     /// the database: a registry that says one thing while a stale row sits in ObjectBox is
     /// precisely the case this is for.
-    @Test("Tapping a session's days back off and then leaving the calendar leaves storage clean")
+    ///
+    /// **Premise changed.** This used to require a row to exist first — a tap wrote it, the
+    /// test proved it was in ObjectBox, then the day was toggled off and the row had to be
+    /// deleted. There is no row to delete now: an unnamed batch is never written, so storage
+    /// is clean at every step. That is a stronger guarantee than the one it replaced, and it
+    /// needs the assertion to say so rather than to keep testing a deletion that can no longer
+    /// be triggered — a test whose fixture cannot reach the state it describes is worse than no
+    /// test, because it goes green without checking anything.
+    @Test("A session that is never named leaves storage clean throughout")
     func endingASessionLeavesStorageClean() async throws {
         let fixture = try makeFixture()
         defer { fixture.close() }
@@ -225,9 +246,12 @@ struct PCAppSessionTests {
         store.send(.setMultiSelectMode(true))
         store.send(.setMultiSelectColor(.option2))
         store.send(.dayTappedInCalendar(day))
-        #expect(store.state.batches.count == 1, "setup: the tap wrote the batch")
+        #expect(store.state.batches.isEmpty, "setup: the tap staged a draft")
         await store.flushBeforeLeavingCalendar()
-        #expect(try await fixture.port.eventBatches(calendarID: calendarID).count == 1)
+        #expect(
+            try await fixture.port.eventBatches(calendarID: calendarID).isEmpty,
+            "and nothing was written for it — this is the guarantee the test now exists for"
+        )
 
         store.send(.dayTappedInCalendar(day)) // the same day again: off
         fixture.session.endSession(for: calendarID)
@@ -239,6 +263,41 @@ struct PCAppSessionTests {
         #expect(
             try await fixture.port.eventBatches(calendarID: calendarID).isEmpty,
             "so the database is clean too — not merely tidy in memory"
+        )
+    }
+
+    /// The other half of that rule, against storage: naming the batch — which now happens in
+    /// the editor Confirm opens — writes exactly one row, and it is the session's row.
+    ///
+    /// The distinction is the one the requirement turned on. "A session leaves storage clean"
+    /// and "a session that was named writes its batch" are different claims, and only the
+    /// first is true unconditionally.
+    @Test("Naming a session's batch in the editor writes exactly one row")
+    func namingASessionsBatchWritesOneRow() async throws {
+        let fixture = try makeFixture()
+        defer { fixture.close() }
+        try await fixture.cache.createCalendar(name: "Work", year: 2026, numberOfColumns: 3)
+        let calendarID = try #require(try await fixture.cache.getAllCalendars().first { $0.name == "Work" }?.id)
+
+        let store = fixture.session.eventSelection(for: calendarID)
+        store.send(.syncCalendar(calendarID: calendarID, batches: []))
+        store.send(.setMultiSelectMode(true))
+        store.send(.setMultiSelectColor(.option2))
+        store.send(.dayTappedInCalendar(day))
+
+        // Confirm ends the session and opens the batch editor on what it built.
+        store.send(.confirmMultiSelectTapped)
+        #expect(!store.state.multiSelectMode, "the session is over")
+        #expect(store.state.assembly != nil, "and the editor is open on its batch")
+
+        store.send(.setBatchName("Morning"))
+        await store.flushBeforeLeavingCalendar()
+
+        #expect(store.state.batches.count == 1)
+        #expect(store.state.batches[0].name == "Morning")
+        #expect(
+            try await fixture.port.eventBatches(calendarID: calendarID).count == 1,
+            "one row, not one per tap — the session never wrote, so there was nothing to duplicate"
         )
     }
 

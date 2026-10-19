@@ -167,13 +167,13 @@ public struct CalendarEventBatch: Identifiable, Hashable, Sendable {
     }
 
     /// Identity-free comparison, used to recognise a staged batch among the rows that
-    /// came back from a reload. Mirrors what
-    /// `PCEventsSelectionManager.contentEquals` does, on domain types.
+    /// came back from a reload. Mirrors what the old `PCEventsSelectionManager.contentEquals`
+    /// did, on domain types.
     ///
     /// Days are compared, never instants, at both levels. A row read back through the mapper
     /// carries whatever time component the DTO held, and so does a staged batch — an event's
     /// `date` is no longer truncated to its day, because that truncation was quietly
-    /// discarding the time of day the user had picked (§ the event editor's picker). So
+    /// discarding the time of day the user had picked (the picker that set it). So
     /// comparing the two by instant equality would mean a staged batch and its own
     /// persisted row stop matching the moment a time is set, and the adoption in §6.5 could
     /// never fire. The per-event comparison has always been day-granular; this brings the

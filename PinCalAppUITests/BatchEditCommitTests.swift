@@ -62,146 +62,31 @@ final class BatchEditCommitTests: XCTestCase {
         )
     }
 
-    /// STR regression: opening an existing event inside the batch editor must
-    /// pre-fill the event name.  Saving the event then the batch must persist
-    /// the change so that reopening the same event shows the updated name.
-    @MainActor
-    func testEditingExistingEventShowsPreFilledNameAndPersistsChanges() {
-        let app = KeyboardAvoidanceTestSupport.launchSeededApp()
-        KeyboardAvoidanceTestSupport.openCalendarDetail(app, named: "UI Test Calendar")
-
-        // Day 1 of the current month has an existing batch with "Event1".
-        KeyboardAvoidanceTestSupport.tapDay(day: 1, in: app)
-
-        let batchRow = app.staticTexts["Women Cycle"]
-        XCTAssertTrue(batchRow.waitForExistence(timeout: 5), "Batch list should show the seeded batch")
-        batchRow.tap()
-
-        // Tap the first event row inside the batch editor.
-        // By index, not by text: the row states when the event is, not what it is called,
-        // so there is no name in the label to match. See `eventRow(_:in:)`.
-        let eventRow = KeyboardAvoidanceTestSupport.eventRow(0, in: app)
-        XCTAssertTrue(eventRow.waitForExistence(timeout: 5), "Event row should exist in the batch editor")
-        eventRow.tap()
-
-        // The event editor must show the existing name, not an empty field.
-        let nameField = app.textFields["event-name-field"]
-        XCTAssertTrue(nameField.waitForExistence(timeout: 5), "Event editor should open")
-        let prefilledName = nameField.value as? String ?? ""
-        XCTAssertEqual(prefilledName, "Event1", "Event name field must be pre-filled with the existing name")
-
-        // Append text and leave. The rename reached the batch on the keystroke, not on the way out.
-        nameField.tap()
-        nameField.typeText("Renamed")
-        // The event editor's Back. Its Save checkmark is gone, and an identifier is what makes
-        // this unambiguous — the main calendar's multi-select confirm is *also* labelled "Save".
-        let eventEditorBack = app.buttons["event-editor-back-button"]
-        XCTAssertTrue(eventEditorBack.waitForExistence(timeout: 3), "Event editor back button should be visible")
-        eventEditorBack.tap()
-
-        // Back in the batch editor — the rename is already in it.
-        let editorBack = app.buttons["batch-editor-back-button"]
-        XCTAssertTrue(editorBack.waitForExistence(timeout: 5), "Batch editor back button should be visible after leaving the event editor")
-        editorBack.tap()
-
-        // Dismiss back to the calendar.
-        KeyboardAvoidanceTestSupport.leaveCurrentScreen(in: app)
-
-        // Re-open the same batch: tap day 1 again.
-        // Leaving dismisses the calendar, so re-open it before tapping a day.
-        // On the iPhone the calendar stayed selected and this was not needed, which is
-        // why it went unnoticed; on the iPad the leave returns to the *list* and there is
-        // no day cell to tap.
-        KeyboardAvoidanceTestSupport.openCalendarDetail(app, named: "UI Test Calendar")
-        KeyboardAvoidanceTestSupport.tapDay(day: 1, in: app)
-        XCTAssertTrue(batchRow.waitForExistence(timeout: 5), "Batch list should appear again")
-        batchRow.tap()
-
-        // Tap the event row again. Its position is unchanged — the rename did not move it —
-        // so the row is still found by index; the name itself is asserted in the editor below.
-        let renamedRow = KeyboardAvoidanceTestSupport.eventRow(0, in: app)
-        XCTAssertTrue(renamedRow.waitForExistence(timeout: 5), "The event row should still be there after renaming")
-        renamedRow.tap()
-
-        // Verify the persisted name is shown.
-        XCTAssertTrue(nameField.waitForExistence(timeout: 5), "Event editor should open for renamed event")
-        let persistedName = nameField.value as? String ?? ""
-        XCTAssertEqual(persistedName, "Event1Renamed", "Event name must persist after leaving and reopening")
-    }
-
-    /// STR regression for the reported bug:
-    /// 1) Open calendar -> tap day with batch -> batch list
-    /// 2) Tap batch -> batch editor
-    /// 3) Tap event -> event editor
-    /// 4) Change name, leave the event editor
-    /// 5) Leave the batch editor -> back to batch list
-    /// 6) Tap same batch again
-    /// AB was old name; EB is renamed name persists without ever returning to the calendar root.
-    @MainActor
-    func testRenamedEventPersistsWhenReopeningBatchImmediately() {
-        let app = KeyboardAvoidanceTestSupport.launchSeededApp()
-        KeyboardAvoidanceTestSupport.openCalendarDetail(app, named: "UI Test Calendar")
-
-        // Day 1 -> batch list -> batch editor
-        KeyboardAvoidanceTestSupport.tapDay(day: 1, in: app)
-        let batchRow = app.staticTexts["Women Cycle"]
-        XCTAssertTrue(batchRow.waitForExistence(timeout: 5), "Batch list should show seeded batch")
-        batchRow.tap()
-
-        // Inside batch editor, tap event row — by index, since the row carries no name.
-        let eventRow = KeyboardAvoidanceTestSupport.eventRow(0, in: app)
-        XCTAssertTrue(eventRow.waitForExistence(timeout: 5), "Event row should exist in batch editor")
-        eventRow.tap()
-
-        // Rename in event editor
-        let nameField = app.textFields["event-name-field"]
-        XCTAssertTrue(nameField.waitForExistence(timeout: 5), "Event editor should open")
-        XCTAssertEqual(nameField.value as? String ?? "", "Event1")
-        nameField.tap()
-        nameField.typeText("Renamed")
-        let eventEditorBack = app.buttons["event-editor-back-button"]
-        XCTAssertTrue(eventEditorBack.waitForExistence(timeout: 3))
-        eventEditorBack.tap()
-
-        // Back in the batch editor -> leave it for the batch list.
-        let batchEditorBack = app.buttons["batch-editor-back-button"]
-        XCTAssertTrue(batchEditorBack.waitForExistence(timeout: 5), "Batch editor Back should be visible after leaving the event editor")
-        batchEditorBack.tap()
-        XCTAssertFalse(
-            batchEditorBack.waitForExistence(timeout: 2),
-            "Batch editor should be dismissed after Back"
-        )
-
-        // Should be back at batch list, without navigating to calendar
-        XCTAssertTrue(batchRow.waitForExistence(timeout: 5), "Should be back at batch list after leaving the batch editor")
-
-        // Re-open same batch immediately (no tap on calendar day, no root)
-        batchRow.tap()
-
-        // The event row must still be listed after the immediate reopen.
-        let renamedRow = KeyboardAvoidanceTestSupport.eventRow(0, in: app)
-        XCTAssertTrue(renamedRow.waitForExistence(timeout: 5), "Event row should still be listed after immediate reopen")
-
-        renamedRow.tap()
-        XCTAssertTrue(nameField.waitForExistence(timeout: 5), "Event editor should open for renamed event")
-        let persisted = nameField.value as? String ?? ""
-        XCTAssertEqual(persisted, "Event1Renamed", "Persisted name must equal edited name after immediate reopen")
-    }
+    // Two tests used to live here, and both are gone with the screen: `testEditingExistingEvent…`
+    // (open an event, check the name field is pre-filled, rename, reopen, check it persisted) and
+    // `testRenamedEventPersistsWhenReopeningBatchImmediately` (the same rename, but never
+    // returning to the calendar root between the two). Neither had a premise left once an event
+    // row stopped opening anything — and a test whose premise is gone is worse than no test,
+    // because it keeps passing while checking nothing that exists.
 
     // MARK: - New-batch STR regressions
 
     /// Exact STR regression for the reported bug:
     /// 1) Open calendar
     /// 2) Tap a day without events  -> new-batch editor
-    /// 3) Enter a batch name
-    /// 4) Tap the event in the list -> event editor
-    /// 5) Enter an event name
-    /// 6) Leave the event editor -> the batch already holds the edit
-    /// 7) Leave the batch editor
-    /// 8) Tap the day again
+    /// 3) Enter a batch name and give it a colour
+    /// 4) Leave the batch editor
+    /// 5) Tap the day again
     /// EB: exactly one batch in the list. AB: two batches with the same event.
+    ///
+    /// **Premise changed.** This ran *through* the event editor — name the placeholder event,
+    /// leave the child screen, leave the batch — because that was the only way a user touched an
+    /// event at all, and the duplicate only showed up when two writers had run in sequence. The
+    /// editor is gone, so the sequence is now "colour the batch, leave, come back", which still
+    /// writes twice (the colour write supersedes the debounced name write) and still has to land
+    /// on one row. The duplicate is the claim; the route to it is no longer available.
     @MainActor
-    func testSavingEventThenSavingNewBatchDoesNotDuplicateIt() {
+    func testLeavingANewBatchAndReopeningItDoesNotDuplicateIt() {
         let app = KeyboardAvoidanceTestSupport.launchSeededApp()
         KeyboardAvoidanceTestSupport.openCalendarDetail(app, named: "UI Test Calendar")
 
@@ -221,46 +106,30 @@ final class BatchEditCommitTests: XCTestCase {
         //     disabled, tapping them was a no-op, and the batch editor never came back.
         //     Nothing gates on it now: the write happens per edit, and `canSave` has no button
         //     to disable. Recolouring the batch still propagates to its events, so the
-        //     placeholder event picks the colour up here.
+        //     placeholder event picks the colour up here — which is also what makes this the
+        //     second writer in the sequence the bug needs.
         selectEventColor("eventColorOption2", in: app)
 
-        // 4) Tap the placeholder event row -> event editor. It is found by index rather
-        //    than by its text: the row shows a formatted timestamp, and both the word inside
-        //    it and the name that used to sit in front of it are gone — a text query here
-        //    would be matching on the locale's date format, and also on the keyboard's
-        //    "dictation" key, whose label contains "at".
+        // 3c) The placeholder event is listed. It is found by index rather than by its text:
+        //     the row shows a formatted timestamp, and both the word inside it and the name
+        //     that used to sit in front of it are gone — a text query here would be matching on
+        //     the locale's date format, and also on the keyboard's "dictation" key, whose label
+        //     contains "at".
         let eventRow = KeyboardAvoidanceTestSupport.eventRow(0, in: app)
         XCTAssertTrue(eventRow.waitForExistence(timeout: 5), "Placeholder event row should exist in the batch editor")
-        _ = KeyboardAvoidanceTestSupport.stableFrame(of: eventRow, timeout: 4)
-        eventRow.tap()
 
-        // 5) Enter the event name.
-        let eventNameField = app.textFields["event-name-field"]
-        XCTAssertTrue(eventNameField.waitForExistence(timeout: 5), "Event editor should open")
-        if let currentName = eventNameField.value as? String, !currentName.isEmpty {
-            eventNameField.tap()
-            eventNameField.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: currentName.count))
-        }
-        eventNameField.tap()
-        eventNameField.typeText("Edited Event")
-
-        // 6) Leave the event editor (the batch was written by the keystroke).
-        let eventEditorBack = app.buttons["event-editor-back-button"]
-        XCTAssertTrue(eventEditorBack.waitForExistence(timeout: 5), "Event editor back button should be visible")
-        eventEditorBack.tap()
-
-        // 7) Leave the batch editor.
+        // 4) Leave the batch editor.
         let batchEditorBack = app.buttons["batch-editor-back-button"]
-        XCTAssertTrue(batchEditorBack.waitForExistence(timeout: 5), "Back in the batch editor after leaving the event editor")
+        XCTAssertTrue(batchEditorBack.waitForExistence(timeout: 5), "Batch editor back button should be visible")
         batchEditorBack.tap()
         XCTAssertFalse(
             batchEditorBack.waitForExistence(timeout: 2),
             "Batch editor should be dismissed after Back"
         )
 
-        // 8a) The editor dismissed back to the calendar detail. The day we just
-        //     added a batch to must now be MARKED as having events. The reported bug
-        //     leaves it unmarked because the saved batch holds no events.
+        // 4a) The editor dismissed back to the calendar detail. The day we just
+        //      added a batch to must now be MARKED as having events. The reported bug
+        //      leaves it unmarked because the saved batch holds no events.
         let day20ID = KeyboardAvoidanceTestSupport.dayIdentifier(day: 20)
         let day20Query = app.descendants(matching: .any).matching(identifier: day20ID)
         XCTAssertTrue(day20Query.firstMatch.waitForExistence(timeout: 5), "Should be back on the calendar detail after leaving the batch editor")
@@ -269,8 +138,8 @@ final class BatchEditCommitTests: XCTestCase {
             "Bug: day 20 is not marked as having events after the edit (label: '\(day20Query.firstMatch.label)')"
         )
 
-        // 8b) Tap the day again. The day now has a batch, so this opens the
-        //     day's batch list (the editor dismissed back to the calendar).
+        // 4b) Tap the day again. The day now has a batch, so this opens the
+        //      day's batch list (the editor dismissed back to the calendar).
         KeyboardAvoidanceTestSupport.tapDay(day: 20, in: app)
 
         // The day now has exactly ONE batch, not two with the same name and
@@ -287,10 +156,10 @@ final class BatchEditCommitTests: XCTestCase {
         XCTAssertEqual(
             batchNameMatches.count,
             1,
-            "Bug: saving the event then the batch created \(batchNameMatches.count) batches with the same event instead of one"
+            "Bug: leaving the batch then reopening it created \(batchNameMatches.count) batches with the same event instead of one"
         )
 
-        // 9) Reopen the batch. It must still contain its event — the reported
+        // 5) Reopen the batch. It must still contain its event — the reported
         //    bug opens the batch editor with an EMPTY event list.
         batchNameMatches.firstMatch.tap()
         let eventInBatch = KeyboardAvoidanceTestSupport.eventRow(0, in: app)
@@ -345,21 +214,14 @@ final class BatchEditCommitTests: XCTestCase {
 
         // The event is still there, and it is still in the recoloured batch.
         //
-        // The assertion used to be read off the *event* editor's own picker. That picker is
-        // gone — the event editor no longer sets a colour, and the batch editor is the only
-        // place a colour is chosen — so the round trip is now read where the colour actually
-        // lives. Tapping into the event and back keeps the test checking what it always
-        // checked: the colour survived, not just the batch's own edit.
+        // The assertion used to be read off the *event* editor's own picker, reached by tapping
+        // the row and coming back. That round trip is gone with the editor — the batch editor is
+        // now the only place a colour is chosen — so the round trip is read here, where the
+        // colour actually lives, and the row's presence is the check that the event survived.
         let reopenedEventRow = KeyboardAvoidanceTestSupport.eventRow(0, in: app)
         XCTAssertTrue(reopenedEventRow.waitForExistence(timeout: 5))
-        reopenedEventRow.tap()
 
-        XCTAssertTrue(app.textFields["event-name-field"].waitForExistence(timeout: 5))
-        let eventEditorBack = app.buttons["event-editor-back-button"]
-        XCTAssertTrue(eventEditorBack.waitForExistence(timeout: 5))
-        eventEditorBack.tap()
-
-        XCTAssertTrue(picker.waitForExistence(timeout: 5), "Back in the batch editor")
+        XCTAssertTrue(picker.waitForExistence(timeout: 5), "The batch editor's own picker is the only one left")
         XCTAssertEqual(picker.value as? String ?? "", "eventColorOption2", "Persisted color must be option2 after save and reopen via calendar")
     }
 
@@ -390,14 +252,6 @@ final class BatchEditCommitTests: XCTestCase {
 
         let reopenedEventRow = KeyboardAvoidanceTestSupport.eventRow(0, in: app)
         XCTAssertTrue(reopenedEventRow.waitForExistence(timeout: 5))
-        reopenedEventRow.tap()
-
-        XCTAssertTrue(app.textFields["event-name-field"].waitForExistence(timeout: 5))
-        // Back out to the batch editor — the only screen that carries a colour now, since the
-        // event editor's picker went.
-        let eventEditorBack = app.buttons["event-editor-back-button"]
-        XCTAssertTrue(eventEditorBack.waitForExistence(timeout: 5))
-        eventEditorBack.tap()
 
         XCTAssertTrue(picker.waitForExistence(timeout: 5))
         XCTAssertEqual(picker.value as? String ?? "", "eventColorOption3", "Persisted color must be option3 after immediate reopen")

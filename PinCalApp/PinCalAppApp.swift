@@ -112,8 +112,7 @@ struct PinCalAppApp: App {
                 initialState: PCEventSelectionState(dataProvider: dataProvider),
                 persistence: store,
                 daySelectionManager: PCCalendarDaySelectionManager(),
-                columnCountResolver: columnCountResolver,
-                nameAutosaveDelay: PCAppSession.makeNameAutosaveDelay()
+                columnCountResolver: columnCountResolver
             )
         }
         _session = State(

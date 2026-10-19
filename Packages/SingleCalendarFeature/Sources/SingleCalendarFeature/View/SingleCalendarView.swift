@@ -22,6 +22,10 @@ public struct SingleCalendarView: View {
     /// write succeeds, and this follows it down.
     @State private var isSaveFailedToastPresented = false
 
+    /// Shared with any other toast this screen raises, for the reason `CalendarListView` has
+    /// one: a presenter that made its own stack could still only ever show one.
+    @State private var toasts = PCToastStack()
+
     public init(
         viewModel: SingleCalendarModel
     ) {
@@ -127,11 +131,15 @@ public struct SingleCalendarView: View {
             }
             .pcToast(
                 isPresented: $isSaveFailedToastPresented,
+                stack: toasts,
                 position: .bottom,
                 message: saveFailureMessage,
                 actionTitle: "Retry",
                 action: { store.retryFailedSave() },
                 backgroundColor: .black.opacity(0.85),
+                // A full bar, permanently. Not a countdown — there is no countdown, and that
+                // is the point: this toast does not get shorter as it waits, because it is the
+                // notice that work was not saved and it has no deadline of its own.
                 progress: 1,
                 identifier: "save-failed-toast",
                 actionIdentifier: "save-failed-toast-button"
@@ -189,15 +197,7 @@ public struct SingleCalendarView: View {
                 switch route {
                 case .dayBatches:
                     AddEditEventBatchListView(calendarID: viewModel.calendarid)
-                case .batchEditor:
-                    EmptyView()
-                case .eventEditor:
-                    AddEditEventView()
-                case .calendar:
-                    EmptyView()
-                case .addCalendar:
-                    EmptyView()
-                case .sidebar:
+                case .batchEditor, .calendar, .addCalendar, .sidebar:
                     EmptyView()
                 }
             }
@@ -209,23 +209,17 @@ public struct SingleCalendarView: View {
     /// Its own `NavigationStack` so the editor's `ToolbarItem`s have somewhere to render. A
     /// sheet's content is not inside the presenting stack, so without one the toolbar is
     /// simply dropped and Back — the editor's only exit — never appears.
+    ///
+    /// **No `navigationDestination` on this stack any more.** It used to declare `.eventEditor`
+    /// here, because the event editor was pushed from inside the sheet and had to be declared on
+    /// the stack that would show it; declared on the calendar's own destination instead it
+    /// rendered *behind* the sheet, present in the accessibility tree and untappable. With that
+    /// screen gone the sheet is a single destination, and the `path` binding is kept only
+    /// because `RootNavigation.dismissSheet()` still clears it and `pop()` still prefers it.
     private var batchEditorSheet: some View {
         @Bindable var navigation = navigation
         return NavigationStack(path: $navigation.sheetPath) {
             AddEditEventBatchScreen(calendarID: viewModel.calendarid)
-                // The event editor, pushed from inside the sheet. It has to be declared on the
-                // stack that will show it: the sheet's, which reads `sheetPath`. Declared only
-                // on the calendar's own destination — where this route used to go — it would
-                // render on the stack *behind* the sheet, present in the accessibility tree and
-                // untappable.
-                .navigationDestination(for: AppRoute.self) { route in
-                    switch route {
-                    case .eventEditor:
-                        AddEditEventView()
-                    case .dayBatches, .batchEditor, .calendar, .addCalendar, .sidebar:
-                        EmptyView()
-                    }
-                }
         }
         // A **page** sheet, which covers the window.
         //

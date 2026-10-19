@@ -58,10 +58,10 @@ public struct AddEditEventListViewModel {
 
     // MARK: - Commands
 
-    func open(_ event: CalendarEvent) {
-        store.send(.openEvent(pendingID: event.pendingID))
-    }
-
+    /// No `open`. The row used to be a `Button` that sent `openEvent`, and the event editor it
+    /// pushed is gone — so the command goes with it rather than staying as a projection nothing
+    /// reads. What an event can still be changed by is the batch editor itself: the days in its
+    /// calendar, and the time `applyTimeToSelectedEvents` puts on a selection of rows.
     func remove(_ event: CalendarEvent) {
         store.send(.removeEvent(pendingID: event.pendingID))
     }

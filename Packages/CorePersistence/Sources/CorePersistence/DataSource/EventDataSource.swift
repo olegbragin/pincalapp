@@ -30,14 +30,6 @@ public struct EventDataSource: Identifiable, Hashable, Sendable {
         self.color = dto.color
         self.timestamp = nil
     }
-
-    public func withColor(_ color: String) -> EventDataSource {
-        EventDataSource(id: id, name: name, date: date, color: color, timestamp: timestamp)
-    }
-
-    public func withTimestamp(_ timestamp: UUID?) -> EventDataSource {
-        EventDataSource(id: id, name: name, date: date, color: color, timestamp: timestamp)
-    }
 }
 
 extension EventDataSource: Equatable {}

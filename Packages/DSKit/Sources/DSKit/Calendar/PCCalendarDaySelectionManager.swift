@@ -48,11 +48,6 @@ public final class PCCalendarDaySelectionManager {
         onDayTapped?(selectedDay)
     }
 
-    public func toggleSelectionMode() {
-        let currentSelectionMode = selectionMode
-        selectionMode = currentSelectionMode == .single ? .multiple : .single
-    }
-
     public func reset() {
         selectedDays.removeAll()
         selectedDays = []

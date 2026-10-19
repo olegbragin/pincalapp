@@ -30,7 +30,6 @@ final class SaveFailedToastTests: XCTestCase {
         app.launchArguments = [
             "-UITestSeedData",
             "-UITestColumns", "1",
-            "-UITestNameAutosaveSeconds", "0",
             "-UITestFailSaves",
         ]
         return app

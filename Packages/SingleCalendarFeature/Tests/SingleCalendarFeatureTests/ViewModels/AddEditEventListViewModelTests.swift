@@ -66,16 +66,4 @@ struct AddEditEventListViewModelTests {
         #expect(vm.events.count == 1)
         #expect(!vm.events.contains(target))
     }
-
-    @Test("open dispatches openEvent and stages a draft")
-    func openDispatches() throws {
-        let (vm, store) = makeContext()
-        store.send(.startNewBatch(on: Fixture.day(4)))
-        let target = vm.events[0]
-
-        vm.open(target)
-
-        #expect(store.state.eventDraft == target)
-        #expect(try store.state.stage == .eventEditor(batchPendingID: #require(store.state.assembly?.batch.pendingID), eventPendingID: target.pendingID))
-    }
 }

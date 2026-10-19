@@ -79,10 +79,10 @@ public final class PCEventSelectionManager {
     @discardableResult
     public func flushBeforeLeavingCalendar() async -> Bool {
         // Before the chain, because the chain is not the only thing that might hold a write:
-        // a name typed in the last quarter-second is still waiting on the debounce and is not
-        // in the chain at all. Flushing the chain alone would leave exactly the most recent
-        // keystroke unsaved.
-        nameAutosave.flush()
+        // a name typed in the last keystroke was merged into the registry but deliberately not
+        // written, so it is not in the chain at all. Draining the chain alone would leave
+        // exactly the most recent typing unsaved.
+        writeNameIfPending()
         await writeChain?.value
 
         // Nothing written, nothing lost: the common case, and it stays fast.
@@ -125,13 +125,6 @@ public final class PCEventSelectionManager {
     /// rather than merely unlikely.
     private var writeChain: Task<Void, Never>?
 
-    /// Coalesces name edits. Typing is one edit, not one write per keystroke.
-    ///
-    /// Everything else — colours, days, creation — writes immediately, because those are
-    /// discrete taps where there is nothing to coalesce and a user who taps and switches
-    /// calendars expects the tap to be saved.
-    private var nameAutosave: PCNameAutosave
-
     /// Presentational day selection for `yearModel`. Injected, not created here.
     ///
     /// `PCCalendarModelBuilder` needs a `PCCalendarDaySelectionManager` to wire the day
@@ -156,18 +149,12 @@ public final class PCEventSelectionManager {
         initialState: PCEventSelectionState = PCEventSelectionState(),
         persistence: any CalendarPersisting,
         daySelectionManager: PCCalendarDaySelectionManager,
-        columnCountResolver: @escaping (Int) -> Int = { $0 },
-        nameAutosaveDelay: Duration = PCNameAutosave.defaultDelay
+        columnCountResolver: @escaping (Int) -> Int = { $0 }
     ) {
-        // After every stored property is set: writing to `nameAutosave` first would touch
-        // `self` before it is fully initialised.
         self.state = initialState
         self.columnCountResolver = columnCountResolver
         self.persistence = persistence
         self.daySelectionManager = daySelectionManager
-        // Built with the caller's delay rather than assigned then adjusted: touching a
-        // property before `yearModel` is set is using `self` before it is initialised.
-        self.nameAutosave = PCNameAutosave(delay: nameAutosaveDelay)
         self.yearModel = PCCalendarModelBuilder.makeYearModel(
             from: initialState.dataProvider,
             year: initialState.editorYear,
@@ -196,23 +183,53 @@ public final class PCEventSelectionManager {
 
         projectCalendar()
 
-        // Captured before the flag is cleared below, and only when the transition actually
-        // took: a rejected action must not cancel or schedule anything.
-        let nameEdit = next != previous && next.persistsAsTyped
-
-        for effect in pcEventSelectionEffects(action, previous, next) {
-            perform(effect, isNameEdit: nameEdit)
+        // Whether *this* action is a name edit — not whether a name is owed a write.
+        //
+        // Those were the same field, and making the debt sticky to survive a discrete edit
+        // that changed nothing separated them. Reading "is a name owed" here meant that once a
+        // name had been typed, every later action looked like a name edit and had its write
+        // suppressed — so a colour change wrote nothing at all.
+        let nameEdit: Bool
+        if case .setBatchName = action {
+            nameEdit = true
+        } else {
+            nameEdit = false
         }
 
-        // "Finished typing" answered here rather than by an effect, because it is not a write
-        // — it is the absence of a wait. The keystrokes already enqueued their own write; this
-        // only lands the one still sitting on the debounce.
+        let effects = pcEventSelectionEffects(action, previous, next)
+        // Whether a write was **issued**, not whether one was derived. The two differ for
+        // exactly one action — a name edit derives a write and then declines it — and reading
+        // the derived set instead paid the name's debt on every keystroke without writing
+        // anything, which is how a typed name ended up in the registry and nowhere else.
+        var issued = false
+        for effect in effects {
+            if perform(effect, isNameEdit: nameEdit) {
+                issued = true
+            }
+        }
+
+        // The end of typing, asked for as a write rather than as an effect.
         //
-        // Ordered after the loop deliberately: a flush that ran first could write the
-        // pre-transition batches and then let the effect's own write supersede it, which is two
-        // writes of the same thing in the wrong order for no benefit.
-        if case .nameEditingFinished = action {
-            nameAutosave.flush()
+        // `.nameEditingFinished` is the field resigning or its Done key. The other three are
+        // leaving the editor, which ends typing just as surely and used to get a write for
+        // free from the debounce — so removing the debounce without this is what left four
+        // tests watching an empty port. It runs only when the action did not already write,
+        // because a `backTapped` that deleted an emptied row carries the name with it and a
+        // second write of the same registry is just traffic.
+        //
+        // Ordered after the loop deliberately: a write that ran first would carry the
+        // pre-transition registry, and the effect's own write would then supersede it.
+        switch action {
+        case .nameEditingFinished, .backTapped, .closeTapped, .cancelTapped:
+            if issued {
+                state.persistsAsTyped = false
+            } else {
+                writeNameIfPending()
+            }
+        default:
+            if issued {
+                state.persistsAsTyped = false
+            }
         }
     }
 
@@ -282,36 +299,65 @@ public final class PCEventSelectionManager {
 
     // MARK: - Effects
 
-    /// Runs one effect.
+    /// Runs one effect. Returns whether it issued a write.
     ///
     /// `id == 0` is not a calendar: the session opens with no calendar selected, and a
     /// write against that would either fail or land on an arbitrary row. The reducer can
     /// emit such an effect for a session that has not been given a calendar yet, so the
     /// guard belongs here, next to the call that would do the damage.
-    private func perform(_ effect: PCEventSelectionEffect, isNameEdit: Bool = false) {
+    @discardableResult
+    private func perform(_ effect: PCEventSelectionEffect, isNameEdit: Bool = false) -> Bool {
         guard
             case let .writeCalendar(id, columns, batches) = effect,
             id != 0
-        else { return }
+        else { return false }
 
-        // The reducer marks name edits rather than writing them, because debouncing is a
-        // function of time and the reducer is pure. Here — where effects run — the timing
-        // finally applies: the write is scheduled instead of issued, and the flag is cleared
-        // so a later edit schedules a fresh one rather than being swallowed by this one.
+        // **A name edit writes nothing at all.** It used to schedule one, debounced, so that
+        // typing an "m" did not mean a whole-calendar write. That was a write per keystroke
+        // by another name, and every one of them published a cache change that came back as a
+        // `syncCalendar` — which is where the damage happened.
+        //
+        // `syncCalendar` replaces the registry wholesale with what the database holds, so a
+        // fetch that lands while a *later* keystroke is still in flight rolls the registry
+        // back to an older shape. Nothing is lost on its own: the value is still in the
+        // assembly, and the next keystroke re-merges it. But the merge looks the row up by
+        // `mergeKey`, and while the batch is still `.pending(…)` the registry's copy is
+        // `.persisted(7)` — so the lookup misses, `hasSameContent` misses too (the names
+        // differ, which is the whole point), and the merge **appends**. One batch becomes
+        // two, and the stale one goes on marking days the user has since removed from the
+        // live one.
+        //
+        // Writing only when the field is finished with removes the window rather than
+        // narrowing it: with no write during typing there is no cache change and therefore
+        // no fetch that can land in the middle of it. And the one write that does happen —
+        // on resign, on submit, or on a discrete edit that supersedes it — carries a name
+        // that has stopped moving, so `adoptingPersistedID`'s `isSnapshot` matches it
+        // exactly and the key settles on the first try.
+        //
+        // The debounce had nothing left to do, so `PCNameAutosave` went with it: a duration
+        // cannot coalesce writes that are not there.
         if isNameEdit {
-            nameAutosave.change { [weak self] in
-                guard let self else { return }
-                self.enqueueWrite(calendarID: id, columns: columns, batches: batches)
-            }
-            return
+            return false
         }
 
-        // A colour, day or creation write supersedes any pending name write for the same
-        // calendar: it carries the same batches with the name already folded in, so waiting
-        // for the debounce would write a row that is known to be stale.
-        nameAutosave.cancel()
-
         enqueueWrite(calendarID: id, columns: columns, batches: batches)
+        return true
+    }
+
+    /// Writes the registry if a name edit is owed one, and clears the debt.
+    ///
+    /// The two ends of typing: the field resigning, or the calendar being left. A discrete
+    /// edit — a colour, a day, a creation — does not come here; it writes on its own and
+    /// carries the name with it, because the name is already in `batches` by the time the
+    /// keystrokes happened.
+    private func writeNameIfPending() {
+        guard state.persistsAsTyped, state.calendarID != 0 else { return }
+        enqueueWrite(
+            calendarID: state.calendarID,
+            columns: state.numberOfColumns,
+            batches: state.batches
+        )
+        state.persistsAsTyped = false
     }
 
     /// Appends one write to the chain, recording it if it fails.

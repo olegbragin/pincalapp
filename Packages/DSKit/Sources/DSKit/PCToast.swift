@@ -21,37 +21,52 @@ public enum PCToastPosition {
     }
 }
 
-/// A reusable toast. It owns its placement (top/bottom) and renders a message,
-/// an optional action label and a linear progress bar. Presentation is driven by
-/// the `isPresented` binding; the progress value is supplied by the caller (e.g.
-/// from a `PCTimeoutProgress`). Pure SwiftUI, so it is platform-agnostic.
-public struct PCToast: ViewModifier {
+/// Presents one toast, driven by an `isPresented` binding, through a `PCToastStack`.
+///
+/// **The binding stays the owner of whether a toast is showing.** This never *decides* to
+/// dismiss a toast; it only reports a dismissal back. A failed save is the only notice that
+/// the user's work is not on disk, and a presenter that could retire it on its own would make
+/// that depend on a timer rather than on the thing that knows. So the flow is one way:
+/// `isPresented` goes true, a toast is added to the stack; it goes false, the stack is
+/// emptied. Whatever set the flag has already done the work.
+///
+/// **The stack is supplied, not created here.** A presenter that owned its own stack would
+/// still allow only one toast per `.pcToast`, which is the thing a stack exists to fix — three
+/// modifiers each with a private stack overlay one another rather than stacking. So the screen
+/// makes one `@State` stack and hands it to every toast it raises, and they queue.
+public struct PCToastPresenter: ViewModifier {
     @Binding private var isPresented: Bool
+    private let stack: PCToastStack
     private let position: PCToastPosition
     private let message: String
     private let actionTitle: String?
     private let action: (() -> Void)?
     private let backgroundColor: Color
-    private let progress: Double
+    private let progress: Double?
     private let progressActiveColor: Color
     private let progressRemainingColor: Color
     private let identifier: String
     private let actionIdentifier: String
 
+    /// Which toast in the shared stack this presenter put there, so a tick can find it again.
+    @State private var toastID: UUID?
+
     public init(
         isPresented: Binding<Bool>,
+        stack: PCToastStack,
         position: PCToastPosition = .bottom,
         message: String,
         actionTitle: String? = nil,
         action: (() -> Void)? = nil,
         backgroundColor: Color,
-        progress: Double,
+        progress: Double? = nil,
         progressActiveColor: Color = .white,
         progressRemainingColor: Color = .white.opacity(0.3),
         identifier: String = "pc-toast",
         actionIdentifier: String = "pc-toast-action"
     ) {
         self._isPresented = isPresented
+        self.stack = stack
         self.position = position
         self.message = message
         self.actionTitle = actionTitle
@@ -66,95 +81,76 @@ public struct PCToast: ViewModifier {
 
     public func body(content: Content) -> some View {
         content
-            .overlay(alignment: position.alignment) {
-                if isPresented {
-                    toastView
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 12)
-                        .transition(.move(edge: position.edge).combined(with: .opacity))
-                }
-            }
-            .animation(.spring(response: 0.35, dampingFraction: 0.8), value: isPresented)
-    }
-
-    private var toastView: some View {
-        VStack(spacing: 0) {
-            HStack(spacing: 12) {
-                Text(message)
-                    .font(.subheadline)
-                    .foregroundColor(.white)
-                    .lineLimit(2)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                if let actionTitle {
-                    // A `Button`, not just a `Text` inside a tap-gesture.
-                    //
-                    // The whole toast was tappable, which meant the only way for a UI test
-                    // to reach the action was to tap the toast *body* — so "press Undo" was
-                    // not expressible, only "tap the toast somewhere near the right". A
-                    // button gives the action its own element, and with it an identifier.
-                    Button {
-                        action?()
-                        isPresented = false
-                    } label: {
-                        Text(actionTitle)
-                            .font(.subheadline)
-                            .fontWeight(.semibold)
-                            .foregroundColor(.white)
-                    }
-                    .accessibilityIdentifier(actionIdentifier)
-                }
-            }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 12)
-
-            PCLinearProgressBar(
-                progress: progress,
-                activeColor: progressActiveColor,
-                remainingColor: progressRemainingColor,
-                height: 4
+            .pcToastStack(
+                stack,
+                position: position,
+                backgroundColor: backgroundColor,
+                progressActiveColor: progressActiveColor,
+                progressRemainingColor: progressRemainingColor,
+                // Put the flag back when the user takes the toast, so the next occurrence of
+                // the same condition can raise another one. `onChange` compares the old and
+                // new value and does nothing when they match, so a flag left standing at
+                // `true` would silently swallow every later failure of the same kind.
+                onDismiss: { isPresented = false }
             )
-        }
-        .background(backgroundColor)
-        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-        .shadow(color: .black.opacity(0.2), radius: 10, y: 4)
-        .contentShape(Rectangle())
-        // Named so a test can ask whether a toast is on screen at all, instead of matching
-        // on the message text. Toasts are transient, so that question needs an answer that
-        // is not "read some label and hope".
-        //
-        // `.contain` is what makes the Undo button reachable as its own element: without it
-        // SwiftUI merges the toast's children and the button's identifier matches nothing.
-        // Safe here and **not** safe on a list card — applied to a card this modifier
-        // rewrites the subtree and the card's name stops being exposed as a `StaticText`,
-        // which broke 30 tests when it was tried there. A toast is a leaf overlay with two
-        // children; a card is a container full of things other code reads by name.
-        .accessibilityElement(children: .contain)
-        .accessibilityIdentifier(identifier)
-        .onTapGesture {
-            action?()
-            isPresented = false
-        }
+            // `id`, not `onChange`: `onChange` does not fire for a toast that is *already*
+            // presented on the first render, so a screen that restored straight into an error
+            // would come up with its error toast missing. `task(id:)` runs on appear as well as
+            // on every change, which is what "bind this to the stack" needs.
+            .task(id: isPresented) {
+                guard isPresented else {
+                    // Only this presenter's own toast. The stack is shared, so a
+                    // `dismissAll()` here would take the other presenters' toasts down with
+                    // it — clearing the Retry because an archive window happened to close.
+                    if let toastID {
+                        stack.dismiss(toastID)
+                    }
+                    toastID = nil
+                    return
+                }
+                let toast = PCToast(
+                    message: message,
+                    actionTitle: actionTitle,
+                    action: action,
+                    identifier: identifier,
+                    actionIdentifier: actionIdentifier,
+                    progress: progress
+                )
+                stack.present(toast)
+                toastID = toast.id
+            }
+            // The window belongs to the feature, which counts it down and decides when the
+            // binding goes false. This only mirrors that count into the stack so the bar moves.
+            .onChange(of: progress) { _, newValue in
+                guard let toastID else { return }
+                stack.update(toastID, progress: newValue)
+            }
     }
 }
 
 public extension View {
     /// Presents a toast at the given position, bound to `isPresented`.
+    ///
+    /// `progress` is optional and `nil` means **no bar at all** — pass one only for a toast
+    /// that really does expire, because a bar is a promise that something is about to end.
     func pcToast(
         isPresented: Binding<Bool>,
+        stack: PCToastStack,
         position: PCToastPosition = .bottom,
         message: String,
         actionTitle: String? = nil,
         action: (() -> Void)? = nil,
         backgroundColor: Color,
-        progress: Double,
+        progress: Double? = nil,
         progressActiveColor: Color = .white,
         progressRemainingColor: Color = .white.opacity(0.3),
         identifier: String = "pc-toast",
         actionIdentifier: String = "pc-toast-action"
     ) -> some View {
         modifier(
-            PCToast(
+            PCToastPresenter(
                 isPresented: isPresented,
+                stack: stack,
                 position: position,
                 message: message,
                 actionTitle: actionTitle,

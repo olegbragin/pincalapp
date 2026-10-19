@@ -45,7 +45,10 @@ struct AddEditEventBatchViewModelTests {
 
         #expect(vm.events.count == 1, "one placeholder day")
         #expect(vm.events.first?.date == store.state.dataProvider.startOfDay(for: Fixture.day(4)))
-        #expect(store.state.assembly?.canSave == true, "a new batch arrives coloured, so the first edit can write it")
+        #expect(
+            store.state.assembly?.canSave == false,
+            "a new batch arrives coloured but unnamed, so it is a draft until it is named"
+        )
     }
 
     /// The field opens empty and offers the old default, rather than arriving pre-filled with it.
@@ -64,27 +67,33 @@ struct AddEditEventBatchViewModelTests {
         #expect(vm.namePlaceholder == "New event", "and offers the default instead")
     }
 
-    /// Colour is what `PCEventBatchAssembleUnitOfWork.canSave` reads. The name deliberately is
-    /// not: a batch is a set of dated, coloured events, so clearing the title does not make it
-    /// any less one, and refusing to write it would leave the store ahead of the database with
-    /// nowhere to put the work.
+    /// A batch needs a **name and** a colour to be written.
+    ///
+    /// **Premise changed.** This said the opposite in its name and in its body: "Colour is what
+    /// `canSave` reads. The name deliberately is not", arguing that a batch is a set of dated,
+    /// coloured events and that refusing to write an untitled one would leave the store ahead
+    /// of the database with nowhere to put the work.
+    ///
+    /// The name is now required too, and the order of the two assertions follows the order the
+    /// arguments used to be made in — colour first, because it is the one that arrives free.
     ///
     /// Asserted on the assembly rather than on `AddEditEventBatchViewModel.canSave`, which is
     /// gone with the checkmark it fed. A projection nothing renders is a projection that can
     /// drift from the domain without anything noticing — which is how `canSave` came to need a
     /// test of its own in the first place.
-    @Test("A batch needs a colour to be written, and does not care about the name")
+    @Test("A batch needs a name and a colour to be written")
     func writableRequirements() {
         let (_, store, _) = makeContext()
         store.send(.startNewBatch(on: Fixture.day(4)))
 
-        #expect(store.state.assembly?.canSave == true, "a new batch arrives ready to write")
-        store.send(.setBatchName(""))
-        #expect(store.state.assembly?.canSave == true, "a nameless batch is still a batch")
+        #expect(store.state.assembly?.canSave == false, "a new batch arrives unnamed, so it is a draft")
         store.send(.setBatchName("Morning"))
-        #expect(store.state.assembly?.canSave == true)
+        #expect(store.state.assembly?.canSave == true, "naming it is what makes it writable")
+        store.send(.setBatchName(""))
+        #expect(store.state.assembly?.canSave == false, "and erasing the name takes it back to a draft")
+        store.send(.setBatchName("Morning"))
         store.send(.setBatchColor(nil))
-        #expect(store.state.assembly?.canSave == false, "no colour is the one thing that stops a write")
+        #expect(store.state.assembly?.canSave == false, "no colour stops a write too")
         store.send(.setBatchColor(PCColorOption.firstAvailable))
         #expect(store.state.assembly?.canSave == true)
     }
@@ -158,8 +167,10 @@ struct AddEditEventBatchViewModelTests {
     func clearingColourWritesNothing() async {
         let (_, store, persistence) = makeContext()
         store.send(.startNewBatch(on: Fixture.day(4)))
-        // A colour is the edit that makes a draft real. A name would do too, but that is
-        // debounced, and this test counts writes.
+        // Both halves are needed before a draft is written, and the *name* is what makes it
+        // real — this used to reach the same state with a colour alone, which stopped being
+        // true once an unnamed batch stopped being written.
+        store.send(.setBatchName("Morning"))
         store.send(.setBatchColor(.option2))
         #expect(store.state.batches.count == 1, "setup: the batch is committed")
         // Settle the write from colouring the batch before counting, or the count races the

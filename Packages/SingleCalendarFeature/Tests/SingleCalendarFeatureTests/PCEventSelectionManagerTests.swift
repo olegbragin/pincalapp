@@ -220,15 +220,17 @@ struct PCEventSelectionManagerTests {
         let persistence = RecordingCalendarPersisting()
         let store = makeStore(persistence: persistence)
 
-        // A batch with no colour cannot be written, so the reducer must decline. Colour is the
-        // one thing a batch cannot do without — the name is optional and always has been since
-        // names stopped gating `canSave`, so clearing the name would no longer produce a
-        // refusal. It has to be cleared explicitly to reach a declined transition at all.
+        // A batch with no colour cannot be written, so the reducer must decline.
         //
-        // The batch is made real by the colour it is about to lose: a new batch is a draft
-        // until it is edited, so without that step there would be no row to keep and Back
-        // would be discarding an untouched draft rather than declining to delete one.
+        // **Premise changed.** The comment here used to say the name was optional and clearing
+        // it would not produce a refusal. It is now the other half of the requirement, so both
+        // are cleared explicitly to reach a declined transition at all.
+        //
+        // The batch is made real by the name and colour it is about to lose: a new batch is a
+        // draft until it is edited, so without those steps there would be no row to keep and
+        // Back would be discarding an untouched draft rather than declining to delete one.
         store.send(.startNewBatch(on: day(4)))
+        store.send(.setBatchName("Morning"))
         store.send(.setBatchColor(.option1))
         store.send(.setBatchColor(nil))
         #expect(store.state.assembly?.canSave == false, "precondition: the batch is unwritable")
@@ -253,7 +255,18 @@ struct PCEventSelectionManagerTests {
         #expect(store.state.batches.count == 1, "and the row it was created with is untouched")
     }
 
-    @Test("A nameless batch is written — the name is not what makes a batch")
+    /// **Premise changed, and inverted.** This asserted that clearing the name of a new batch
+    /// was enough to *write* it — `canSave == true` with "colour alone is enough to write a
+    /// batch", and the row landing "with the empty name the user chose".
+    ///
+    /// It was the regression guard for the earlier rule that required a name, which stopped
+    /// named-by-default batches and renamed-to-empty ones from being written. Both of those
+    /// are now the intended behaviour: a batch is written when it is **named**, and an
+    /// unnamed one is a draft. So the same sequence now has to write nothing at all.
+    ///
+    /// The store matters here rather than the reducer: this is the level at which "not written"
+    /// means "not in the database", not merely "not in `batches`".
+    @Test("A nameless batch is not written — the name is what makes it a batch")
     func namelessBatchCommits() {
         let persistence = RecordingCalendarPersisting()
         let store = makeStore(persistence: persistence)
@@ -261,9 +274,8 @@ struct PCEventSelectionManagerTests {
         store.send(.startNewBatch(on: day(4)))
         store.send(.setBatchName(""))
 
-        #expect(store.state.assembly?.canSave == true, "colour alone is enough to write a batch")
-        #expect(store.state.batches.count == 1, "and it landed when the name was cleared")
-        #expect(store.state.batches[0].name.isEmpty, "with the empty name the user chose")
+        #expect(store.state.assembly?.canSave == false, "a name and a colour are both needed")
+        #expect(store.state.batches.isEmpty, "so nothing landed")
     }
 
     // MARK: §12.3 — the reported duplicate-batch bug
@@ -412,8 +424,7 @@ struct PCEventSelectionManagerTests {
         let store = PCEventSelectionManager(
             initialState: PCEventSelectionState(dataProvider: PCCalendarDataProvider()),
             persistence: persistence,
-            daySelectionManager: PCCalendarDaySelectionManager(),
-            nameAutosaveDelay: .seconds(30)
+            daySelectionManager: PCCalendarDaySelectionManager()
         )
         store.send(.syncCalendar(calendarID: 42, batches: []))
         store.send(.startNewBatch(on: day(4)))
@@ -439,8 +450,7 @@ struct PCEventSelectionManagerTests {
         let store = PCEventSelectionManager(
             initialState: PCEventSelectionState(dataProvider: PCCalendarDataProvider()),
             persistence: persistence,
-            daySelectionManager: PCCalendarDaySelectionManager(),
-            nameAutosaveDelay: .seconds(30)
+            daySelectionManager: PCCalendarDaySelectionManager()
         )
         store.send(.syncCalendar(calendarID: 42, batches: []))
         store.send(.startNewBatch(on: day(4)))
@@ -470,8 +480,7 @@ struct PCEventSelectionManagerTests {
         let store = PCEventSelectionManager(
             initialState: PCEventSelectionState(dataProvider: PCCalendarDataProvider()),
             persistence: persistence,
-            daySelectionManager: PCCalendarDaySelectionManager(),
-            nameAutosaveDelay: .seconds(30)
+            daySelectionManager: PCCalendarDaySelectionManager()
         )
         store.send(.syncCalendar(calendarID: 42, batches: []))
         store.send(.startNewBatch(on: day(4)))
@@ -499,8 +508,7 @@ struct PCEventSelectionManagerTests {
         let store = PCEventSelectionManager(
             initialState: PCEventSelectionState(dataProvider: PCCalendarDataProvider()),
             persistence: persistence,
-            daySelectionManager: PCCalendarDaySelectionManager(),
-            nameAutosaveDelay: .seconds(30)
+            daySelectionManager: PCCalendarDaySelectionManager()
         )
         store.send(.syncCalendar(calendarID: 42, batches: []))
         store.send(.startNewBatch(on: day(4)))
@@ -514,6 +522,259 @@ struct PCEventSelectionManagerTests {
             written.count == writesBefore,
             "a flush of nothing is not a write — got \(written.count), had \(writesBefore)"
         )
+    }
+
+    /// Entering the batch editor raises the keyboard for a name field that is **empty**.
+    ///
+    /// Nothing has been typed, so nothing should be written — and this is worth pinning rather
+    /// than assuming, because the field resigning sends the same action as one the user filled
+    /// in. `writeNameIfPending` guards on `persistsAsTyped`, which only `setBatchName` sets, so
+    /// an untouched field writes nothing.
+    ///
+    /// The consequence if it ever does is worse than a wasted write: `canSave` is a name **and**
+    /// a colour precisely so that a batch nobody named stays a draft, and a write here would put
+    /// a row in the database that the app does not believe in — with no `deleteBatches` undo
+    /// anywhere, that is four taps to remove.
+    @Test("Resigning an empty name field writes nothing")
+    func resigningAnEmptyNameFieldWritesNothing() async {
+        let persistence = InMemoryCalendarPersisting()
+        let store = makeStore(persistence: persistence)
+        store.send(.startNewBatch(on: day(4)))
+
+        // What the field losing focus sends, with nothing typed.
+        store.send(.nameEditingFinished)
+
+        let rows = await persistence.storedBatches(calendarID: 42)
+        #expect(rows.isEmpty, "an untitled batch is still a draft — wrote \(rows.map(\.name))")
+        #expect(store.state.batches.isEmpty, "and it is not in the registry either")
+    }
+
+    /// The other half: a name that *is* there is written when the field loses focus.
+    ///
+    /// This is the whole of what replaced the debounce, so it is the one that has to hold. It is
+    /// also why the field reports resigning at all — `onSubmit` only covers the keyboard's Done
+    /// key, and tapping onto a day cell or out of the sheet is a silent way to stop typing.
+    @Test("Resigning a named field writes the name it was holding")
+    func resigningANamedFieldWritesTheName() async {
+        let persistence = InMemoryCalendarPersisting()
+        let store = makeStore(persistence: persistence)
+        store.send(.startNewBatch(on: day(4)))
+        store.send(.setBatchName("Swimming"))
+
+        store.send(.nameEditingFinished)
+
+        _ = await persistence.waitForWrites(1)
+        let rows = await persistence.storedBatches(calendarID: 42)
+        #expect(rows.count == 1, "resigning writes the one batch — got \(rows.count)")
+        #expect(rows.first?.name == "Swimming", "and the name is what it was holding")
+    }
+
+    /// Erasing the name writes **nothing at all**.
+    ///
+    /// This was originally asserted as "no *untitled* row is written", which is much weaker and
+    /// would have passed on a write that carried the old name straight back — the registry still
+    /// holds "Swimming", so re-writing it would look unchanged in storage while still being a
+    /// write. The requirement is the write count: an empty name is not an edit worth
+    /// persisting, so nothing reaches the port.
+    ///
+    /// **Why nothing reaches it.** `editing` evaluates `canSave` *before* it records the debt,
+    /// and returns early when it is false — which it is for an unnamed batch. So clearing the
+    /// field neither merges nor marks a write owed, and the resign that follows has nothing to
+    /// do. The ordering is the mechanism: a merge that declined still owes nothing.
+    ///
+    /// The `waitForWrites(n + 1)` is deliberate and costs five seconds. It polls for a second
+    /// write and times out, which is what tells "no write happened" apart from "the test gave
+    /// up looking" — the distinction a fixed sleep cannot make, and the one that matters here,
+    /// because a false pass is the whole risk.
+    @Test("Erasing the name and resigning writes nothing")
+    func erasingTheNameAndResigningWritesNothing() async {
+        let persistence = InMemoryCalendarPersisting()
+        let store = makeStore(persistence: persistence)
+        store.send(.startNewBatch(on: day(4)))
+        store.send(.setBatchName("Swimming"))
+        store.send(.nameEditingFinished)
+        _ = await persistence.waitForWrites(1)
+        let afterNaming = await persistence.writes.count
+        #expect(afterNaming == 1, "precondition: the name was written once")
+
+        // The user selects all and deletes.
+        store.send(.setBatchName(""))
+        store.send(.nameEditingFinished)
+        _ = await persistence.waitForWrites(afterNaming + 1)
+
+        let writes = await persistence.writes.count
+        #expect(writes == afterNaming, "an empty name is not a write — got \(writes), had \(afterNaming)")
+
+        // The port is untouched, so the name it holds is the one the user replaced. That is a
+        // *different* gap from the one above and is not fixed by it: the row is stale there
+        // rather than resurrected, because nothing merges an empty name and nothing deletes the
+        // row the name left behind. Recorded here so the green assertion above is not read as
+        // saying erasing a name is fully handled.
+        let rows = await persistence.storedBatches(calendarID: 42)
+        #expect(rows.first?.name == "Swimming", "nothing was written, so the port still holds what it held")
+    }
+
+    /// The race behind the two iPad UI flakes, made deterministic.
+    ///
+    /// `syncCalendar` assigns `next.batches = incoming`, replacing the registry wholesale with
+    /// what the database holds. That is only safe while the registry and the database agree —
+    /// and they deliberately do not, because an edit merges into `batches` immediately and is
+    /// written later. A fetch landing in between returns a snapshot from *before* the edit and
+    /// rolls the registry back.
+    ///
+    /// **Typing no longer causes that window.** A name edit writes nothing at all — every write
+    /// publishes a cache change, and one landing mid-typing is what did the damage — so the end
+    /// of typing is the only write, and it carries a name that has stopped moving. What remains
+    /// reachable is a fetch that was **already in flight** when the user started typing: the
+    /// first flush's write broadcast, arriving one keystroke late. That is what this drives.
+    ///
+    /// And it is not benign for **identity**. Adoption (`adoptingPersistedID`) used to match a
+    /// staged batch to its persisted row with `isSnapshot` alone, which requires the **name** to
+    /// match exactly — so a reload landing after the name had advanced could not adopt, and
+    /// because adoption was one-shot the assembly kept its `.pending(…)` key for good. The
+    /// registry then held `.persisted(1)` while the assembly held `.pending(p)`, every merge
+    /// found neither a key match nor a `hasSameContent` match, and the merge **appended**. One
+    /// batch became two, and the stale one went on painting days the user had since removed from
+    /// the live one.
+    ///
+    /// That is `testMultiselectTwoDaysProducesOneBatchWithBothDays` ("2 batches, not 1") and
+    /// `testRemovingAnchorDayUncolorsItOnCalendar` (the removed day stays marked), both of
+    /// which failed only sometimes and only on the iPad, where a slower device lets the fetch
+    /// land mid-typing.
+    ///
+    /// What holds it shut now is the second way into adoption: the registry row the assembly
+    /// merged into carries the assembly's own `pendingID`, so "which batch" is answered without
+    /// a heuristic, and only "which copy of it" is left to compare — on days and colour, which
+    /// do not drift the way a name does.
+    @Test("A reload landing mid-typing does not duplicate the batch")
+    func staleReloadMidTypingDoesNotDuplicate() async {
+        let persistence = InMemoryCalendarPersisting()
+        let store = PCEventSelectionManager(
+            initialState: PCEventSelectionState(dataProvider: PCCalendarDataProvider()),
+            persistence: persistence,
+            daySelectionManager: PCCalendarDaySelectionManager()
+        )
+        store.send(.syncCalendar(calendarID: 42, batches: []))
+
+        // The multi-select session, exactly as the UI test builds it.
+        store.send(.setMultiSelectMode(true))
+        store.send(.setMultiSelectColor(.option3))
+        store.send(.dayTappedInCalendar(day(17)))
+        store.send(.dayTappedInCalendar(day(18)))
+        store.send(.confirmMultiSelectTapped)
+
+        // The colour writes nothing: `canSave` is a name **and** a colour, and the session's
+        // batch is unnamed until someone names it. That matters to the shape of the race — the
+        // first write this batch ever produces is the first *name* write.
+        store.send(.setBatchColor(.option3))
+        #expect(store.state.batches.isEmpty, "precondition: a colour alone is not a batch yet")
+
+        // The first keystroke, and the merge that promotes the draft.
+        store.send(.setBatchName("M"))
+        #expect(store.state.batches.count == 1, "precondition: the name merged it")
+        // Typing does not write, so this is the user leaving the field once — the batch's first
+        // write ever, carrying "M".
+        store.send(.nameEditingFinished)
+        _ = await persistence.waitForWrites(1)
+
+        // Back into the field for a second go at the name, which is the only way typing resumes.
+        store.send(.setBatchName("Mo"))
+
+        // The fetch that first write's cache change produced, arriving now — after "Mo" has
+        // moved past the "M" that was actually written. In the app this is the broadcast from
+        // the flush landing one keystroke late, not something typing caused.
+        let stored = await persistence.storedBatches(calendarID: 42)
+        #expect(stored.first?.name == "M", "precondition: the database still holds the first keystroke")
+        store.send(.syncCalendar(calendarID: 42, batches: asReloaded(stored)))
+
+        // The next one. Nothing about the registry matches the staged batch by name any more.
+        store.send(.setBatchName("Mor"))
+
+        let registry = store.state.batches
+            .map { "\($0.name)|id:\(String(describing: $0.persistedID))" }
+            .joined(separator: ", ")
+        #expect(
+            store.state.batches.count == 1,
+            "one batch, not one per keystroke that outlived a reload — got \(store.state.batches.count): \(registry)"
+        )
+    }
+
+    /// The same race, and the consequence that reaches the user: the stranded row keeps marking
+    /// a day the live batch has removed the event from.
+    ///
+    /// Separate from the count above because that is a registry invariant and this is the
+    /// behaviour a person would report — `testRemovingAnchorDayUncolorsItOnCalendar` failing on
+    /// "Anchor day must NOT be marked after removing its event".
+    @Test("A reload landing mid-typing leaves no stale day behind")
+    func staleReloadMidTypingLeavesNoStaleDay() async {
+        let persistence = InMemoryCalendarPersisting()
+        let store = PCEventSelectionManager(
+            initialState: PCEventSelectionState(dataProvider: PCCalendarDataProvider()),
+            persistence: persistence,
+            daySelectionManager: PCCalendarDaySelectionManager()
+        )
+        store.send(.syncCalendar(calendarID: 42, batches: []))
+
+        store.send(.startNewBatch(on: day(11)))
+        store.send(.toggleDay(day(12)))
+        store.send(.toggleDay(day(13)))
+        store.send(.setBatchColor(.option1))
+
+        // Same race, same shape: the first name write lands, the user returns to the field, and
+        // the fetch for that write comes back after the name has moved on.
+        store.send(.setBatchName("C"))
+        store.send(.nameEditingFinished)
+        _ = await persistence.waitForWrites(1)
+
+        store.send(.setBatchName("Cy"))
+        let stale = await persistence.storedBatches(calendarID: 42)
+        store.send(.syncCalendar(calendarID: 42, batches: asReloaded(stale)))
+
+        store.send(.setBatchName("Cyc"))
+        store.send(.setBatchName("Cycl"))
+        store.send(.setBatchName("Cycle"))
+        // Typing wrote nothing, so this is where the name reaches the port.
+        _ = await store.flushBeforeLeavingCalendar()
+
+        #expect(store.state.batches.count == 1, "precondition: one batch before the removal")
+
+        // Open it and take the anchor day's event away, then leave.
+        let row = store.state.batches[0]
+        store.send(.openBatch(id: row.mergeKey))
+        store.send(.toggleDay(day(11)))
+        store.send(.backTapped)
+
+        let provider = store.state.dataProvider
+        let stillMarked = store.state.batches.contains { $0.occurs(on: day(11), using: provider) }
+        let shape = store.state.batches
+            .map { "\($0.name)|id:\(String(describing: $0.persistedID))|days:\($0.events.count)" }
+            .joined(separator: ", ")
+        #expect(
+            !stillMarked,
+            "day 11 must be uncoloured once its event is gone — got: \(shape)"
+        )
+    }
+
+    /// A row as a reload would hand it back: a **fresh** `pendingID`, because a DTO carries
+    /// none. This is why adoption has to be content-based — an id lookup can never match across
+    /// a reload.
+    private func asReloaded(_ batches: [CalendarEventBatch]) -> [CalendarEventBatch] {
+        batches.map { batch in
+            CalendarEventBatch(
+                pendingID: UUID(),
+                persistedID: batch.persistedID,
+                name: batch.name,
+                colorName: batch.colorName,
+                events: batch.events.map {
+                    CalendarEvent(
+                        persistedID: $0.persistedID,
+                        name: $0.name,
+                        date: $0.date,
+                        colorName: $0.colorName
+                    )
+                }
+            )
+        }
     }
 
     @Test("In-flight writes do not block the calendar switch")

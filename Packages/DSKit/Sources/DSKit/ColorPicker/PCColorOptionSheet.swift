@@ -20,6 +20,21 @@ public struct PCColorOptionSheet: View {
     @Environment(\.pcVibe) private var vibe
     @Environment(\.dismiss) private var dismiss
 
+    /// This sheet, so a test can wait for the sheet itself rather than inferring it from a row.
+    public static let sheetAccessibilityIdentifier = "color-option-sheet"
+
+    /// One of its rows.
+    ///
+    /// **Deliberately not `color-option-<name>`**, which is what `PCExpandedColorPicker` puts on
+    /// the inline options it draws on the main calendar during a multi-select session. The two
+    /// were the same string, and the batch editor is presented as a sheet *over* that calendar —
+    /// so both sets were in the accessibility tree at once and a query for "the colour option"
+    /// could resolve to a row of the sheet rather than to the control the test meant. The prefix
+    /// says which picker a row belongs to, which is the thing a test actually needs to name.
+    public static func optionAccessibilityIdentifier(for option: PCColorOption) -> String {
+        "color-sheet-option-\(option.colorName)"
+    }
+
     public init(
         selectedColor: Binding<PCColorOption?>,
         title: String,
@@ -58,12 +73,13 @@ public struct PCColorOptionSheet: View {
                         }
                     }
                 }
-                .accessibilityIdentifier("color-option-\(colorOption.colorName)")
+                .accessibilityIdentifier(Self.optionAccessibilityIdentifier(for: colorOption))
             }
             .navigationTitle(title)
             .pcNavigationBarTitleDisplayMode(.inline)
         }
         .presentationDetents([.medium, .large])
+        .accessibilityIdentifier(Self.sheetAccessibilityIdentifier)
     }
 }
 

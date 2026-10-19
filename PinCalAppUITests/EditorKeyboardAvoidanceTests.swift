@@ -30,32 +30,9 @@ final class EditorKeyboardAvoidanceTests: XCTestCase {
         KeyboardAvoidanceTestSupport.assertAboveKeyboard(element: nameField, keyboard: keyboard)
     }
 
-    @MainActor
-    func testEventEditorNameFieldStaysAboveKeyboard() {
-        let app = KeyboardAvoidanceTestSupport.launchSeededApp()
-        KeyboardAvoidanceTestSupport.openCalendarDetail(app, named: "UI Test Calendar")
-
-        // A day with events opens the batch list first.
-        KeyboardAvoidanceTestSupport.tapDay(day: 1, in: app)
-
-        let batchRow = app.staticTexts["Women Cycle"]
-        XCTAssertTrue(batchRow.waitForExistence(timeout: 5), "Batch list should show the seeded batch")
-        batchRow.tap()
-
-        // The batch editor opens with the events list; tap an event to edit it.
-        // By index: the row shows when the event is, not what it is called, so there is no
-        // name in its label to match. See `KeyboardAvoidanceTestSupport.eventRow(_:in:)`.
-        let eventRow = KeyboardAvoidanceTestSupport.eventRow(0, in: app)
-        XCTAssertTrue(eventRow.waitForExistence(timeout: 5), "Event row should exist in the batch editor")
-        eventRow.tap()
-
-        let nameField = app.textFields["event-name-field"]
-        XCTAssertTrue(nameField.waitForExistence(timeout: 5), "Event editor should open after tapping an event")
-        nameField.tap()
-
-        let keyboard = app.keyboards.firstMatch
-        XCTAssertTrue(keyboard.waitForExistence(timeout: 5), "Keyboard should appear when the name field is focused")
-
-        KeyboardAvoidanceTestSupport.assertAboveKeyboard(element: nameField, keyboard: keyboard)
-    }
+    // `testEventEditorNameFieldStaysAboveKeyboard` was deleted with the screen. It reached an
+    // event's name field by tapping a row in the batch editor's list, and a row is a card now.
+    // Nothing is left for it to cover: `batch-name-field` is the only text field in either
+    // editor, and `testBatchEditorNameFieldStaysAboveKeyboard` already raises a keyboard
+    // against it.
 }

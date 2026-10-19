@@ -13,6 +13,17 @@ import DSKit
 ///
 /// Takes no parameters: the list *is* the assembly's events, read from the store.
 ///
+/// **A row is a card, not a target.** There is no event editor and no tap that opens one, so
+/// the card carries no `Button` and no chevron. Both existed only to promise a screen behind
+/// the row, and an affordance that promises a screen that no longer exists is worse than no
+/// affordance: the row is the thing the user reaches for to *read* the batch, and a chevron on
+/// it says there is something behind it.
+///
+/// What an event can be edited by is the batch editor itself — the days in its calendar, and
+/// the time the picker applies to a selection of rows. An event's own name and colour are no
+/// longer settable, because `toggling` appends a placeholder named `defaultEventName` wearing
+/// the batch's colour, and nothing here can change that.
+///
 /// **Always in edit mode.** Every row carries its checkbox and its delete button from the
 /// moment the editor opens, and there is no Select/Done bar to put them there. The bar was a
 /// two-state screen in disguise: a row meant "open this event" until Select was tapped and
@@ -66,10 +77,12 @@ public struct AddEditEventListView: View {
         HStack(spacing: 12) {
             // The checkbox, as its own tap target.
             //
-            // It has to be separate from the row's own button. The row opens the event —
-            // that is still its meaning, and it was the only route to the event editor
-            // before — so a checkbox drawn *inside* that label would swallow half the row's
-            // target and leave the other half tapping differently from where it looks.
+            // It has to be its own thing rather than part of the card. It was separate because
+            // the row *also* opened the event editor, so a checkbox drawn inside that label
+            // would have swallowed half the row's target and left the other half tapping
+            // differently from where it looked. The row is no longer a target at all, and the
+            // separation is kept anyway: the checkbox and the card mean different things, and
+            // one of them is a tap.
             Button {
                 viewModel.toggleSelection(event)
             } label: {
@@ -81,35 +94,26 @@ public struct AddEditEventListView: View {
             .accessibilityIdentifier("batch-event-select-\(index)")
 
             PCCard {
-                Button {
-                    viewModel.open(event)
-                } label: {
-                    HStack(spacing: 12) {
-                        // The row states *when* the event is, not what it is called.
-                        //
-                        // The name used to be the row's whole label, with the time appended
-                        // to it — so a batch read as one undated list of names, and there was
-                        // no way to tell which day a row belonged to without opening every
-                        // event. The date is shown even though `date` always carries one, and
-                        // the formatting is the view model's — see `dateTimeText(for:)`.
-                        Text(viewModel.dateTimeText(for: event))
-                            .foregroundStyle(vibe.color(for: .foregroundOnEventCard))
-
-                        Spacer()
-
-                        // The row opens something, and this is the promise of that.
-                        Image(systemName: "chevron.right")
-                    }
-                    .frame(minWidth: 0, maxWidth: .infinity)
-                }
-                .padding()
-                .background(
-                    RoundedRectangle(cornerRadius: 16, style: .continuous)
-                        .fill(vibe.eventColor(named: event.colorName))
-                )
-                // Leaf-level only. The `HStack` around it has a trash button in it, and an
-                // identifier on a container shadows everything inside it.
-                .accessibilityIdentifier("batch-event-row-\(index)")
+                // The row states *when* the event is, not what it is called.
+                //
+                // The name used to be the row's whole label, with the time appended
+                // to it — so a batch read as one undated list of names, and there was
+                // no way to tell which day a row belonged to without opening every
+                // event. The date is shown even though `date` always carries one, and
+                // the formatting is the view model's — see `dateTimeText(for:)`.
+                Text(viewModel.dateTimeText(for: event))
+                    .foregroundStyle(vibe.color(for: .foregroundOnEventCard))
+                    // Leaf-level, and it has to stay the leaf. The `HStack` around it has a
+                    // checkbox and a trash button in it, and an identifier on a container
+                    // shadows everything inside it — so it goes on the `Text`, the only thing
+                    // in the card that has no control inside it.
+                    .accessibilityIdentifier("batch-event-row-\(index)")
+                    .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
+                    .padding()
+                    .background(
+                        RoundedRectangle(cornerRadius: 16, style: .continuous)
+                            .fill(vibe.eventColor(named: event.colorName))
+                    )
             }
 
             // Deleting and deselecting are different acts, and this is the delete one.

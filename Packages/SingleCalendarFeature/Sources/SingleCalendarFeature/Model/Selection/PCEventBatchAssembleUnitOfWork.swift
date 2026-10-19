@@ -80,22 +80,27 @@ public struct PCEventBatchAssembleUnitOfWork: Equatable, Sendable {
 
     /// Whether this batch is in a state worth writing.
     ///
-    /// A batch needs a **colour** to be written, and nothing else. The name is not required,
-    /// because the name is not what makes a batch a batch: a batch is a set of dated, coloured
-    /// events, and a user who taps a day and leaves the title alone has still made a real
-    /// batch that they expect to be there when they come back.
+    /// A batch needs a **name** and a **colour**. The name was the second half of this and is
+    /// now the first: a batch with no name is a batch nobody asked for, and the reason it can
+    /// exist at all is that naming is what promotes a draft — so requiring the name is not an
+    /// extra rule, it is the same rule `isDraft` already enforces, stated where the write
+    /// happens.
     ///
-    /// Requiring a name used to mean that expectation was not met. The check was described as
-    /// preventing "a freshly-tapped day from being committed as a row of blank events", but
-    /// colour was already required, so the only batches it stopped were the ones a user
-    /// intended: named-by-default batches, renamed-to-empty ones. And because edits persist as
-    /// they are made, refusing to save did not leave the work staged and recoverable — it left
-    /// the store ahead of the database with nowhere to put it.
+    /// The argument against was that "the name is not what makes a batch a batch: a batch is a
+    /// set of dated, coloured events", and that refusing to save left the store ahead of the
+    /// database with nowhere to put the work. Both were true *while nothing else was* — while
+    /// the only way to be a batch was to tap a day, and a tapped day that was never renamed was
+    /// indistinguishable from a misclick. The misclick is now unrecoverable in the other
+    /// direction: `deleteBatches` has no undo anywhere in the app, so a stray untitled row is a
+    /// row nobody can remove without four taps through a day list.
     ///
-    /// What it gates now is only whether `editing` merges a row. It no longer has a button:
-    /// there is no Save in either editor, so "the user cannot save this yet" has no way to be
-    /// expressed to them, and a batch that exists without a colour exists only mid-edit — the
-    /// editor, having opened on `PCColorOption.firstAvailable`, always has one.
+    /// What "nowhere to put it" means has changed too, and this is the part that makes the
+    /// requirement safe: an unnamed batch is not *rejected*, it is **not written yet**. It is
+    /// staged, it is marked, and the editor is open on it — so the work is held in exactly one
+    /// place (`assembly`) rather than split between a store that has it and a database that
+    /// does not. Naming it, or any other real edit, merges it, and it is durable from that
+    /// moment. A user who names a batch and then erases the name keeps their batch: it was
+    /// already merged, and this flag only ever suppresses a merge, never a removal.
     ///
     /// `resolved()` still returns `nil` for a batch with no events, so it is the `editing`
     /// helper's `let row =` guard, not this flag, that keeps an eventless row from being
@@ -104,7 +109,7 @@ public struct PCEventBatchAssembleUnitOfWork: Equatable, Sendable {
     /// instead would make that unreachable — declined from exactly the state that triggers the
     /// delete, and the row would sit in the calendar marking days the user had just cleared.
     public var canSave: Bool {
-        !batch.colorName.isEmpty
+        !batch.name.isEmpty && !batch.colorName.isEmpty
     }
 
     private init(batch: CalendarEventBatch, origin: Origin) {
@@ -167,10 +172,12 @@ public struct PCEventBatchAssembleUnitOfWork: Equatable, Sendable {
         color: PCColorOption?,
         using dataProvider: PCCalendarDataProvider
     ) -> PCEventBatchAssembleUnitOfWork {
-        // A nil colour is *not* a reason to build an unsavable batch. The multi-select
-        // path can only reach here through the reducer, which refuses to confirm without a
-        // colour, so the nil is defensive — and defaulting keeps the two entry points to
-        // "a new batch" agreeing about what one looks like.
+        // A nil colour is *not* a reason to build an unsavable batch. The colour is
+        // what gates a *tap*, so the multi-select path cannot stage days without one and the nil
+        // is defensive — defaulting keeps the two entry points to "a new batch" agreeing about
+        // what one looks like. (It was defended twice over for a while: the reducer also refused
+        // to *confirm* an uncoloured session, and that guard went when Confirm stopped building
+        // the batch and started opening the editor on it.)
         let colorName = color?.colorName ?? PCColorOption.firstAvailable.colorName
         let events = days
             .map { placeholder(on: dataProvider.startOfDay(for: $0), colorName: colorName) }
@@ -316,9 +323,10 @@ public struct PCEventBatchAssembleUnitOfWork: Equatable, Sendable {
     /// never opened could not be committed at all. The guard still means "has a name" — it
     /// just no longer rejects a value that is already there.
     ///
-    /// Midnight, deliberately. A day that has just been switched on has no time yet, and the
-    /// event editor is where a time is chosen; midnight is the honest "unset" rather than a
-    /// fabricated default like 09:00 that the user then has to notice and correct.
+    /// Midnight, deliberately. A day that has just been switched on has no time yet, and
+    /// the batch editor's time control is where a time is chosen; midnight is the honest
+    /// "unset" rather than a fabricated default like 09:00 that the user then has to notice
+    /// and correct.
     private static func placeholder(on day: Date, colorName: String) -> CalendarEvent {
         CalendarEvent(name: defaultEventName, date: day, colorName: colorName)
     }

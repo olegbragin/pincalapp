@@ -92,6 +92,10 @@ struct BatchEditorCalendarScopeTests {
 
         store.send(.startNewBatch(on: day(2)))
         store.send(.toggleDay(day(3)))
+        // Named, so the first batch is written rather than discarded as a draft on Back.
+        // The day markers below are projected from the registry, and an unwritten batch is
+        // absent from it by design.
+        store.send(.setBatchName("First"))
         store.send(.backTapped)
         store.send(.startNewBatch(on: day(20)))
         store.send(.backTapped)
@@ -119,6 +123,8 @@ struct BatchEditorCalendarScopeTests {
 
         store.send(.startNewBatch(on: day(2)))
         store.send(.toggleDay(day(3)))
+        // Named, or it is a draft and Back discards it — correctly, since nothing was written.
+        store.send(.setBatchName("First"))
         store.send(.backTapped)
         store.send(.startNewBatch(on: day(20)))
         // Named, so it is a batch rather than a draft. An untouched second batch would be

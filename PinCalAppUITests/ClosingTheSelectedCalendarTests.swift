@@ -61,7 +61,6 @@ final class ClosingTheSelectedCalendarTests: XCTestCase {
         app.launchArguments = [
             "-UITestSeedData",
             "-UITestColumns", "1",
-            "-UITestNameAutosaveSeconds", "0",
             // Long, so the toast is simply *there* for the whole test rather than something a
             // 5-second window has to be lucky to catch. Production is untouched.
             "-UITestUndoWindowSeconds", "120",

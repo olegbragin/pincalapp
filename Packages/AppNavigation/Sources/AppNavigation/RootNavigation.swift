@@ -38,10 +38,11 @@ public class RootNavigation {
     /// batch editor needs a toolbar to render its Back into (a `ToolbarItem` outside a stack
     /// is dropped), so it is wrapped in one — and the moment it is, anything pushed from
     /// inside it has to land in *that* stack. Appending to `path` instead pushed the event
-    /// editor onto the root stack, behind the sheet: it still appeared in the accessibility
-    /// tree, so a test's `waitForExistence` passed and its `tap()` failed with "neither
-    /// element nor any descendant has keyboard focus", which reads as a focus bug and is
-    /// actually a view nobody can reach.
+    /// editor (which is gone; the sheet's stack is empty again) onto the root stack, behind the
+    /// sheet: it still appeared in the accessibility tree, so a test's `waitForExistence` passed
+    /// and its `tap()` failed with "neither element nor any descendant has keyboard focus",
+    /// which reads as a focus bug and is actually a view nobody can reach. The trap is not
+    /// gone with the screen that fell into it, so the two paths stay.
     ///
     /// Two paths rather than one parameterised push, because the choice is made once per
     /// `goTo` and the alternative — a `push(_:onto:)` enum threading a "which stack" through
@@ -368,9 +369,6 @@ public class RootNavigation {
         case .dayBatches:
             activeStack.append(route)
 
-        case .eventEditor:
-            activeStack.append(route)
-
         // MARK: - Present (sheet)
 
         case .batchEditor:
@@ -383,9 +381,9 @@ public class RootNavigation {
 
     /// Dismiss presented sheet
     ///
-    /// Clears the sheet's stack with it. A sheet dismissed by a swipe while the event editor
-    /// was pushed inside it would otherwise leave that stack full, and the next sheet would
-    /// open already showing a screen the user had dismissed along with the last one — with no
+    /// Clears the sheet's stack with it. A sheet dismissed by a swipe while something was
+    /// pushed inside it would otherwise leave that stack full, and the next sheet would open
+    /// already showing a screen the user had dismissed along with the last one — with no
     /// `NavigationRequest` in play to explain it, because the sheet's contents were never
     /// asked for.
     public func dismissSheet() {

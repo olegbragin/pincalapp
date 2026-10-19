@@ -11,13 +11,14 @@ import DSKit
 
 /// Where the user is on the assembly line. One enum rather than a navigation stack,
 /// because the line has a fixed order and the state says which room we are in.
+///
+/// Three rooms, and there used to be four. `.eventEditor` went with the screen itself: it
+/// existed to carry the two ids a pushed editor needed to know what it was editing, and with
+/// nothing to push there is nothing for the pair to identify.
 public enum PCEventSelectionStage: Equatable {
     case idle
     case dayList(day: Date)
     case batchEditor
-    /// The two ids travel in the stage, not just in the draft, so a back button or a
-    /// deep link can identify the pair without reconstructing it from the assembly.
-    case eventEditor(batchPendingID: UUID, eventPendingID: UUID)
 
     /// The day the day-list is scoped to, or `nil` when the session is elsewhere.
     ///
@@ -48,7 +49,6 @@ public struct NavigationRequest: Equatable {
         case pushDayList
         /// The batch editor is a sheet, so this is `.presentBatchEditor` and not a push.
         case presentBatchEditor
-        case pushEventEditor
         case pop
         /// Leaving the batch editor, which dismisses its sheet.
         ///
@@ -76,12 +76,9 @@ public struct PCEventSelectionState: Equatable {
 
     public var stage: PCEventSelectionStage = .idle
     public var assembly: PCEventBatchAssembleUnitOfWork?
-    /// The event under edit while `stage == .eventEditor`. It lives outside the assembly
-    /// because it is not yet part of the batch — the batch gains it on the first keystroke,
-    /// via `persistEventDraft`, which folds every change straight back in. It is a working
-    /// copy of an edit that is already durable, not a pending change, which is why leaving
-    /// the editor can simply drop it.
-    public var eventDraft: CalendarEvent?
+    /// No `eventDraft` here. It was the event editor's working copy — a copy of an edit that
+    /// `persistEventDraft` folded back into the assembly on every keystroke — so the copy and
+    /// the real thing were the same value held twice. With the editor gone there is one.
     /// The day the day-list is scoped to, and the anchor the assembly scrolls to.
     public var day: Date?
 
@@ -127,13 +124,19 @@ public struct PCEventSelectionState: Equatable {
 
     // MARK: Event selection inside the batch editor
 
-    /// Whether the event list is selecting rather than opening.
+    /// Whether the event list is selecting.
     ///
-    /// The same distinction the main calendar's multi-select session makes, for the same
-    /// reason: while a list is selecting, a tap on a row means "include this one" and cannot
-    /// also mean "open this one". Both are the row's only tap target, so the mode has to be
-    /// state the view reads rather than something inferred from whether a selection happens
-    /// to be non-empty.
+    /// **Nothing reads this to decide what a row does any more.** It was there because a row
+    /// was the only tap target for two different things — "include this one" while selecting and
+    /// "open this one" otherwise — and the view had to know which. The event editor is gone and
+    /// the row is a card, so a tap can only mean "include this one".
+    ///
+    /// It is kept rather than removed because it still answers a question the selection
+    /// *cannot*: whether the ids in `selectedEventIDs` are the ones the user meant, or leftovers
+    /// from a set they have since put down. `toggleEventSelection` sets it, and `false` on the
+    /// toggle clears both together, so an empty selection and "not selecting" stay
+    /// distinguishable. Deleting it would mean inferring the mode from the set being non-empty,
+    /// which is the exact conflation this field exists to prevent.
     public var isSelectingEvents = false
 
     /// Which of the assembly's events are selected, by `pendingID`.
@@ -145,7 +148,7 @@ public struct PCEventSelectionState: Equatable {
     /// a date-keyed selection could not say *which* events on a day the time applies to.
     /// `pendingID` is the identity that is stable for the edit's lifetime: these events live
     /// inside the staged assembly, which is never rebuilt from a DTO, so their ids survive
-    /// every reload (the same argument that carries `openEvent` and `removeEvent`).
+    /// every reload (the same argument that carries `removeEvent`).
     public var selectedEventIDs: Set<UUID> = []
 
     /// The selected events, in the assembly's order.

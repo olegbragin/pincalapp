@@ -239,60 +239,49 @@ public struct PCCalendarYearView: View {
     }
 }
 
-/// A sheet that lets the user pick a year from a range. The years are laid out
-/// in an adaptive grid whose column count is derived from the available width so
-/// the year labels always fit. Selecting a year dismisses the sheet.
+/// A sheet that lets the user pick a year from a range, as a single-column wheel.
+///
+/// It was a grid of up to five columns of buttons, sized to the available width. A grid is the
+/// wrong shape for this list: a year has no spatial relationship to any other year, so the grid
+/// bought nothing but a `GeometryReader`, a column-width calculation, and the guarantee that the
+/// year labels fit — which a wheel makes true by construction, since one wheel row is the width
+/// of the sheet.
+///
+/// The wheel is also the platform's own answer. It spins to a value, so the current year is
+/// visible in the middle without scrolling to find it, and it costs one drag where the grid cost
+/// a precise tap on a number that might not be on screen at all.
+///
+/// Single column deliberately: this is a `Picker` over a plain list, and letting the system
+/// group years by decade would mean the visible order is no longer the order in `years`.
 private struct PCYearPickerSheet: View {
     let title: String
     let years: [Int]
     let selectedYear: Int
     let onSelect: (Int) -> Void
-    @Environment(\.pcVibe) private var vibe
     @Environment(\.dismiss) private var dismiss
-
-    private static let minColumnWidth: CGFloat = 84
-    private static let columnSpacing: CGFloat = 12
 
     var body: some View {
         NavigationStack {
-            GeometryReader { proxy in
-                ScrollView {
-                    LazyVGrid(
-                        columns: gridColumns(forWidth: proxy.size.width),
-                        spacing: Self.columnSpacing
-                    ) {
-                        ForEach(years, id: \.self) { year in
-                            Button {
-                                onSelect(year)
-                                dismiss()
-                            } label: {
-                                Text(verbatim: String(year))
-                                    .font(vibe.font(for: .yearButton))
-                                    .foregroundColor(vibe.color(for: year == selectedYear ? .accent : .foreground))
-                                    .frame(maxWidth: .infinity)
-                                    .padding(.vertical, 14)
-                                    .background(
-                                        RoundedRectangle(cornerRadius: 10, style: .continuous)
-                                            .fill(vibe.color(for: .background))
-                                    )
-                            }
-                            .buttonStyle(.plain)
-                            .accessibilityIdentifier("year-option-\(year)")
-                        }
-                    }
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 12)
+            Picker(title, selection: Binding(
+                get: { selectedYear },
+                set: { onSelect($0) }
+            )) {
+                ForEach(years, id: \.self) { year in
+                    Text(verbatim: String(year)).tag(year)
                 }
+            }
+            .pickerStyle(.wheel)
+            .labelsHidden()
+            .onChange(of: selectedYear) { _, newValue in
+                onSelect(newValue)
+                dismiss()
             }
             .navigationTitle(title)
             .pcNavigationBarTitleDisplayMode(.inline)
         }
-        .presentationDetents([.medium, .large])
-    }
-
-    private func gridColumns(forWidth width: CGFloat) -> [GridItem] {
-        let count = max(3, Int(floor(width / Self.minColumnWidth)))
-        return Array(repeating: GridItem(.flexible(), spacing: Self.columnSpacing), count: count)
+        // A wheel is short by nature, so the medium detent is enough; the grid it replaced
+        // needed `large` to show every year at once.
+        .presentationDetents([.height(280)])
     }
 }
 

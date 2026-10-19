@@ -385,18 +385,19 @@ struct RootNavigationTests {
     /// A push made while a sheet is up belongs to the sheet's stack.
     ///
     /// This is the whole reason there are two paths. `NavigationStack` inside a sheet does not
-    /// read `path`, so appending there rendered the event editor *behind* the sheet — visible
+    /// read `path`, so appending there rendered whatever was pushed *behind* the sheet — visible
     /// in the accessibility tree, impossible to tap, and reported by the UI suite as a focus
-    /// failure on a field that was never reachable.
+    /// failure on a field that was never reachable. The event editor was the screen that fell in;
+    /// it is gone, and the mechanism it exposed is not.
     @Test("A push made while a sheet is up lands in the sheet's stack")
     @MainActor
     func pushWhileSheetIsUpGoesToTheSheetStack() {
         let nav = RootNavigation()
         nav.goTo(.batchEditor)
 
-        nav.goTo(.eventEditor)
+        nav.goTo(.dayBatches)
 
-        #expect(nav.sheetPath.count == 1, "the event editor opens on top of the batch editor")
+        #expect(nav.sheetPath.count == 1, "the push lands on top of the batch editor")
         #expect(nav.path.isEmpty, "and not behind the sheet, where nothing can reach it")
     }
 
@@ -405,7 +406,7 @@ struct RootNavigationTests {
     func dismissSheetClearsTheSheetStack() {
         let nav = RootNavigation()
         nav.goTo(.batchEditor)
-        nav.goTo(.eventEditor)
+        nav.goTo(.dayBatches)
 
         nav.dismissSheet()
 
@@ -416,28 +417,20 @@ struct RootNavigationTests {
         )
     }
 
-    @Test("goTo eventEditor appends to path")
+    /// **Premise changed.** This used to push `.dayBatches` then `.eventEditor` and expect two
+    /// levels, because there were two push routes. `.eventEditor` went with its screen, and
+    /// `.batchEditor` presents rather than pushes, so `.dayBatches` is now the only thing this
+    /// stack can hold — which is asserted by `goToDayBatches` rather than here, since "two of
+    /// the same route" would be testing the array, not the routing.
+    @Test("The day list is the only route that pushes")
     @MainActor
-    func goToEventEditor() {
-        let nav = RootNavigation()
-
-        nav.goTo(.eventEditor)
-
-        #expect(nav.path.count == 1)
-    }
-
-    /// **Premise changed.** This used to push `.dayBatches` and `.batchEditor` and expect two
-    /// levels. `.batchEditor` presents a sheet rather than pushing, so it is not a level of
-    /// this stack at all — the two remaining push routes are what has to accumulate.
-    @Test("Multiple push routes accumulate in path")
-    @MainActor
-    func multiplePushRoutes() {
+    func onlyTheDayListPushes() {
         let nav = RootNavigation()
 
         nav.goTo(.dayBatches)
-        nav.goTo(.eventEditor)
+        nav.goTo(.batchEditor)
 
-        #expect(nav.path.count == 2)
+        #expect(nav.path.count == 1, "presenting a sheet is not a level of this stack")
     }
 
     // MARK: - Closing a calendar that has been archived or deleted
@@ -630,7 +623,7 @@ struct RootNavigationTests {
         let nav = RootNavigation()
 
         nav.goTo(.dayBatches)
-        nav.goTo(.eventEditor)
+        nav.goTo(.dayBatches)
         #expect(nav.path.count == 2)
 
         nav.goTo(.calendar(999, toRoot: true))
@@ -667,18 +660,21 @@ struct RootNavigationTests {
 
     // MARK: - pop()
 
-    /// **Premise changed.** The second level used to be the batch editor, which is now a
-    /// sheet; `pop` would have popped it as "the top of whatever stack is presenting".
+    /// **Premise changed, twice.** The second level used to be the batch editor, which is now a
+    /// sheet — `pop` would have popped it as "the top of whatever stack is presenting" — and
+    /// then the event editor, which is gone. `.dayBatches` is the only route that pushes now,
+    /// so two levels means the same route twice; what is under test is that one `pop` removes
+    /// one level, which the route does not matter to.
     @Test("pop removes only the top of the stack")
     @MainActor
     func popRemovesOneLevel() {
         let nav = RootNavigation()
         nav.goTo(.dayBatches)
-        nav.goTo(.eventEditor)
+        nav.goTo(.dayBatches)
 
         nav.pop()
 
-        #expect(nav.isAtRoot == false, "the day list is still on the stack")
+        #expect(nav.isAtRoot == false, "the first day list is still on the stack")
         nav.pop()
         #expect(nav.isAtRoot == true)
     }
@@ -736,12 +732,6 @@ struct RootNavigationTests {
     @MainActor
     func batchEditorStyle() {
         #expect(AppRoute.batchEditor.navigationStyle == .present)
-    }
-
-    @Test("AppRoute eventEditor has push style")
-    @MainActor
-    func eventEditorStyle() {
-        #expect(AppRoute.eventEditor.navigationStyle == .push)
     }
 
     @Test("AppRoute addCalendar has present style")

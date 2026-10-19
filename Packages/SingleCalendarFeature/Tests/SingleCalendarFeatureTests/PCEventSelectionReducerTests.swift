@@ -84,7 +84,6 @@ struct PCEventSelectionReducerTests {
         var copy = state
         copy.batches = copy.batches.map(normalized)
         copy.assembly = copy.assembly.map(normalized)
-        copy.eventDraft = copy.eventDraft.map { $0.with(pendingID: Self.placeholderID) }
         return copy
     }
 
@@ -159,28 +158,33 @@ struct PCEventSelectionReducerTests {
         next.multiSelectDays = days
         next.multiSelectColor = color
         if let color, !days.isEmpty {
+            // Sorted before the anchor is taken, and the loop toggles the *rest*.
+            //
+            // It used to anchor on `days.min()` and toggle `days.dropFirst()`, which silently
+            // toggled the anchor back **off** whenever the first element was not the smallest:
+            // `days: [6, 4]` anchored on the 4th and then "added" the 4th, leaving an empty
+            // batch. Nothing noticed, because every assertion over a session read the *days*
+            // or the *registry*, and neither of those is built from this assembly — the one
+            // thing a fixture must not do is build a state the reducer cannot emit.
+            let sorted = days.map(provider.startOfDay(for:)).sorted()
             var assembly = PCEventBatchAssembleUnitOfWork.new(
-                anchor: days.min()!,
+                anchor: sorted[0],
                 colorName: color.colorName,
                 using: provider
             )
             // One assembly for the session, built by toggling in the remaining days — the
             // same path the reducer takes, so the identity matches rather than being faked.
-            for day in days.dropFirst() {
+            for day in sorted.dropFirst() {
                 assembly = assembly.toggling(day: day, using: provider)
             }
+            #expect(
+                assembly.batch.events.count == sorted.count,
+                "the fixture must build the batch the reducer would, or it tests a state that cannot occur"
+            )
             next.multiSelectAssembly = assembly
         }
         next.dayEventColors = next.derivedDayEventColors
         return next
-    }
-
-    /// A state with the event editor open and a named draft in it.
-    private func stagedSession() -> PCEventSelectionState {
-        let editing = editing(session(batches: []), on: 2)
-        guard let event = editing.assembly?.batch.events.first else { return editing }
-        let opened = pcEventSelectionReducer(editing, .openEvent(pendingID: event.pendingID))
-        return pcEventSelectionReducer(opened, .setEventName("draft"))
     }
 
     private func reduce(
@@ -249,8 +253,8 @@ struct PCEventSelectionReducerTests {
         #expect(next.editorYear == nil)
         #expect(next.assembly?.batch.name.isEmpty == true, "unnamed, which is what makes it a draft")
         #expect(
-            next.assembly?.canSave == true,
-            "it is coloured, so the first edit will write it — colour is not a decision, a name is"
+            next.assembly?.canSave == false,
+            "an unnamed batch is not writable yet — naming it is what writes it, see `canSave`"
         )
         #expect(next.navigationRequest?.target == .presentBatchEditor)
         #expect(next.batches.isEmpty, "not merged, so the registry does not describe it")
@@ -384,21 +388,6 @@ struct PCEventSelectionReducerTests {
         #expect(reduce(state, .openBatch(id: .persisted(999))).next == state, "no such row")
     }
 
-    @Test("Back from the event editor drops the draft and returns to the batch editor")
-    func backFromEventEditor() {
-        var state = editing(session(), on: 1)
-        state.eventDraft = CalendarEvent(name: "draft", date: day(1), colorName: "eventColorOption2")
-        state.stage = .eventEditor(batchPendingID: UUID(), eventPendingID: UUID())
-
-        let (next, effects) = reduce(state, .backTapped)
-
-        #expect(next.eventDraft == nil)
-        #expect(next.stage == .batchEditor)
-        #expect(next.assembly != nil, "the batch being edited is still staged")
-        #expect(next.navigationRequest?.target == .pop)
-        #expect(effects.isEmpty)
-    }
-
     /// Leaving the batch editor is navigation, not a commit.
     ///
     /// **Premise changed, twice.** This used to say "Back discards the staged edit and returns
@@ -468,7 +457,6 @@ struct PCEventSelectionReducerTests {
         #expect(next.stage == .idle)
         #expect(next.day == nil)
         #expect(next.assembly == nil)
-        #expect(next.eventDraft == nil)
         #expect(next.navigationRequest?.target == .popToCalendarRoot)
         #expect(
             next.dayEventColors[provider.startOfDay(for: day(1))] == ["eventColorOption1"],
@@ -615,7 +603,15 @@ struct PCEventSelectionReducerTests {
     /// The rule is anchored to "has not been written yet", not to "is empty right now". A batch
     /// the user names and then renames back to nothing is a real batch they made, and Back must
     /// not read the emptied name as an instruction to delete it.
-    @Test("A batch that was written and then had its name erased survives Back")
+    ///
+    /// **Premise changed**, in the middle assertion. It used to end with `name.isEmpty == true`
+    /// — "it is simply untitled now" — because erasing the name was an edit, and edits were
+    /// written as they were made. It is not written now: an unnamed batch is a draft, and a
+    /// draft is not merged. So the row keeps the name it was last written under, and the
+    /// divergence is the price of the rule. It is a cheap one — the user sees their own name
+    /// again, not a lost batch — and the alternative, rewriting the row untitled, is exactly
+    /// the untitled row this requirement exists to prevent.
+    @Test("A batch that was written and then had its name erased survives Back, still named")
     func erasingANameDoesNotDiscardAWrittenBatch() throws {
         let named = reduce(session(batches: []), .startNewBatch(on: day(9))).next
         let renamed = reduce(named, .setBatchName("Cycle")).next
@@ -623,10 +619,19 @@ struct PCEventSelectionReducerTests {
 
         let erased = reduce(renamed, .setBatchName("")).next
         #expect(erased.batches.count == 1, "erasing the name leaves the row alone")
+        #expect(
+            erased.assembly?.batch.name.isEmpty == true,
+            "while the editor holds an untitled batch, which is a draft rather than an edit"
+        )
+        #expect(erased.assembly?.canSave == false, "so the erasure is not written")
 
         let back = reduce(erased, .backTapped).next
         #expect(back.batches.count == 1, "and so does leaving — the row is the user's work")
-        #expect(back.batches.first?.name.isEmpty == true, "it is simply untitled now")
+        #expect(
+            back.batches.first?.name == "Cycle",
+            "with the name it was written under: erasing it is not an edit that gets written, because an unnamed batch must not reach the database"
+        )
+
         #expect(try back.stage == .dayList(day: #require(back.day)), "it lands on a day list")
         #expect(
             back.day == back.batches.first?.date,
@@ -634,7 +639,7 @@ struct PCEventSelectionReducerTests {
         )
         #expect(
             back.dayEventColors[provider.startOfDay(for: day(9))] != nil,
-            "so the day is still marked: an untitled batch is a batch"
+            "so the day is still marked"
         )
     }
 
@@ -697,105 +702,11 @@ struct PCEventSelectionReducerTests {
         )
     }
 
-    // MARK: - Event editor
-
-    @Test("openEvent carries both ids into the stage")
-    func openEvent() throws {
-        let state = editing(session(), on: 1)
-        let event = try #require(state.assembly?.batch.events.first)
-        let (next, effects) = reduce(state, .openEvent(pendingID: event.pendingID))
-
-        #expect(next.eventDraft == event)
-        #expect(try next.stage == .eventEditor(
-            batchPendingID: #require(state.assembly?.batch.pendingID),
-            eventPendingID: event.pendingID
-        ))
-        #expect(next.navigationRequest?.target == .pushEventEditor)
-        #expect(effects.isEmpty)
-    }
-
-    @Test("openEvent with an unknown id is rejected")
-    func openEventUnknown() {
-        let state = editing(session(), on: 1)
-        #expect(reduce(state, .openEvent(pendingID: UUID())).next == state)
-    }
-
-    @Test("setEventName, setEventDate and setEventColor edit the draft only")
-    func editEventDraft() throws {
-        let base = editing(session(), on: 1)
-        let event = try #require(base.assembly?.batch.events.first)
-        let opened = reduce(base, .openEvent(pendingID: event.pendingID)).next
-
-        let named = reduce(opened, .setEventName("n")).next
-        #expect(named.eventDraft?.name == "n")
-
-        let dated = reduce(named, .setEventDate(day(8))).next
-        #expect(try provider.isSameDay(#require(dated.eventDraft).date, day(8)))
-
-        let colored = reduce(dated, .setEventColor(.option4)).next
-        #expect(colored.eventDraft?.colorName == PCColorOption.option4.colorName)
-        let assembly = try #require(base.assembly)
-        let stagedEvent = try #require(assembly.batch.events.first)
-        #expect(
-            stagedEvent.name == PCEventBatchAssembleUnitOfWork.defaultEventName,
-            "the staged event keeps its default name until the draft is saved"
-        )
-    }
-
-    @Test("Event edits without a draft are rejected")
-    func editEventDraftWithoutDraft() {
-        let state = editing(session(), on: 1)
-        #expect(reduce(state, .setEventName("n")).next == state)
-        #expect(reduce(state, .setEventDate(day(8))).next == state)
-        #expect(reduce(state, .setEventColor(.option1)).next == state)
-    }
-
-    /// Leaving the event editor drops the draft and keeps the edit.
-    ///
-    /// **Premise changed.** `saveEventTapped` used to be the way out of this editor: it
-    /// re-applied the draft to the assembly "so the edit is not lost" and popped. The
-    /// checkmark that sent it is gone, Back is the exit, and the re-apply was never load-bearing
-    /// — `persistEventDraft` had already folded every keystroke in. What is left to pin is the
-    /// reason Back can be trusted: the batch holds the edit while the editor is still open.
-    @Test("Backing out of the event editor keeps the edit and drops the draft")
-    func backOutOfEventEditorKeepsTheEdit() throws {
-        let base = editing(session(), on: 1)
-        let event = try #require(base.assembly?.batch.events.first)
-        var state = reduce(base, .openEvent(pendingID: event.pendingID)).next
-        state = reduce(state, .setEventName("Edited")).next
-
-        let (next, effects) = reduce(state, .backTapped)
-
-        #expect(
-            try #require(next.assembly).batch.events.contains { $0.name == "Edited" },
-            "the batch had it before Back was pressed, so dropping the draft loses nothing"
-        )
-        #expect(next.eventDraft == nil)
-        #expect(next.stage == .batchEditor)
-        #expect(next.navigationRequest?.target == .pop)
-        #expect(effects.isEmpty, "the write happened when the name was typed")
-    }
-
-    @Test("discardEventTapped drops the draft and pops")
-    func discardEventTapped() throws {
-        let base = editing(session(), on: 1)
-        let event = try #require(base.assembly?.batch.events.first)
-        var opened = reduce(base, .openEvent(pendingID: event.pendingID)).next
-        opened = reduce(opened, .setEventName("throwaway")).next
-
-        let (next, effects) = reduce(opened, .discardEventTapped)
-
-        #expect(next.eventDraft == nil)
-        #expect(next.stage == .batchEditor)
-        let assembly = try #require(base.assembly)
-        let kept = try #require(assembly.batch.events.first)
-        #expect(
-            kept.name == PCEventBatchAssembleUnitOfWork.defaultEventName,
-            "the edit is gone: the batch still holds the default-named event"
-        )
-        #expect(next.navigationRequest?.target == .pop)
-        #expect(effects.isEmpty)
-    }
+    // There is no event-editor section. It held five tests — `openEvent` carrying both ids into the
+    // stage, an unknown id being rejected, the three field edits folding into the draft, Back
+    // keeping the edit while dropping the draft, and `discardEventTapped` undoing it. Every one
+    // of them needed the screen, and with it gone an event has no name, colour or date of its
+    // own to edit: `toggling` appends a placeholder and the batch editor's colour reaches it.
 
     // MARK: - Persistence
 
@@ -924,6 +835,71 @@ struct PCEventSelectionReducerTests {
         #expect(next.batches.first?.persistedID == 11, "and it is the same row, not a replacement")
         #expect(next.stage == .dayList(day: day(3)))
         #expect(effects.isEmpty)
+    }
+
+    /// The write that has landed while the editor is still open must not be duplicated on the
+    /// way out.
+    ///
+    /// This is a race, and races are the ones that ship. Naming a batch writes it on a debounce;
+    /// leaving the editor merges the staged row again. If the write has landed and its reload
+    /// has already replaced the registry, the assembly is still keyed `pending(…)` — adoption
+    /// happens on that reload, and a reload that arrived *before* the write had nothing to
+    /// adopt — so the merge is keyed differently from the row it is merging, and appends. One
+    /// batch, two rows, one day listing it twice. Measured on iPhone: the same test passes
+    /// alone and fails inside the full UI run, which is what a race looks like from outside.
+    ///
+    /// The state is built by hand rather than driven, because the reducer cannot produce it:
+    /// `syncCalendar` adopts on every reload, so there is no sequence of actions that ends with
+    /// a landed write, a registry holding it, and an assembly that never learned its id. That
+    /// is exactly the state the race leaves behind, and it is the only honest way to pin the
+    /// merge.
+    @Test("Leaving the editor does not duplicate a batch whose write has already landed")
+    func leavingAnEditorDoesNotDuplicateALandedWrite() throws {
+        // The row the store gave back: a real id, and a fresh `pendingID`, because the mapper
+        // mints one for every row on every load.
+        //
+        // Same name, same colour and the same day as the staged assembly below, because that
+        // is what content matching compares. Getting it wrong here does not make the test
+        // fail loudly — it makes it pass for the wrong reason, which is why the colours are
+        // written out rather than left to two different defaults.
+        let staged = PCEventBatchAssembleUnitOfWork.new(
+            anchor: day(9),
+            name: "Cycle",
+            colorName: "eventColorOption2",
+            using: provider
+        )
+        // The row that write produced, as the reload hands it back: a real id, a fresh
+        // `pendingID` (the mapper mints one per row per load), and otherwise identical
+        // content — which includes the placeholder event's *name*, since that is part of what
+        // `hasSameContent` compares. Building the row from the assembly rather than by hand is
+        // what guarantees it; a hand-written twin can differ in a field the matcher reads, and
+        // then the test passes for the wrong reason.
+        let written = try reloaded([#require(staged.resolved())])
+        var state = session(batches: written)
+        // The staged assembly, still holding the `.pending(…)` key it was created with.
+        state.assembly = staged
+        state.stage = .batchEditor
+        state.day = day(9)
+        state.dayEventColors = state.derivedDayEventColors
+
+        #expect(state.batches.count == 1, "setup: the write has landed")
+        #expect(state.assembly?.mergeKey != state.batches.first?.mergeKey, "setup: two keys, one batch")
+
+        #expect(
+            state.assembly?.batch.hasSameContent(as: state.batches[0], using: provider) == true,
+            "setup: the registry row and the staged assembly describe one batch, by content"
+        )
+        #expect(state.assembly?.canSave == true, "setup: it is named and coloured, so leaving would merge it")
+        let back = reduce(state, .backTapped).next
+
+        #expect(
+            back.batches.count == 1,
+            "one batch, not the same batch twice — got \(back.batches.count)"
+        )
+        #expect(
+            back.batches.first?.persistedID == written.first?.persistedID,
+            "and it is still the written row, adopted rather than replaced by a pending one"
+        )
     }
 
     /// The draft branch on Back: a batch staged by a tap and left alone was never merged, so
@@ -1109,11 +1085,18 @@ struct PCEventSelectionReducerTests {
         #expect(next.multiSelectColor == .option3)
         #expect(next.multiSelectDays == state.multiSelectDays, "picking a colour selects nothing")
         #expect(next.multiSelectMode)
-        // Was "a colour choice is not a write", which was true while the session's days were
-        // staged and nothing existed on disk. Now the batch was written when the days were
-        // tapped, so recolouring it *is* a write — it repaints the days the user already
-        // picked, and the marker would disagree with the row if it did not.
-        #expect(effects.count == 1, "recolouring a session with days writes the batch")
+        #expect(next.multiSelectAssembly?.batch.colorName == PCColorOption.option3.colorName, "and the batch takes it")
+        // Was once the opposite twice over. It began as "a colour choice is not a write" —
+        // true while a session's days were staged and nothing existed on disk. It was then
+        // changed to *expect* a write, because the session wrote its batch on the first tap
+        // and recolouring it is a write. A session writes nothing now, so it is a write
+        // again for the same reason it was not one the first time: the batch it holds is
+        // still a draft, and repainting a draft is not persistence.
+        #expect(effects.isEmpty, "recolouring a session's draft batch writes nothing")
+        #expect(
+            next.dayEventColors.values.flatMap { $0 }.contains(PCColorOption.option3.colorName),
+            "though the days do take the new colour — the markers are projected from the session"
+        )
     }
 
     @Test("Leaving multi-select clears the days *and* the colour")
@@ -1149,16 +1132,28 @@ struct PCEventSelectionReducerTests {
             second.multiSelectAssembly?.batch.pendingID == afterFirst.batch.pendingID,
             "the session reuses one batch"
         )
-        #expect(second.batches.count == 2, "one committed + this one, not three")
+        #expect(
+            second.batches.count == 1,
+            "still just the committed one — a session writes nothing, so there is nothing to add"
+        )
         let grown = try #require(second.multiSelectAssembly)
         #expect(grown.batch.events.count == 3, "and it grew to three days")
     }
 
-    /// The reported symptom, end to end in the reducer: tapping 17, 18 and 19 produced three
-    /// batches, the first holding three events, the second two, the third one. Cumulative,
-    /// which is the signature of a batch being *rebuilt* per tap — each rebuild gets a new
-    /// `pendingID`, a different `mergeKey`, and lands beside the last instead of replacing it.
-    @Test("Tapping three days in a session leaves exactly one batch with three events")
+    /// Three taps, one batch — held in the session rather than in the registry.
+    ///
+    /// **Premise changed.** This asserted `state.batches.count == 1` after three taps, and it
+    /// was the regression guard for the §6.5 bug: tapping 17, 18 and 19 produced three
+    /// batches, the first holding three events, the second two, the third one. The signature
+    /// was cumulative, which is what a batch *rebuilt* per tap looks like — a fresh
+    /// `pendingID` each time, so a different `mergeKey`, landing beside the last instead of
+    /// replacing it.
+    ///
+    /// A session no longer merges per tap, so the registry cannot grow at all and the count
+    /// is no longer the thing that would catch that bug. The assembly is: one object, one
+    /// `pendingID`, holding all three days. That is the same invariant one level up, and it
+    /// is the level the bug now has to break at.
+    @Test("Tapping three days in a session leaves exactly one staged batch with three events")
     func threeTappedDaysProduceOneBatch() throws {
         var state = multiSelecting(session(batches: []), days: [], color: .option2)
 
@@ -1166,87 +1161,75 @@ struct PCEventSelectionReducerTests {
             state = reduce(state, .dayTappedInCalendar(day)).next
         }
 
+        #expect(state.batches.isEmpty, "three taps wrote nothing — an unnamed batch is a draft")
+        let assembly = try #require(state.multiSelectAssembly)
         #expect(
-            state.batches.count == 1,
-            "three taps, one batch — got \(state.batches.count)"
-        )
-        let batch = try #require(state.batches.first)
-        #expect(
-            batch.events.map(\.date) == [day(17), day(18), day(19)].map(provider.startOfDay(for:)),
+            assembly.batch.events.map(\.date) == [day(17), day(18), day(19)].map(provider.startOfDay(for:)),
             "holding all three days, not a growing pile"
         )
-        #expect(batch.colorName == "eventColorOption2", "in the chosen colour")
+        #expect(assembly.batch.colorName == "eventColorOption2", "in the chosen colour")
+        #expect(assembly.batch.name.isEmpty, "and still unnamed, which is why nothing is written")
+        #expect(assembly.canSave == false)
     }
 
-    /// The same three taps, with the reload that follows each one.
+    /// The same three taps, with a reload between each — the timing that produced the §6.5
+    /// bug, and it is still worth driving.
     ///
-    /// `threeTappedDaysProduceOneBatch` above is not enough, and its passing is the reason
-    /// this bug shipped. It drives the reducer alone, so the registry never comes back from
-    /// the store and the session's `mergeKey` is the same `.pending(…)` on every tap — which
-    /// is the only condition under which one assembly can hold. In the app it is not true:
-    /// every write in a session re-fetches and broadcasts, `SingleCalendarModel` answers
-    /// with `syncCalendar`, and `batches` is replaced wholesale by rows the database has
-    /// given real ids. The session's own assembly was left out of the adoption that follows,
-    /// so after the first tap its key answered to nothing and every tap after it appended.
+    /// **Premise changed.** The bug was that a session wrote per tap, so every tap triggered
+    /// a reload, `syncCalendar` replaced `batches` wholesale with rows carrying real ids, and
+    /// the session's `.pending(…)` key answered to nothing after the first — so every tap
+    /// after it appended. The fix was adoption, and this test is why it shipped.
     ///
-    /// The signature is one batch per tap holding the days accumulated so far — which is why
-    /// the report reads as "first batch has 4 events, third has 3" rather than as duplicates.
-    @Test("A reload between taps does not split a session into one batch per tap")
+    /// A session writes nothing now, so there is no per-tap reload to survive, and adoption
+    /// has nothing to adopt until Confirm. The bug cannot reproduce in this shape, which
+    /// makes the test assert the *reason*: the registry is untouched by a reload because
+    /// nothing was ever put in it, and the session's days survive on the assembly alone.
+    @Test("A reload during a session cannot split it, because a session writes nothing")
     func reloadBetweenTapsLeavesOneBatch() throws {
         var state = multiSelecting(session(batches: []), days: [], color: .option2)
 
         for tapped in [day(17), day(18), day(19)] {
             state = reduce(state, .dayTappedInCalendar(tapped)).next
             // Exactly what the store does after a write: read the calendar back and hand the
-            // rows over, ids and all.
+            // rows over, ids and all. Nothing changed, so nothing comes back.
             state = reduce(state, .syncCalendar(calendarID: 42, batches: reloaded(state.batches))).next
         }
 
+        #expect(state.batches.isEmpty, "three taps and three reloads wrote nothing at all")
+        let assembly = try #require(state.multiSelectAssembly)
         #expect(
-            state.batches.count == 1,
-            "three taps and three reloads, one batch — got \(state.batches.count)"
-        )
-        let batch = try #require(state.batches.first)
-        #expect(
-            batch.events.map { provider.startOfDay(for: $0.date) }
+            assembly.batch.events.map { provider.startOfDay(for: $0.date) }
                 == [day(17), day(18), day(19)].map(provider.startOfDay(for:)),
-            "holding all three days, not a growing pile"
+            "holding all three days — the session's days live here, not in the registry"
         )
-        #expect(batch.persistedID != nil, "settled on the id the store gave it")
         #expect(
-            state.multiSelectAssembly?.adoptedPersistedID == batch.persistedID,
-            "and the session knows that id, which is what makes the next tap replace rather than append"
+            assembly.adoptedPersistedID == nil,
+            "and there is no id to adopt, because there is no row of its own"
         )
+        #expect(state.dayEventColors.count == 3, "the three days stay marked throughout")
     }
 
-    /// The reload the session *cannot* survive on its own: a tap lands before the write it
-    /// triggered has come back, so the row in the database is the batch as it was then.
+    /// The mid-round-trip tap — the timing that decided whether §6.5 showed up at all.
     ///
-    /// This is the timing that decides whether the bug shows up at all, which is why the
-    /// test above can pass on one machine and fail on another. Adoption matches on content,
-    /// so requiring the day sets to be equal meant a mid-flight tap left the session
-    /// unadopted *permanently* — and with nothing to drop the earlier shape, that row stayed
-    /// in the registry beside the new one for good, painting its days a second time.
-    @Test("A tap that outruns its own write does not strand the shape the write left behind")
+    /// **Premise changed.** This drove two taps and one reload so the database held the
+    /// one-day shape while the session held two, and asserted the stale shape was dropped
+    /// rather than kept beside the live one, painting its day twice.
+    ///
+    /// With nothing written there is no stale shape: the "reload" hands back an empty
+    /// registry, and what is asserted instead is the property that makes the race
+    /// impossible — one marker per day, however many reloads pass.
+    @Test("A reload landing mid-session cannot leave a stale shape behind")
     func tapArrivingMidRoundTripDoesNotLeaveASnapshot() throws {
         var state = multiSelecting(session(batches: []), days: [], color: .option2)
 
-        // Two taps, then *one* reload: the second tap beat the first write home, so the
-        // database holds the one-day shape.
+        // Two taps, then *one* reload — the second tap used to beat the first write home.
         state = reduce(state, .dayTappedInCalendar(day(17))).next
         state = reduce(state, .dayTappedInCalendar(day(18))).next
         state = reduce(state, .syncCalendar(calendarID: 42, batches: reloaded(state.batches))).next
 
-        #expect(
-            state.batches.count == 1,
-            "the one-day snapshot is dropped, not kept beside the session — got \(state.batches.count)"
-        )
-        let settled = try #require(state.batches.first)
-        #expect(settled.events.count == 2, "on both days")
-        #expect(
-            settled.persistedID == state.multiSelectAssembly?.adoptedPersistedID,
-            "and the session is settled on it"
-        )
+        #expect(state.batches.isEmpty, "nothing to strand — the registry never held a session row")
+        let assembly = try #require(state.multiSelectAssembly)
+        #expect(assembly.batch.events.count == 2, "on both days")
         #expect(
             state.dayEventColors.values.flatMap { $0 }.count == 2,
             "two markers, not three: one per day, not one per row"
@@ -1292,23 +1275,32 @@ struct PCEventSelectionReducerTests {
         )
     }
 
-    /// The same-day adoption case, stated directly. The session writes a row, the write comes
-    /// back under a real id, and the session has to settle on it — or the next tap's write
-    /// appends a second row and one session becomes several batches, which is the §6.5 bug.
-    @Test("A session still adopts the row it wrote, even now that it is unnamed")
-    func sessionAdoptsItsOwnUnnamedRow() throws {
+    /// A session has no row of its own to adopt.
+    ///
+    /// **Premise changed.** This was the adoption case the §6.5 fix rested on: the session
+    /// wrote a row, the write came back under a real id, and the session had to settle on it
+    /// or the next tap would append a second one.
+    ///
+    /// Nothing is written during a session now, so there is no row, no id, and nothing to
+    /// adopt — and, more usefully, nothing for content-based matching to mistake for its own.
+    /// A session can no longer collide with an unrelated untitled batch across a reload,
+    /// because the reload carries no row it could be mistaken for.
+    @Test("A session has no row to adopt, because it writes none")
+    func sessionAdoptsItsOwnUnnamedRow() {
         var state = multiSelecting(session(batches: []), days: [], color: .option2)
         state = reduce(state, .dayTappedInCalendar(day(17))).next
         #expect(state.multiSelectAssembly?.batch.name.isEmpty == true, "setup: a session's batch is unnamed")
 
-        let written = reloaded(state.batches)
-        let reloadedState = reduce(state, .syncCalendar(calendarID: 42, batches: written)).next
+        let reloadedState = reduce(state, .syncCalendar(calendarID: 42, batches: reloaded(state.batches))).next
 
-        let adopted = try #require(reloadedState.multiSelectAssembly?.adoptedPersistedID)
-        #expect(adopted == written.first?.persistedID, "content matching still identifies its own row")
+        #expect(reloadedState.batches.isEmpty, "and the reload has nothing to hand back")
         #expect(
-            reloadedState.batches.count == 1,
-            "one row, not one per tap — got \(reloadedState.batches.count)"
+            reloadedState.multiSelectAssembly?.adoptedPersistedID == nil,
+            "so nothing was adopted — content matching has no candidate of its own"
+        )
+        #expect(
+            reloadedState.multiSelectAssembly?.batch.pendingID == state.multiSelectAssembly?.batch.pendingID,
+            "the session's identity is untouched by the round trip"
         )
     }
 
@@ -1390,34 +1382,31 @@ struct PCEventSelectionReducerTests {
         #expect(next.dayEventColors.values.flatMap { $0 } == ["eventColorOption3", "eventColorOption3"])
     }
 
-    /// Toggling the last day back off has to take the row with it.
+    /// Toggling the last day back off takes the day off the calendar.
     ///
-    /// A session writes on every tap and has no Back button and no Save, so `resolved()`
-    /// returning `nil` for an emptied batch is a delete that only the batch editor's leaving
-    /// handles anywhere else. Without a branch for it the row the user had just emptied was
-    /// still the last one written, so the day stayed coloured on the calendar and stayed in
-    /// the database.
+    /// **Premise changed.** This needed a branch that does not exist any more, and it is worth
+    /// saying what that branch was for. A session used to write on every tap, so a session with
+    /// no Back button and no Save had to handle an emptied batch itself: `resolved()` is
+    /// `nil` for it, the registry kept the last row written, and the day stayed coloured in
+    /// the database after the user had deselected it.
     ///
-    /// The session deletes *immediately* where the editor deletes on the way out, and the
-    /// asymmetry is deliberate: there is no "next tap" to undo a mis-tap with, so the row has
-    /// to go before the user can do anything else with it.
-    @Test("Toggling every day back off removes the session's batch")
-    func multiSelectTogglingTheLastDayOffDeletesTheBatch() throws {
+    /// With nothing written there is no row to remove, and the marker goes because the marker
+    /// was always projected from the selection rather than read off a row. The assertion that
+    /// matters is the one about the day, not the registry: an emptied session must paint
+    /// nothing.
+    @Test("Toggling every day back off takes the session's days off the calendar")
+    func multiSelectTogglingTheLastDayOffDeletesTheBatch() {
         var state = multiSelecting(session(batches: []), days: [], color: .option2)
         state = reduce(state, .dayTappedInCalendar(day(17))).next
-        #expect(state.batches.count == 1)
-
-        // Give the session an id the way a reload would, so the removal has to find the row
-        // by that key rather than by a `.pending(…)` one that matches nothing.
-        state = reduce(state, .syncCalendar(calendarID: 42, batches: reloaded(state.batches))).next
-        let row = try #require(state.batches.first)
-        #expect(row.persistedID != nil, "the row came back with an id")
+        #expect(state.dayEventColors.count == 1, "setup: the tapped day is marked")
+        #expect(state.batches.isEmpty, "setup: and nothing was written for it")
 
         state = reduce(state, .dayTappedInCalendar(day(17))).next
 
         #expect(state.multiSelectDays.isEmpty)
         #expect(state.multiSelectAssembly?.batch.isEmpty == true, "the batch is empty")
-        #expect(state.batches.isEmpty, "and so is the registry — the day loses its marker")
+        #expect(state.batches.isEmpty, "and there was never a row to remove")
+        #expect(state.dayEventColors.isEmpty, "the day loses its marker")
     }
 
     /// Confirming an emptied session must not leave a batch behind — not in the registry, and
@@ -1435,16 +1424,14 @@ struct PCEventSelectionReducerTests {
     func confirmingAnEmptiedSessionLeavesNoBatch() {
         var state = multiSelecting(session(batches: []), days: [], color: .option2)
         state = reduce(state, .dayTappedInCalendar(day(17))).next
-        #expect(state.batches.count == 1, "setup: the tap wrote the batch")
+        #expect(state.dayEventColors.count == 1, "setup: the tap marked the day")
 
-        // Give it an id the way a reload would. This is what makes the assertion below mean
-        // something: the row has a *persisted* id by the time it is deleted, so the filter has
-        // to find it by `assembly.mergeKey` (which prefers the adopted id) rather than by the
-        // `.pending(…)` key it was created under — a `.pending` key matches no registry row.
-        state = reduce(state, .syncCalendar(calendarID: 42, batches: reloaded(state.batches))).next
-        #expect(state.batches.first?.persistedID != nil, "setup: the row came back with an id")
+        // The second tap takes the day back off. Nothing was written, so there is no row to
+        // come back with an id — the emptiness below has to be reached by declining, not by
+        // deleting.
         state = reduce(state, .dayTappedInCalendar(day(17))).next
-        #expect(state.batches.isEmpty, "setup: the second tap took the row away again")
+        #expect(state.batches.isEmpty, "setup: nothing was ever written")
+        #expect(state.dayEventColors.isEmpty, "setup: and the day is unmarked again")
 
         let (next, effects) = reduce(state, .confirmMultiSelectTapped)
 
@@ -1458,6 +1445,10 @@ struct PCEventSelectionReducerTests {
         )
         #expect(next.batches.isEmpty, "the registry is still empty")
         #expect(next.stage == .idle, "and nothing is pushed")
+        #expect(
+            next.navigationRequest == nil,
+            "an emptied session has nothing to review, so Confirm opens no editor"
+        )
         #expect(effects.isEmpty, "there was no row, so there is nothing to write")
         #expect(
             next.dayEventColors.isEmpty,
@@ -1465,21 +1456,35 @@ struct PCEventSelectionReducerTests {
         )
     }
 
-    @Test("confirmMultiSelectTapped ends the session without opening the editor")
-    func confirmMultiSelectEndsTheSession() {
+    /// **Premise changed.** This asserted the opposite of what Confirm does now: it was named
+    /// "ends the session without opening the editor" and said why — "the days were written as
+    /// they were tapped, so Save has nothing to commit".
+    ///
+    /// They are no longer written as they are tapped. A session's batch is unnamed until
+    /// someone names it, so Confirm is the door into the editor that asks for the name, and
+    /// from there the rules are the ones for creating a batch.
+    @Test("confirmMultiSelectTapped ends the session and opens the batch editor on it")
+    func confirmMultiSelectEndsTheSession() throws {
         let state = multiSelecting(session(), days: [day(6), day(4)], color: .option2)
         let (next, effects) = reduce(state, .confirmMultiSelectTapped)
 
-        // The days were written as they were tapped, so Save has nothing to commit. It ends
-        // the session and leaves the calendar in single-select. It does not open the editor:
-        // that was a review step over staged data, and there is no staged data left.
         #expect(!next.multiSelectMode, "single-select after Save")
         #expect(next.multiSelectDays.isEmpty)
         #expect(next.multiSelectColor == nil)
         #expect(next.multiSelectAssembly == nil, "the scratchpad is released")
-        #expect(next.stage == .idle, "no push into the batch editor")
-        #expect(next.navigationRequest == nil, "Save is not a navigation")
-        #expect(effects.isEmpty, "the batch was already written; there is nothing to write")
+        let assembly = try #require(next.assembly, "the session became the batch being edited")
+        #expect(
+            assembly.batch.events.count == 2,
+            "holding both selected days — the editor reviews the batch the taps built"
+        )
+        #expect(next.stage == .batchEditor)
+        #expect(next.navigationRequest?.target == .presentBatchEditor, "Confirm is now a navigation")
+        #expect(effects.isEmpty, "and still writes nothing: the batch is still unnamed")
+        #expect(
+            assembly.origin == .new,
+            "handed over as a new batch, not as an existing one — otherwise Back would write an unnamed row"
+        )
+        #expect(assembly.isDraft, "so leaving without naming it writes nothing, exactly like a tapped day")
     }
 
     @Test("Confirming ends the session, so the calendar behind the editor is not left mid-selection")
@@ -1492,7 +1497,11 @@ struct PCEventSelectionReducerTests {
         #expect(!next.multiSelectMode)
         #expect(next.multiSelectDays.isEmpty)
         #expect(next.multiSelectColor == nil)
-        #expect(next.assembly != nil, "the session became a staged batch, not a discarded one")
+        #expect(next.assembly != nil, "the session became the staged batch, not a discarded one")
+        #expect(
+            next.navigationRequest?.target == .presentBatchEditor,
+            "and the editor is open on it, which is where the name is asked for"
+        )
         #expect(
             next.dayEventColors
                 == PCCalendarMarkerProjector.colorsByDay(
@@ -1504,12 +1513,16 @@ struct PCEventSelectionReducerTests {
         )
     }
 
-    /// Save with nothing selected still ends the session — it just writes nothing.
+    /// Save with nothing selected still ends the session — it just opens nothing.
     ///
-    /// It used to be rejected outright, because it used to build a batch and open an editor
-    /// for it. Now it cannot build anything, and a checkmark that does nothing when tapped is
-    /// a worse affordance than one that simply closes the session.
-    @Test("confirmMultiSelectTapped with nothing to save ends the session and writes nothing")
+    /// **Premise changed**, twice over. It was first rejected outright, because it used to
+    /// build a batch and open an editor for it; then it built nothing and only closed the
+    /// session, and the name said "is rejected" while nothing was rejected; now it opens the
+    /// editor, so the question is again what it does when there is nothing to review.
+    ///
+    /// The answer is the same as it was: end the session, open nothing, write nothing. An
+    /// editor over an empty batch is the state that has no user-visible meaning at all.
+    @Test("confirmMultiSelectTapped with nothing to save ends the session and opens nothing")
     func confirmMultiSelectIsRejected() {
         let committed = session()
 
@@ -1517,12 +1530,18 @@ struct PCEventSelectionReducerTests {
         let afterUncoloured = reduce(uncoloured, .confirmMultiSelectTapped).next
         #expect(!afterUncoloured.multiSelectMode, "the session ended")
         #expect(afterUncoloured.batches == committed.batches, "and no batch was invented")
+        #expect(
+            afterUncoloured.navigationRequest == nil,
+            "an uncoloured session has no days — the tap guard means one cannot happen, but a stale one opens nothing"
+        )
 
         var empty = multiSelecting(committed, days: [], color: .option1)
         empty.multiSelectAssembly = nil
         let afterEmpty = reduce(empty, .confirmMultiSelectTapped).next
         #expect(!afterEmpty.multiSelectMode, "the session ended")
         #expect(afterEmpty.batches == committed.batches, "and nothing was written")
+        #expect(afterEmpty.assembly == nil, "with no assembly there is nothing to stage")
+        #expect(afterEmpty.navigationRequest == nil, "so no editor is opened")
 
         // Not in a session at all: only the mode guard can reject this, and rejecting means
         // leaving the state untouched.
@@ -1561,18 +1580,19 @@ struct PCEventSelectionReducerTests {
     ///
     /// Listed as state/action *pairs* rather than one action list over a shared set of
     /// states, because three of them carry an identity payload that only matches a
-    /// particular state: `openBatch` is looked up by `mergeKey` and `openEvent` by
-    /// `pendingID`, so a fixed random id would simply miss and the action would look
-    /// unhandled when it is in fact merely pointed at nothing.
+    /// particular state: `openBatch` is looked up by `mergeKey`, `removeEvent` and
+    /// `toggleEventSelection` by `pendingID`, so a fixed random id would simply miss and the
+    /// action would look unhandled when it is in fact merely pointed at nothing.
     @Test("Every action is covered: it either changes state or emits an effect")
     func everyActionIsCovered() throws {
         let idle = session()
         let editing = editing(idle, on: 1)
-        let staged = stagedSession()
         let multi = multiSelecting(idle, days: [day(4)])
-        // `confirmMultiSelectTapped` needs a colour to build with, so the session it runs
-        // against is a *coloured* one — confirming an uncoloured session is rejected and
-        // covered separately.
+        // `confirmMultiSelectTapped` needs a session that has days in it: it stages the batch
+        // and opens the editor on it, and an uncoloured session stages nothing (the colour is
+        // what gates a *tap*, so there are no days to stage), so confirming one is inert and
+        // this test would rightly report it unexercised. Not because a colour is declined —
+        // it used to be, and that guard is gone.
         var multiColoured = multi
         multiColoured.multiSelectColor = .option3
 
@@ -1590,7 +1610,7 @@ struct PCEventSelectionReducerTests {
             ("dayTappedInCalendar", idle, .dayTappedInCalendar(day(4))),
             ("startNewBatch", idle, .startNewBatch(on: day(4))),
             ("openBatch", openable, .openBatch(id: openableKey)),
-            ("backTapped", staged, .backTapped),
+            ("backTapped", editing, .backTapped),
             ("closeTapped", editing, .closeTapped),
             ("cancelTapped", editing, .cancelTapped),
             ("navigationRequestHandled", editing, .navigationRequestHandled),
@@ -1606,11 +1626,6 @@ struct PCEventSelectionReducerTests {
             // is the test doing its job, not a fixture that needs loosening.
             ("clearEventSelection", multiDayEditing, .clearEventSelection),
             ("applyTimeToSelectedEvents", multiDayEditing, .applyTimeToSelectedEvents(day(4))),
-            ("openEvent", editing, .openEvent(pendingID: openableEvent)),
-            ("setEventName", staged, .setEventName("n")),
-            ("setEventDate", staged, .setEventDate(day(7))),
-            ("setEventColor", staged, .setEventColor(.option1)),
-            ("discardEventTapped", staged, .discardEventTapped),
             ("deleteBatches", idle, .deleteBatches(idle.batches)),
             ("setMultiSelectMode", idle, .setMultiSelectMode(true)),
             ("setMultiSelectColor", idle, .setMultiSelectColor(.option2)),
@@ -1649,10 +1664,12 @@ struct PCEventSelectionReducerTests {
         the §6.2 case list, less the three that went with the checkmarks: `saveTapped`, \
         `saveEventTapped` and `commitTapped`. None of them had a button by the time this \
         ran — `commitTapped` never did — and an action no screen can send is a case nothing \
-        can exercise. Since §6.2 the list has also grown by five: the event selection and the \
-        time it applies.
+        can exercise. Since §6.2 the list also grew by five: the event selection and the \
+        time it applies. It has since lost five more, with the event editor: `openEvent`, \
+        `setEventName`, `setEventDate`, `setEventColor` and `discardEventTapped` had a screen \
+        and no longer do.
         """)
-        #expect(cases.count == 32, message)
+        #expect(cases.count == 27, message)
     }
 
     @Test("A rejected action leaves the state byte-identical")
@@ -1661,15 +1678,11 @@ struct PCEventSelectionReducerTests {
 
         // The two the plan names explicitly.
         #expect(reduce(state, .setBatchName("n")).next == state, "no assembly")
-        #expect(reduce(state, .openEvent(pendingID: UUID())).next == state, "unknown event")
 
         // And the rest of the guarded ones.
         #expect(reduce(state, .setBatchColor(.option1)).next == state)
-        #expect(reduce(state, .removeEvent(pendingID: UUID())).next == state)
+        #expect(reduce(state, .removeEvent(pendingID: UUID())).next == state, "unknown event")
         #expect(reduce(state, .toggleDay(day(5))).next == state)
-        #expect(reduce(state, .setEventName("n")).next == state)
-        #expect(reduce(state, .setEventDate(day(5))).next == state)
-        #expect(reduce(state, .setEventColor(.option1)).next == state)
         #expect(reduce(state, .backTapped).next == state)
         #expect(reduce(state, .openBatch(id: .pending(UUID()))).next == state)
     }
@@ -1718,10 +1731,10 @@ struct PCEventSelectionReducerTests {
 
     // MARK: - Action inventory
 
-    /// The §6.2 case list, less the three that went with the checkmarks. These walks run
-    /// against a plain session, so the multi-select cases are exercised in their *rejected*
-    /// form here; the accepted form is covered by `everyActionIsCovered` and the dedicated
-    /// multi-select tests.
+    /// The §6.2 case list, less the three that went with the checkmarks and the five that went
+    /// with the event editor. These walks run against a plain session, so the multi-select
+    /// cases are exercised in their *rejected* form here; the accepted form is covered by
+    /// `everyActionIsCovered` and the dedicated multi-select tests.
     private var allActions: [(name: String, action: PCEventSelectionAction)] {
         [
             ("ensureAssemblyStarted", .ensureAssemblyStarted),
@@ -1736,11 +1749,6 @@ struct PCEventSelectionReducerTests {
             ("setBatchColor", .setBatchColor(.option1)),
             ("toggleDay", .toggleDay(day(5))),
             ("removeEvent", .removeEvent(pendingID: UUID())),
-            ("openEvent", .openEvent(pendingID: UUID())),
-            ("setEventName", .setEventName("n")),
-            ("setEventDate", .setEventDate(day(7))),
-            ("setEventColor", .setEventColor(.option1)),
-            ("discardEventTapped", .discardEventTapped),
             ("deleteBatches", .deleteBatches([])),
             ("setMultiSelectMode", .setMultiSelectMode(true)),
             ("setMultiSelectColor", .setMultiSelectColor(.option1)),

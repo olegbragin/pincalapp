@@ -43,40 +43,26 @@ final class BatchEditorKnownBugTests: XCTestCase {
         let nameField = app.textFields["batch-name-field"]
         XCTAssertTrue(nameField.waitForExistence(timeout: 5), "Batch editor should open for the anchor day")
 
-        // §16.1 step 3 — name the batch, then go into its event and name that.
+        // §16.1 step 3 — name the batch and colour it.
         // A colour was required at every save: a batch staged from a day tap had
         // `colorName: ""` and an uncoloured batch's Save was disabled. It gates nothing now.
-        KeyboardAvoidanceTestSupport.replaceText(in: nameField, with: batchName)
+        //
+        // This step used to go on into the batch's event and name that too, through the child
+        // editor, and the assertions at the tail leaned on that: they identified the surviving
+        // event by being the only *named* one. There is no way to name an event any more, so the
+        // tail reads the day markers and the row count instead — which is what the bug is
+        // actually about, and what §16.3's two hypotheses actually distinguish.
+        //
+        // **Colour before name**, as everywhere else. Typing raises the keyboard, the keyboard
+        // covers the editor's first row, and the picker is in that row — so picking first means
+        // no keyboard is up yet. The name follows, and it is the last thing typed precisely
+        // because typing is what raises the keyboard. See `selectColor`.
         KeyboardAvoidanceTestSupport.selectColor("eventColorOption1", in: app)
+        KeyboardAvoidanceTestSupport.replaceText(in: nameField, with: batchName)
 
         // By index: a row's text is a formatted timestamp, whose wording is the locale's.
         let placeholderRow = KeyboardAvoidanceTestSupport.eventRow(0, in: app)
         XCTAssertTrue(placeholderRow.waitForExistence(timeout: 5), "The batch should list its placeholder event")
-        // Wait for the row to stop moving before tapping it.
-        //
-        // The colour sheet is still dismissing at this point, and the row's frame is not final
-        // until it is. `selectColor` waits for the *picker* to come back and then sleeps 0.3s,
-        // which used to be enough while the editor was pushed — the sheet's own presentation
-        // ends when its content does, and the content was the whole screen. As a sheet the
-        // editor animates into place behind it, so the row lands, moves and settles after the
-        // picker is already back. A tap at a stale centre hits nothing, and XCTest reports it
-        // as "not hittable" — which reads as the element being unreachable and is really the
-        // element being somewhere it no longer is.
-        _ = KeyboardAvoidanceTestSupport.stableFrame(of: placeholderRow, timeout: 4)
-        placeholderRow.tap()
-
-        let eventNameField = app.textFields["event-name-field"]
-        XCTAssertTrue(eventNameField.waitForExistence(timeout: 5), "Event editor should open")
-        KeyboardAvoidanceTestSupport.replaceText(in: eventNameField, with: "Named")
-        // The event editor's Back. Its Save checkmark is gone; the rename reached the batch on
-        // the keystroke, so leaving loses nothing.
-        let eventEditorBack = app.buttons["event-editor-back-button"]
-        XCTAssertTrue(eventEditorBack.isEnabled, "The event editor must be leaveable")
-        eventEditorBack.tap()
-        XCTAssertTrue(
-            app.buttons["batch-editor-back-button"].waitForExistence(timeout: 5),
-            "Back in the batch editor after leaving the event editor"
-        )
 
         // §16.1 step 4 — add the other three days, then leave.
         for day in addedDays {
@@ -163,18 +149,16 @@ final class BatchEditorKnownBugTests: XCTestCase {
             "The list must hold exactly one batch, not zero and not two"
         )
 
-        // The surviving event is the one on the day that was *kept* — and it is a
-        // placeholder, not the event that was named. `toggling` appends
-        // `Self.placeholder(on:colorName:)` for a day it turns on, so the events added in
-        // step 4 have empty names. The only named event is the anchor's, and the anchor was
-        // one of the three removed — so "Named" must be gone, and exactly one unnamed event
-        // row must be left.
+        // The surviving event is the one on the day that was *kept*, and every event here is a
+        // placeholder. `toggling` appends `Self.placeholder(on:colorName:)` for a day it turns
+        // on, and with the event editor gone there is no way to name one — so "exactly one event
+        // row, and it is the surviving day's" is the whole of the claim.
         //
-        // **Premise changed.** Both of these used to be text queries — one counting rows whose
-        // label contained "at", one asserting the name "Named" was gone. A card's row now shows
-        // a formatted timestamp and *no name at all*, so the second assertion could not fail:
-        // the string it looks for is not on the screen anywhere. Rows are counted by identifier
-        // instead, which is the only handle that survives a label the locale decides.
+        // **Premise changed, twice.** Both of these used to be text queries — one counting rows
+        // whose label contained "at", one asserting the name "Named" was gone. A card's row now
+        // shows a formatted timestamp and *no name at all*, so the second assertion could not
+        // fail: the string it looks for is not on the screen anywhere. Rows are counted by
+        // identifier instead, which is the only handle that survives a label the locale decides.
         let eventRows = KeyboardAvoidanceTestSupport.cardEventRows(in: app)
         XCTAssertEqual(
             eventRows.count, 1,
@@ -182,10 +166,6 @@ final class BatchEditorKnownBugTests: XCTestCase {
         )
     }
 
-    /// Event rows in the batch editor's list.
-    ///
-    /// Scoped to `collectionViews` on purpose: a global `app.buttons` search also matches
-    /// the keyboard's dictation key, whose label contains "at".
     /// How many events the batch editor is listing.
     ///
     /// Counts only what the lazy `List` has realized, so it is a floor and not the batch's

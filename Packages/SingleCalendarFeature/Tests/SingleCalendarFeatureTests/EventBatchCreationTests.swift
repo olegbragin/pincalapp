@@ -76,10 +76,10 @@ struct EventBatchCreationTests {
     // MARK: - The event list, projected from the store
 
     /// These four used to test `prepare(with:)` and `apply(with:)` on the list view model.
-    /// Neither method survives: staging is `PCEventBatchAssembleUnitOfWork.new` and applying an edited
-    /// event is `persistEventDraft` in the reducer, both already covered there.
-    /// What the tests were really guarding is kept, because it is still a live invariant —
-    /// a batch with two events sharing a `pendingID` could not be told apart.
+    /// Neither method survives: staging is `PCEventBatchAssembleUnitOfWork.new` and applying a
+    /// time to a selection is `applyTimeToSelectedEvents` in the reducer, both already covered
+    /// there. What the tests were really guarding is kept, because it is still a live
+    /// invariant — a batch with two events sharing a `pendingID` could not be told apart.
     @MainActor
     @Test func theAssemblyMintsUniqueIDsAndSortsByDate() throws {
         let store = Fixture.makeStore(persistence: InMemoryCalendarPersisting())
@@ -100,29 +100,22 @@ struct EventBatchCreationTests {
     }
 
     @MainActor
-    @Test func editingAnEventRewritesItInPlaceRatherThanAppending() throws {
+    @Test func recolouringTheBatchRewritesItsEventsInPlaceRatherThanAppending() throws {
         let store = Fixture.makeStore(persistence: InMemoryCalendarPersisting())
         store.send(.startNewBatch(on: Fixture.day(3)))
         store.send(.toggleDay(Fixture.day(4)))
-        let target = try #require(store.state.assembly?.batch.events[0])
 
-        store.send(.openEvent(pendingID: target.pendingID))
-        store.send(.setEventName("Swim"))
-        store.send(.setEventColor(.option3))
+        store.send(.setBatchColor(.option3))
 
         let events = try #require(store.state.assembly?.batch.events)
         #expect(
-            store.state.stage != .idle,
-            "still in the event editor: the batch was rewritten by the keystroke, not by leaving"
+            store.state.stage == .batchEditor,
+            "still in the batch editor: the batch was rewritten by the edit, not by leaving"
         )
         #expect(events.count == 2, "edited, not appended")
         #expect(
-            events.filter { $0.colorName == "eventColorOption3" }.count == 1,
-            "exactly the edited event changed colour"
-        )
-        #expect(
-            events.filter { $0.colorName == store.state.assembly!.batch.colorName }.count == 1,
-            "and the other placeholder still wears the batch's colour, untouched"
+            events.allSatisfy { $0.colorName == "eventColorOption3" },
+            "the batch's colour reaches every event it holds"
         )
     }
 

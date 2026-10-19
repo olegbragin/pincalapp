@@ -59,48 +59,6 @@ enum TestDataSeeder {
         _ = try? calendarBox.put(calendar3)
     }
 
-    static func seedBasicCalendar(
-        into store: Store,
-        name: String,
-        year: Int = currentYear,
-        columns: Int = 2
-    ) -> PPCalendar {
-        let calendarBox = store.box(for: PPCalendar.self)
-        let calendar = PPCalendar(name: name, year: year, numberOfColumns: columns)
-        _ = try? calendarBox.put(calendar)
-        return calendar
-    }
-
-    static func seedEventBatch(
-        into store: Store,
-        calendar: PPCalendar,
-        title: String,
-        color: String,
-        eventDays: [Int],
-        year: Int = currentYear,
-        month: Int = Calendar.current.component(.month, from: Date())
-    ) -> PPEventBatch {
-        let batchBox = store.box(for: PPEventBatch.self)
-        let eventBox = store.box(for: PPEvent.self)
-        let calendarBox = store.box(for: PPCalendar.self)
-
-        let batch = PPEventBatch(title: title, color: color)
-        _ = try? batchBox.put(batch)
-
-        let events = eventDays.map { day in
-            PPEvent(name: "Event1", color: color, date: date(year: year, month: month, day: day))
-        }
-        try? eventBox.put(events)
-        batch.events.replace(events)
-        try? batch.events.applyToDb()
-
-        guard let savedCal = try? calendarBox.get(calendar.id) else { return batch }
-        savedCal.eventBatches.append(batch)
-        try? savedCal.eventBatches.applyToDb()
-
-        return batch
-    }
-
     // MARK: - Private Helpers
 
     static var currentYear: Int {

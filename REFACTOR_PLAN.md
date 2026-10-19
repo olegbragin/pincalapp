@@ -1,6 +1,13 @@
 # Refactor Plan: Batch Assembly as a Unidirectional Pipeline
 
-> **Status:** proposed. Stage 0 is complete. No refactoring code has been written.
+> **Status:** superseded. This plan was carried out; `STAGE8_HANDOVER.md` records where it
+> landed and what it cost. **It is kept as the record of the decisions, not as a description of
+> the code** — several things it describes no longer exist (the event editor and its
+> `openEvent` / `setEventName` / `setEventDate` / `setEventColor` / `discardEventTapped` actions,
+> `PCNameAutosave`, the `.eventEditor` route). Read `AGENTS.md` for how the code is now, and
+> `TEST_BASELINE.md` for the stage history.
+>
+> **Status (as originally written):** proposed. Stage 0 is complete. No refactoring code has been written.
 >
 > **Scope:** `Packages/CoreDomain`, `Packages/CorePersistence`,
 > `Packages/CalendarListFeature`, `Packages/SingleCalendarFeature`, plus the

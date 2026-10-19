@@ -85,7 +85,10 @@ struct PCEventBatchAssembleUnitOfWorkTests {
             assembler.batch.events[0].colorName == assembler.batch.colorName,
             "the event inherits the batch's colour, so recolouring one recolours the other"
         )
-        #expect(assembler.canSave, "a colour alone makes it writable — the name is not the gate")
+        #expect(
+            assembler.canSave == false,
+            "an unnamed batch is not writable yet — naming it is what writes it, see `canSave`"
+        )
         #expect(assembler.adoptedPersistedID == nil)
     }
 
@@ -122,7 +125,7 @@ struct PCEventBatchAssembleUnitOfWorkTests {
         #expect(assembler.batch.events.allSatisfy { $0.colorName == PCColorOption.option2.colorName })
         #expect(assembler.batch.events.allSatisfy { $0.name == PCEventBatchAssembleUnitOfWork.defaultEventName })
         #expect(assembler.batch.name.isEmpty, "a session's batch is unnamed too")
-        #expect(assembler.canSave)
+        #expect(assembler.canSave == false, "and a session's taps write nothing until it is named")
         let dates = assembler.batch.events.map(\.date)
         #expect(dates == dates.sorted(), "order must not depend on tap order")
         #expect(provider.isSameDay(dates[0], day(6, 1)))
@@ -131,16 +134,19 @@ struct PCEventBatchAssembleUnitOfWorkTests {
 
     /// A nil colour is defaulted rather than honoured.
     ///
-    /// The reducer refuses to confirm a session without a colour, so this is a defensive
-    /// branch — and the two "a new batch" entry points should not disagree about what one
-    /// looks like just because one of them was handed nil.
+    /// The colour is what gates a *tap*, so no screen can hand this a session without one
+    /// — which is what makes the branch defensive. (It used to be defended twice over: the
+    /// reducer also refused to *confirm* an uncoloured session, and that guard is gone now that
+    /// Confirm opens the editor rather than building the batch.) What still matters is that the
+    /// two "a new batch" entry points do not disagree about what one looks like just because one
+    /// of them was handed nil.
     @Test("new(all:color:) with a nil colour falls back to the first available colour")
     func newAllNilColor() {
         let assembler = PCEventBatchAssembleUnitOfWork.new(all: [day(6, 1)], color: nil, using: provider)
 
         #expect(assembler.batch.colorName == PCColorOption.firstAvailable.colorName)
         #expect(assembler.batch.events.allSatisfy { $0.colorName == PCColorOption.firstAvailable.colorName })
-        #expect(assembler.canSave)
+        #expect(assembler.canSave == false, "the colour is there; the name is what is missing")
     }
 
     @Test("existing(_:) records the row it was opened from")
@@ -162,12 +168,22 @@ struct PCEventBatchAssembleUnitOfWorkTests {
 
     // MARK: - canSave
 
-    @Test("canSave requires a colour, and does not care about the name")
+    /// **Premise changed.** This asserted the opposite, and said so in its name: "canSave
+    /// requires a colour, and does not care about the name", with `"a nameless batch is still a
+    /// batch"` as the load-bearing line.
+    ///
+    /// The name is now required too. Not because a batch without one is meaningless — it is a
+    /// perfectly good set of dated, coloured events — but because it is a batch *nobody asked
+    /// for*: an unnamed row is indistinguishable from a misclick on a calendar that is a grid
+    /// of cells, and `deleteBatches` has no undo anywhere in the app, so such a row costs four
+    /// taps to remove. Requiring the name is what makes the day stay a *draft* until someone
+    /// says what it is, which is the same rule `isDraft` states from the other side.
+    @Test("canSave requires a name and a colour")
     func canSaveRequirements() {
         #expect(namedAssembler().canSave)
 
-        #expect(namedAssembler(name: "").canSave, "a nameless batch is still a batch")
-        #expect(namedAssembler(color: nil).canSave == false, "no colour is the only refusal")
+        #expect(namedAssembler(name: "").canSave == false, "an unnamed batch is a draft, not a row")
+        #expect(namedAssembler(color: nil).canSave == false, "and an uncoloured one is not written either")
     }
 
     /// An emptied batch stays writable, because that is how it gets deleted.

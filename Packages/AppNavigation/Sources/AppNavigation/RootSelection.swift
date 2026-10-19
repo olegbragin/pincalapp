@@ -29,9 +29,12 @@ public enum SidebarCategory: Equatable, Hashable {
 /// destination already held a stale copy of what the store said. Two copies of "which
 /// batch am I editing" is the second source of truth this package exists to avoid.
 ///
-/// So a route says only *where*, and the destination reads *what* from the store. A
-/// screen cannot be handed a different event than the store says is open, because there
-/// is no longer a way to hand it one.
+/// So a route says only *where*, and the destination reads *what* from the store.
+///
+/// `.eventEditor` went the way the payload did, one step further: with the screen deleted, a
+/// route naming it could only ever resolve to `EmptyView`, which is a route that renders
+/// nothing on purpose. Nothing pushes it, so keeping it would mean keeping a case alive only
+/// so the switch statements that enumerate routes have something to answer for.
 public enum AppRoute: Hashable {
     /// Sidebar category selection
     case sidebar(SidebarCategory)
@@ -39,9 +42,8 @@ public enum AppRoute: Hashable {
     /// Split-view detail column replacements (open)
     case calendar(Int64, toRoot: Bool)
 
-    // Navigation stack pushes
+    /// Navigation stack pushes
     case dayBatches
-    case eventEditor
 
     // Sheets
     ///
@@ -58,7 +60,7 @@ public enum AppRoute: Hashable {
             return .open // Changes split-view content column
         case .calendar:
             return .open
-        case .dayBatches, .eventEditor:
+        case .dayBatches:
             return .push
         case .batchEditor, .addCalendar:
             return .present

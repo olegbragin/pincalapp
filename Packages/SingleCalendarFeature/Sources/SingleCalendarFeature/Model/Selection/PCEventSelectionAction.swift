@@ -36,13 +36,17 @@ public enum PCEventSelectionAction: Equatable {
     /// It falls back to `.pending(_)` only for a batch that has never been written, which
     /// is the one case where there is no durable identity to offer.
     ///
-    /// `openEvent` and `removeEvent` still match on `pendingID`, and that is right: their
-    /// targets live inside the *staged assembly*, which is one value in state and is never
-    /// rebuilt from a DTO, so their ids are stable for as long as the edit lasts.
+    /// `removeEvent` still matches on `pendingID`, and that is right: its target lives inside
+    /// the *staged assembly*, which is one value in state and is never rebuilt from a DTO, so
+    /// the id is stable for as long as the edit lasts.
     case openBatch(id: EventBatchKey)
-    /// "Turn this multi-select session into a batch." Needs a colour to build the batch
-    /// with, so the reducer declines while `multiSelectColor` is `nil`. It was deferred to
-    /// Stage 7 along with the colour itself.
+    /// "Turn this multi-select session into a batch" — and, since the session's batch is no
+    /// longer written as the days are tapped, that means opening the batch editor on it.
+    ///
+    /// Nothing is declined here any more. It used to build the batch itself and was refused
+    /// without a colour, and then it built nothing and simply ended the session, which left
+    /// the user with a batch nobody had named and no place to name it. The colour is still
+    /// what gates a *tap*, so a session that ends here has had one since its first day.
     case confirmMultiSelectTapped
 
     // MARK: Stage transitions
@@ -64,19 +68,22 @@ public enum PCEventSelectionAction: Equatable {
 
     /// "I have finished typing that name."
     ///
-    /// Carries nothing and changes nothing, because the keystrokes already merged the batch —
-    /// this exists only to end the debounce early, which is a function of time and so cannot
-    /// live in a pure reducer. The store answers it by flushing `nameAutosave`.
+    /// Carries nothing and changes nothing, because the keystrokes already merged the batch into
+    /// the registry. What they deliberately did **not** do is write it: every write publishes a
+    /// cache change that comes back as a `syncCalendar`, and one landing mid-typing would roll
+    /// the registry back to an older shape. So this is the action that ends the wait, and the
+    /// store answers it by writing what the keystrokes merged.
     ///
-    /// Without it, "save as soon as the name is finished" is only true within 250 ms of the
-    /// last keystroke. Everything that leaves the editor already flushes — Back, the calendar
-    /// switch — so this only covers the user submitting the field and then not leaving:
-    /// switching apps, or sitting and looking at the batch they just named.
+    /// It fires from two places, and both are "typing is over": the field's Done key, and the
+    /// field losing focus. Leaving the editor does the same thing without asking, so the one
+    /// case this does not cover — a user who submits the field and then does not leave, switches
+    /// apps, or sits looking at the batch they just named — is exactly the one it exists for.
     case nameEditingFinished
 
-    /// The event list is selecting rather than opening. `false` also drops the selection —
-    /// leaving selection mode and leaving a selection are one gesture, and keeping the ids
-    /// would let the time picker apply to events the user can no longer see marked.
+    /// The list selects rows rather than opening them — there is no event editor behind a row
+    /// any more, so a tap on one means "include this" and nothing else. `false` also drops the
+    /// selection: leaving selection mode and leaving a selection are one gesture, and keeping
+    /// the ids would let the time picker apply to events the user can no longer see marked.
     case setEventSelectionMode(Bool)
     /// "Include this event in the selection."
     case toggleEventSelection(pendingID: UUID)
@@ -84,10 +91,12 @@ public enum PCEventSelectionAction: Equatable {
     case clearEventSelection
     /// "Give every selected event the time of day in `time`."
     ///
-    /// Carries the picked instant whole, as the event editor's `setEventDate` does, and lets
-    /// the reducer extract the time of day from it through `PCCalendarDataProvider`. The
-    /// alternative — carrying `(hour, minute)` as its own case — would make every caller
-    /// decide how to name a time, which is the arithmetic the provider exists to own.
+    /// This is now the *only* way a single event's own fields change: its name and colour come
+    /// from `toggling` as a placeholder wearing the batch's colour, and there is no screen that
+    /// edits either. Carrying the picked instant whole and letting the reducer extract the time
+    /// of day through `PCCalendarDataProvider` keeps that arithmetic in one place — the
+    /// alternative, carrying `(hour, minute)` as its own case, would make every caller decide
+    /// how to name a time.
     ///
     /// An empty selection is declined rather than applied to the whole batch. "Apply to
     /// everything" is a real thing to want, but it is a different gesture from "apply to
@@ -95,16 +104,8 @@ public enum PCEventSelectionAction: Equatable {
     /// "everything" by default.
     case applyTimeToSelectedEvents(Date)
 
-    // MARK: Event editor
-
-    case openEvent(pendingID: UUID)
-    case setEventName(String)
-    case setEventDate(Date)
-    case setEventColor(PCColorOption?)
-
     // MARK: Persistence
 
-    case discardEventTapped
     case deleteBatches([CalendarEventBatch])
 
     // MARK: Main calendar

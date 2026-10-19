@@ -32,7 +32,7 @@ final class CalendarSeedPresenceTests: XCTestCase {
 
     private func launch() -> XCUIApplication {
         let app = XCUIApplication()
-        app.launchArguments = ["-UITestSeedData", "-UITestColumns", "1", "-UITestNameAutosaveSeconds", "0"]
+        app.launchArguments = ["-UITestSeedData", "-UITestColumns", "1"]
         app.launch()
         return app
     }
