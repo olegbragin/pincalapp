@@ -1,5 +1,5 @@
 {
-  "originHash" : "d79b6dd1f67e9ad4fed5c6d4495646b53095bcd252abb2accfcafe0696279b1c",
+  "originHash" : "dbcf17e1ba24ae9bdbcbaf947afcc9d265b9e48908b25df59b97f0d40ab3b76f",
   "pins" : [
     {
       "identity" : "objectbox-swift-spm",
@@ -15,8 +15,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/apple/swift-collections.git",
       "state" : {
-        "revision" : "a0cb0954ecb21e4e31b0070e6ed5674e8556685a",
-        "version" : "1.6.0"
+        "revision" : "35a1edcb8ebd2bfe251d587f0b69e62af28f508c",
+        "version" : "1.7.3"
       }
     }
   ],
